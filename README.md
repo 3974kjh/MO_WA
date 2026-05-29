@@ -64,6 +64,23 @@ Open http://localhost:5173 — unauthenticated users redirect to `/login`.
 | `pnpm test:e2e`  | Playwright E2E                      |
 | `pnpm db:types`  | Generate Supabase types (local CLI) |
 | `pnpm db:reset`  | Reset local Supabase DB             |
+| `pnpm cf:preview`| Pages Functions 로컬 미리보기          |
+| `pnpm cf:deploy` | Cloudflare Pages CLI 배포             |
+
+## Deploy (Cloudflare Pages)
+
+배포 설정은 `wrangler.jsonc` + `@sveltejs/adapter-cloudflare` (Pages) 기준입니다.  
+**환경 변수·Supabase Auth URL·Git 연동** 등 상세 절차는 [`docs/cloudflare-deploy.md`](./docs/cloudflare-deploy.md)를 참고하세요.
+
+```bash
+# Git 연동(권장): Dashboard에서 Connect to Git
+# Build command: pnpm install && pnpm build
+# Output directory: .svelte-kit/cloudflare
+
+# CLI 직접 배포
+pnpm wrangler login
+pnpm cf:deploy
+```
 
 ## Project docs
 

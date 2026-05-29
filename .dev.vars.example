@@ -1,0 +1,4 @@
+# Local secrets for `wrangler dev` / `pnpm cf:preview`
+# Copy to .dev.vars and fill in real values (never commit .dev.vars)
+
+SUPABASE_SERVICE_ROLE_KEY=server-only-service-role-key
