@@ -1,13 +1,6 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "mo-wa",
-	"pages_build_output_dir": ".svelte-kit/cloudflare",
 	"compatibility_date": "2026-05-29",
-	"compatibility_flags": ["nodejs_compat"],
-	// Public env vars (non-secret). Replace with your Supabase project values.
-	// Git 배포 시 Dashboard → Environment variables에도 동일하게 설정하세요.
-	"vars": {
-		"PUBLIC_SUPABASE_URL": "https://your-project.supabase.co",
-		"PUBLIC_SUPABASE_ANON_KEY": "your-anon-key"
-	}
+	"compatibility_flags": ["nodejs_compat"]
 }

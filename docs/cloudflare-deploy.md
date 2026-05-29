@@ -25,13 +25,14 @@ pnpm wrangler login
 
 | 파일 | 역할 |
 |---|---|
-| `wrangler.jsonc` | Pages 출력 경로, 호환 플래그, **공개 env vars** |
+| `wrangler.jsonc` | **로컬 preview 전용** (호환 플래그만). Dashboard 잠금 방지 |
 | `svelte.config.js` | `@sveltejs/adapter-cloudflare` |
 | `.dev.vars.example` | 로컬 `wrangler pages dev`용 **비밀 변수** 템플릿 |
 | `package.json` | `CF_PAGES=1` 빌드, `cf:preview`, `cf:deploy` |
 
-> Workers와 달리 Pages는 `wrangler.jsonc`에 `pages_build_output_dir`를 사용합니다.  
-> `main`, `assets` 키는 **Pages에 필요 없습니다**.
+> **중요:** `wrangler.jsonc`에 `pages_build_output_dir` 또는 `vars`를 넣으면  
+> Cloudflare Dashboard의 Environment variables가 **읽기 전용(수정·삭제 불가)** 으로 바뀝니다.  
+> Dashboard에서 설정을 관리하려면 `wrangler.jsonc`에 위 항목을 **넣지 마세요**.
 
 ---
 
@@ -59,28 +60,23 @@ Production / Preview 각각 설정합니다 (Preview에도 동일 값 권장).
 | `PUBLIC_SUPABASE_ANON_KEY` | Plaintext | Supabase anon key |
 | `SUPABASE_SERVICE_ROLE_KEY` | **Secret** (Encrypt) | Supabase service_role key |
 
-Git 연동 배포 시 **Dashboard 환경 변수가 가장 중요**합니다.  
-`wrangler.jsonc`의 `vars`는 로컬 preview 및 wrangler CLI 배포 시에도 사용됩니다.
+Git 연동 배포 시 **Dashboard 환경 변수만** 사용합니다.
 
 ---
 
-### 3.3 `wrangler.jsonc` — 공개 변수 (`vars`)
+### 3.3 Dashboard 설정이 수정·삭제 안 될 때
 
-Dashboard와 동일한 공개 값을 넣습니다.
+**원인:** 저장소의 `wrangler.jsonc`에 `pages_build_output_dir` 또는 `vars`가 있으면,  
+Wrangler 파일이 설정의 **단일 소스**가 되어 Dashboard 항목이 잠깁니다.  
+([Cloudflare 공식 문서](https://developers.cloudflare.com/pages/functions/wrangler-configuration/))
 
-```jsonc
-"vars": {
-  "PUBLIC_SUPABASE_URL": "https://YOUR-PROJECT-REF.supabase.co",
-  "PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-}
-```
+**해결:**
 
-| 필드 | 설명 |
-|---|---|
-| `name` | Pages 프로젝트 이름 (`mo-wa`). CLI `--project-name`과 일치 |
-| `pages_build_output_dir` | **`.svelte-kit/cloudflare`** — 수정하지 마세요 |
-| `compatibility_flags` | `nodejs_compat` — Supabase SSR 등 Node API 호환 |
-| `compatibility_date` | Workers/Pages 런타임 버전 |
+1. 저장소에서 `wrangler.jsonc`의 `pages_build_output_dir`, `vars` 제거 (이 프로젝트는 이미 반영됨)
+2. 변경사항 push → Pages **재배포** 1회
+3. 재배포 후 Dashboard → Settings → Environment variables에서 수정·삭제 가능
+
+재배포 전까지는 Dashboard가 계속 잠겨 있을 수 있습니다.
 
 ---
 
