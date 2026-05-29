@@ -1,0 +1,25 @@
+---
+description: 모든 구현 작업 전 .cursor/Rules.md를 먼저 참고
+alwaysApply: true
+---
+
+# 구현 전 필수 참조
+
+코드 작성·수정·리팩터링·기능 추가를 시작하기 **전에** 반드시 다음을 읽는다:
+
+1. **`.cursor/Rules.md`** — 프로젝트 마스터 가이드 (Svelte 5 Runes, Apple 디자인, Supabase)
+2. **`.cursor/design/DESIGN-apple.md`** — UI/스타일 토큰 원본 (색·타이포·컴포넌트)
+
+## 적용 범위
+
+- Svelte/SvelteKit 컴포넌트, 라우트, 스타일
+- Supabase Auth·DB·Storage 연동
+- 디자인 시스템·UI 컴포넌트 구현
+
+## 핵심 준수 사항
+
+- **FE:** Svelte 5 Runes (`$props`, `$state`, `$derived`, `$effect`) — Svelte 4 API 금지
+- **Style:** DESIGN-apple 토큰·컴포넌트 스펙, Tailwind v4 `@theme` CSS 변수
+- **BE:** Supabase SSR, 서버/클라이언트 클라이언트 분리, RLS, env secret 미노출
+
+Rules.md와 충돌하는 구현은 하지 않는다. 불명확하면 Rules.md를 우선한다.

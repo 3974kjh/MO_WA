@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="MO_WA">
+	<path
+		fill="currentColor"
+		d="M18 104V24h14l32 42 32-42h14v80H94V53L68 86h-8L34 53v51H18Z"
+	/>
+	<path
+		fill="currentColor"
+		fill-opacity=".28"
+		d="M28 28h18l18 23 18-23h18L68 72h-8L28 28Z"
+	/>
+</svg>

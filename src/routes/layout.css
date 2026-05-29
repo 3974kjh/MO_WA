@@ -1,0 +1,151 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+
+@theme {
+	/* Brand */
+	--color-primary: #0066cc;
+	--color-primary-focus: #0071e3;
+	--color-primary-on-dark: #2997ff;
+	--color-on-primary: #ffffff;
+
+	/* Surface */
+	--color-canvas: #ffffff;
+	--color-canvas-parchment: #f5f5f7;
+	--color-surface-pearl: #fafafc;
+	--color-surface-tile-1: #272729;
+	--color-surface-tile-2: #2a2a2c;
+	--color-surface-tile-3: #252527;
+	--color-surface-black: #000000;
+	--color-surface-chip-translucent: #d2d2d7;
+
+	/* Text */
+	--color-ink: #1d1d1f;
+	--color-body: #1d1d1f;
+	--color-body-on-dark: #ffffff;
+	--color-body-muted: #cccccc;
+	--color-ink-muted-80: #333333;
+	--color-ink-muted-48: #7a7a7a;
+	--color-on-dark: #ffffff;
+
+	/* Border */
+	--color-hairline: #e0e0e0;
+	--color-divider-soft: #f0f0f0;
+
+	/* Radius */
+	--radius-xs: 5px;
+	--radius-sm: 8px;
+	--radius-md: 11px;
+	--radius-lg: 18px;
+	--radius-pill: 9999px;
+
+	/* Spacing */
+	--spacing-xxs: 4px;
+	--spacing-xs: 8px;
+	--spacing-sm: 12px;
+	--spacing-md: 17px;
+	--spacing-lg: 24px;
+	--spacing-xl: 32px;
+	--spacing-xxl: 48px;
+	--spacing-section: 80px;
+
+	/* Product imagery only */
+	--shadow-product: 3px 5px 30px 0 rgba(0, 0, 0, 0.22);
+
+	/* Font */
+	--font-display: 'SF Pro Display', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+	--font-text: 'SF Pro Text', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+:root {
+	color: var(--color-ink);
+	background: var(--color-canvas-parchment);
+	font-family: var(--font-text);
+	font-size: 17px;
+	font-weight: 400;
+	line-height: 1.47;
+	letter-spacing: -0.374px;
+	font-synthesis-weight: none;
+	text-rendering: optimizeLegibility;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+
+	/* Form field trailing icon alignment (select chevron ↔ date calendar) */
+	--field-padding-inline: 20px;
+	--field-select-padding-inline-end: 36px;
+	--field-select-trailing-icon-inset: 20px;
+	--field-trailing-icon-size: 16px;
+}
+
+html {
+	scroll-behavior: smooth;
+}
+
+body {
+	margin: 0;
+	min-width: 320px;
+	min-height: 100vh;
+	background: var(--color-canvas-parchment);
+}
+
+button,
+input,
+select,
+textarea {
+	font: inherit;
+}
+
+button {
+	cursor: pointer;
+}
+
+button:disabled {
+	cursor: not-allowed;
+}
+
+a {
+	color: inherit;
+	text-decoration: none;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+*:focus-visible {
+	outline: 2px solid var(--color-primary-focus);
+	outline-offset: 3px;
+}
+
+.product-shadow {
+	box-shadow: var(--shadow-product);
+}
+
+.field-control--plain {
+	padding-inline: var(--field-padding-inline);
+}
+
+.field-control--select {
+	padding-inline: var(--field-padding-inline) var(--field-select-padding-inline-end);
+}
+
+.field-trailing-icon {
+	position: absolute;
+	inset-block: 0;
+	right: var(--field-select-trailing-icon-inset);
+	display: flex;
+	width: var(--field-trailing-icon-size);
+	height: var(--field-trailing-icon-size);
+	margin-block: auto;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 1px;
+	pointer-events: none;
+	color: var(--color-ink-muted-48);
+}
+
+input[type='date'].field-control--plain::-webkit-calendar-picker-indicator,
+input[type='datetime-local'].field-control--plain::-webkit-calendar-picker-indicator {
+	cursor: pointer;
+	opacity: 0.55;
+}
