@@ -8,7 +8,7 @@
 		description,
 		size = 'md',
 		dismissible = true,
-		closeOnBackdrop = true,
+		closeOnBackdrop = false,
 		closeOnEscape = true,
 		onClose,
 		children,
@@ -50,8 +50,60 @@
 		if (dismissible) onClose();
 	}
 
+	function getFocusableElements(container: HTMLElement) {
+		return Array.from(
+			container.querySelectorAll<HTMLElement>(
+				'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+			)
+		).filter((element) => !element.hasAttribute('disabled'));
+	}
+
+	function focusPanel() {
+		if (!panel) return;
+		const [firstFocusable] = getFocusableElements(panel);
+		(firstFocusable ?? panel).focus();
+	}
+
 	function handleBackdrop(event: MouseEvent) {
 		if (event.target === event.currentTarget && closeOnBackdrop) requestClose();
+	}
+
+	function handleFocusOut(event: FocusEvent) {
+		if (!panel) return;
+
+		const related = event.relatedTarget;
+		if (related instanceof Node && panel.contains(related)) return;
+
+		requestAnimationFrame(() => {
+			if (!open || !panel) return;
+			const active = document.activeElement;
+			if (active instanceof Node && panel.contains(active)) return;
+			focusPanel();
+		});
+	}
+
+	function handleKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape' && closeOnEscape) {
+			requestClose();
+			return;
+		}
+
+		if (event.key !== 'Tab' || !panel) return;
+
+		const focusable = getFocusableElements(panel);
+		if (focusable.length === 0) return;
+
+		const first = focusable[0];
+		const last = focusable[focusable.length - 1];
+		const active = document.activeElement;
+
+		if (event.shiftKey && active === first) {
+			event.preventDefault();
+			last.focus();
+		} else if (!event.shiftKey && active === last) {
+			event.preventDefault();
+			first.focus();
+		}
 	}
 
 	$effect(() => {
@@ -59,11 +111,7 @@
 
 		const previousOverflow = document.body.style.overflow;
 		document.body.style.overflow = 'hidden';
-		panel?.focus();
-
-		function handleKeydown(event: KeyboardEvent) {
-			if (event.key === 'Escape' && closeOnEscape) requestClose();
-		}
+		focusPanel();
 
 		document.addEventListener('keydown', handleKeydown);
 
@@ -88,6 +136,7 @@
 			aria-labelledby={titleId}
 			aria-describedby={descriptionId}
 			tabindex="-1"
+			onfocusout={handleFocusOut}
 		>
 			<header class="flex items-start justify-between gap-lg border-b border-hairline px-lg py-md">
 				<div class="grid gap-xxs">
