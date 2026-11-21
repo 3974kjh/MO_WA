@@ -8,9 +8,7 @@ import type { McpAuthProvider, McpContext } from './types';
 function assertDevOrTest(): void {
 	const raw = typeof process !== 'undefined' ? process.env.NODE_ENV : undefined;
 	if (raw === undefined || raw === '') {
-		throw new Error(
-			'UNSAFE_: $lib/server/mcp/testing.ts requires NODE_ENV=test|development'
-		);
+		throw new Error('UNSAFE_: $lib/server/mcp/testing.ts requires NODE_ENV=test|development');
 	}
 	const viteDev =
 		typeof import.meta !== 'undefined' &&
@@ -31,7 +29,8 @@ export function createStubMcpContext(overrides: Partial<McpContext> = {}): McpCo
 		ownerId: overrides.ownerId ?? '00000000-0000-4000-8000-0000000000aa',
 		profile: overrides.profile ?? 'finance-manager',
 		scopes: overrides.scopes ?? ['read'],
-		botName: overrides.botName ?? 'stub-bot'
+		botName: overrides.botName ?? 'stub-bot',
+		mode: overrides.mode ?? 'db'
 	};
 }
 
