@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { backHrefFromPath, LATER_NAV, LOGOUT_PATH, PRIMARY_NAV, sectionFromPath } from './nav';
+import {
+	ACCOUNT_NAV,
+	backHrefFromPath,
+	LATER_NAV,
+	LOGOUT_PATH,
+	PRIMARY_NAV,
+	sectionFromPath
+} from './nav';
 
 describe('FE-01 내비 정의', () => {
 	it('1차 4개(하단 탭과 같음), 포트폴리오에만 대기 pill', () => {
@@ -24,5 +31,13 @@ describe('FE-01 내비 정의', () => {
 		expect(backHrefFromPath('/briefings')).toBeNull();
 		expect(backHrefFromPath('/briefings/2026-11-20')).toBe('/briefings');
 		expect(backHrefFromPath('/')).toBeNull();
+	});
+});
+
+describe('FE-08 관리 그룹', () => {
+	it('보관함은 /archive로 열리고, 설정은 아직 준비 중', () => {
+		expect(ACCOUNT_NAV.find((n) => n.id === 'archive')?.href).toBe('/archive');
+		expect(ACCOUNT_NAV.find((n) => n.id === 'settings')?.href).toBeUndefined();
+		expect(sectionFromPath('/archive')).toBe('archive');
 	});
 });

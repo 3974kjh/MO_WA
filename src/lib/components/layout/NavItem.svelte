@@ -17,7 +17,8 @@
 		current = false,
 		badge = 0,
 		disabled = false,
-		variant = 'side'
+		variant = 'side',
+		onclick
 	}: {
 		href?: string;
 		icon: NavIcon;
@@ -27,6 +28,8 @@
 		badge?: number;
 		disabled?: boolean;
 		variant?: 'side' | 'tab' | 'sheet';
+		/** 링크를 누른 뒤 할 일(더보기 시트 닫기 등) */
+		onclick?: () => void;
 	} = $props();
 </script>
 
@@ -39,7 +42,7 @@
 {:else}
 	<!-- href는 AppShell에서 resolve()한 값 -->
 	<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-	<a class="item {variant}" {href} aria-current={current ? 'page' : undefined}>
+	<a class="item {variant}" {href} {onclick} aria-current={current ? 'page' : undefined}>
 		<NavGlyph {icon} size={variant === 'tab' ? 22 : 20} />
 		<span class="t">{label}</span>
 		{#if badge > 0}<span class="badge-slot"><Pill count={badge} /></span>{/if}

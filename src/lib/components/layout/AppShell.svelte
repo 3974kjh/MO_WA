@@ -70,7 +70,7 @@
 		{#each LATER_NAV as n (n.id)}
 			<NavItem icon={n.icon} label={n.label} disabled />
 		{/each}
-		<!-- 디자인 v1.1: '관리' 그룹(보관함·설정). 화면(FE-08·FE-09)이 생기기 전까지 disabled -->
+		<!-- 디자인 v1.1: '관리' 그룹(보관함·설정). href가 없는 항목(설정, FE-09 전)은 disabled -->
 		<div class="nav-label">관리</div>
 		{#each ACCOUNT_NAV as n (n.id)}
 			<NavItem

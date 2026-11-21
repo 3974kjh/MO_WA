@@ -47,3 +47,4 @@ export * from './market.repo';
 export * from './auditStats.repo';
 export * from './webLoads.repo';
 export * from './journalWeb.repo';
+export * from './archiveWeb.repo';

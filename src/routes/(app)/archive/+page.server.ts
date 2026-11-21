@@ -1,40 +1,18 @@
 import type { Actions, PageServerLoad } from './$types';
-import { forUser, listJournalEntries, listPositions, listReports } from '$lib/server/repo';
-import { handleRestore } from '$lib/server/web/proposalActions';
+import { handleArchiveRestore, loadArchive } from '$lib/server/web/archivePage';
 import { requireUser } from '$lib/server/web/requireUser';
-import { publicListError } from '$lib/server/web/listError';
 
+/** FE-08 보관함 `/archive`: 6개 유형의 보관 행과 복원. 영구 삭제 없음(Q-01). */
 export const load: PageServerLoad = async ({ locals }) => {
 	const user = requireUser(locals.user);
-	const repo = forUser(locals.supabase, user.id);
-
-	const [reports, positions, journal] = await Promise.all([
-		listReports(repo, { includeArchived: true }),
-		listPositions(repo, { includeArchived: true }),
-		listJournalEntries(repo, { includeArchived: true })
-	]);
-
-	const onlyArchived = <T extends { archived_at?: string | null }>(rows: T[]) =>
-		rows.filter((r) => r.archived_at != null);
-
-	return {
-		title: '보관함',
-		reports: onlyArchived(reports.data),
-		positions: onlyArchived(positions.data),
-		journal: onlyArchived(journal.data),
-		// 사용자 문구는 하나, 서버 로그에는 있는 오류를 모두 남긴다.
-		error:
-			[
-				publicListError('archive.reports', reports.error),
-				publicListError('archive.positions', positions.error),
-				publicListError('archive.journal', journal.error)
-			].find((m) => m !== null) ?? null
-	};
+	return loadArchive({ supabase: locals.supabase, user });
 };
 
 export const actions: Actions = {
+	// 여러 유형을 복원하므로 table을 고정하지 않는다. 6개 유형만 받고 공유 handleRestore
+	// (ARCHIVE_TABLES 검사 + owner 필터 + 사용자만 복원)로 넘긴다.
 	restore: async ({ request, locals }) => {
 		const user = requireUser(locals.user);
-		return handleRestore(locals.supabase, user.id, await request.formData());
+		return handleArchiveRestore(locals.supabase, user.id, await request.formData());
 	}
 };

@@ -31,7 +31,7 @@ export interface NavEntry {
 	label: string;
 	icon: NavIcon;
 	/** 없으면 disabled('준비 중') */
-	href?: '/' | '/briefings' | '/portfolio' | '/journal';
+	href?: '/' | '/briefings' | '/portfolio' | '/journal' | '/archive';
 	/** 확인 대기 pill을 붙이는 항목 */
 	pendingBadge?: boolean;
 }
@@ -57,11 +57,11 @@ export const LATER_NAV: NavEntry[] = [
 ];
 
 /**
- * '관리' 그룹(디자인 v1.1: 사이드바 '관리' / 더보기 시트 '관리' 그룹).
- * 보관함(FE-08)·설정(FE-09) 화면이 아직 없어 href 없이 '준비 중'으로 둔다. 해당 티켓에서 href를 채운다.
+ * '관리' 그룹(디자인 v1.1: 사이드바 하단 '관리' / 더보기 시트 '관리' 그룹).
+ * 보관함(FE-08)은 열렸다. 설정(FE-09)은 화면이 아직 없어 href 없이 '준비 중'으로 둔다.
  */
 export const ACCOUNT_NAV: NavEntry[] = [
-	{ id: 'archive', label: '보관함', icon: 'archive' },
+	{ id: 'archive', label: '보관함', icon: 'archive', href: '/archive' },
 	{ id: 'settings', label: '설정', icon: 'settings' }
 ];
 

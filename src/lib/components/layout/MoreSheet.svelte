@@ -22,7 +22,14 @@
 		{/each}
 		<div class="nav-label">관리</div>
 		{#each ACCOUNT_NAV as n (n.id)}
-			<NavItem icon={n.icon} label={n.label} disabled={!n.href} variant="sheet" />
+			<NavItem
+				href={n.href ? resolve(n.href) : undefined}
+				icon={n.icon}
+				label={n.label}
+				disabled={!n.href}
+				variant="sheet"
+				onclick={onclose}
+			/>
 		{/each}
 		<div class="nav-label">화면</div>
 		<button type="button" class="row" onclick={() => themeState.cycle()}>
