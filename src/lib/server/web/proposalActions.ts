@@ -22,7 +22,12 @@ import {
 	type ArchivableTable
 } from '$lib/server/repo';
 import type { Database } from '$lib/types/database.types';
-import { failFromDbError, failValidation, isConflictDbError } from './actionErrors';
+import {
+	ACTION_CONFLICT_MESSAGE,
+	failFromDbError,
+	failValidation,
+	isConflictDbError
+} from './actionErrors';
 
 /**
  * Parse form `overrides` for approve_proposal (H-2 / R-PERM-13).
@@ -151,9 +156,9 @@ export async function handleApprove(
 	if (data?.status === 'conflict') {
 		return fail(409, {
 			ok: false as const,
-			message: '승인 버전이 맞지 않습니다. 포지션이 변경되었습니다.',
+			message: ACTION_CONFLICT_MESSAGE,
 			ruleIds: ['R-PERM-13'],
-			code: 'conflict',
+			code: 'CONFLICT',
 			status: 'conflict',
 			proposal: data
 		});

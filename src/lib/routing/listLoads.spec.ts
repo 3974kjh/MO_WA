@@ -72,6 +72,11 @@ describe('FE-10 허용 밖 tag는 해당 파라미터만 뺀 URL로 redirect', (
 		const r = await redirected('http://x/briefings?tag=%3Cscript%3E');
 		expect(r?.location).toBe('/briefings');
 	});
+	it('빈 값 tag= 는 tag만 빠짐', async () => {
+		const r = await redirected('http://x/briefings?tag=&q=x');
+		expect(r?.location).toBe('/briefings?q=x');
+		expect((await redirected('http://x/briefings?tag='))?.location).toBe('/briefings');
+	});
 	it('여러 tag 중 허용된 것만 남김', async () => {
 		const r = await redirected('http://x/briefings?tag=CPI&tag=a%2Cb&q=x');
 		expect(r?.location).toBe('/briefings?tag=CPI&q=x');

@@ -101,7 +101,11 @@
 		const v = items[i]?.value;
 		return [{ name: ariaLabel, value: Number.isFinite(v) ? fmtUnit(v) : '—' }];
 	}
-	let active = $derived(mobile ? selected : hover);
+	// 그려지지 않은(shape null) 막대는 강조할 대상이 없으므로 hover/selected로 흐림을 켜지 않는다.
+	let active = $derived.by(() => {
+		const i = mobile ? selected : hover;
+		return i !== null && geo?.bars[i]?.shape ? i : null;
+	});
 </script>
 
 <div

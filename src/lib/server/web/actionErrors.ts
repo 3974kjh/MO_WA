@@ -60,9 +60,21 @@ export function failValidation(
 	});
 }
 
-/** PostgREST / Postgres conflict (serialization / version mismatch). */
-export function isConflictDbError(err: { code?: string | null; message?: string | null }): boolean {
-	if (err.code === '40001' || err.code === '23505') return true;
-	const msg = err.message ?? '';
-	return /CONFLICT|conflict/i.test(msg);
+/**
+ * CONFLICT(반영 안 됨·기록 달라짐)는 아래만이다. 메시지 단어(conflict)로는 판별하지 않는다.
+ * 1. 40001 (serialization failure)
+ * 2. 명시적 버전 충돌: 앱 code가 정확히 'CONFLICT', 또는 R-PERM-13 매핑
+ * 3. R-PERM-11 client_ref 키 충돌
+ * 도메인 unique 위반(R-VAL-P03·I01·R03 등 23505)과 그 외 23505는 충돌이 아니다.
+ */
+export function isConflictDbError(err: {
+	code?: string | null;
+	message?: string | null;
+	details?: string | null;
+	hint?: string | null;
+	constraint?: string | null;
+}): boolean {
+	if (err.code === '40001' || err.code === 'CONFLICT') return true;
+	const ids = mapDbErrorToRuleIds(err);
+	return ids.includes('R-PERM-13') || ids.includes('R-PERM-11');
 }

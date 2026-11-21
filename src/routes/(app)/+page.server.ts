@@ -25,6 +25,10 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 		listBriefingsWithKospi(repo, HOME_BRIEFINGS_PAGE)
 	]);
 
+	// 화면 계약은 그대로, 오류는 서버 로그에만(원문은 클라이언트로 보내지 않는다).
+	publicListError('home.kospi', kospi.error, INFO_LOAD_ERROR);
+	publicListError('home.briefings', recentBriefings.error, INFO_LOAD_ERROR);
+
 	return {
 		user: {
 			id: locals.user.id,
