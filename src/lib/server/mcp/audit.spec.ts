@@ -189,7 +189,7 @@ describe('M-3 / Low identity strip (R-PERM-03)', () => {
 	it('normalizes owner-id / botClientId / created_by; UUID case-insensitive', () => {
 		const ctx = createStubMcpContext();
 		const same = sanitizeIdentityFields(
-			{ 'owner-id': ctx.ownerId.toUpperCase(), title: 't' },
+			{ 'owner-id': (ctx.ownerId as string).toUpperCase(), title: 't' },
 			ctx
 		);
 		expect(same.identityMismatch).toBe(false);
@@ -256,9 +256,7 @@ describe('M-6 import:all', () => {
 		expect(assertToolScope(importer, 'whoami')).toBeNull();
 
 		for (const tool of PROPOSAL_TOOLS) {
-			expect(assertToolScope(importer, tool)?.structuredContent.code, tool).toBe(
-				'FORBIDDEN_SCOPE'
-			);
+			expect(assertToolScope(importer, tool)?.structuredContent.code, tool).toBe('FORBIDDEN_SCOPE');
 		}
 		expect(assertToolScope(importer, 'propose_position_change')?.isError).toBe(true);
 		expect(assertToolScope(importer, 'cancel_proposal')?.isError).toBe(true);

@@ -10,6 +10,8 @@ import type { McpContext, McpToolErrorResult } from './types';
  */
 export const TOOL_REQUIRED_SCOPE: Readonly<Record<string, string>> = {
 	whoami: 'read',
+	echo: 'read',
+	db_ping: 'read',
 	get_dashboard_context: 'read',
 	get_report: 'read',
 	list_reports: 'read',
@@ -33,6 +35,17 @@ export const TOOL_REQUIRED_SCOPE: Readonly<Record<string, string>> = {
 	update_journal_entry: 'journal:write',
 	archive_journal_entry: 'journal:write'
 };
+
+/** M1-a default spike tool set (whoami / echo / db_ping). */
+export const SPIKE_TOOL_NAMES = ['whoami', 'echo', 'db_ping'] as const;
+
+/** tools/list filter: tools the key's scopes may see. */
+export function filterToolsByScopes(
+	toolNames: readonly string[],
+	ctx: Pick<McpContext, 'scopes'>
+): string[] {
+	return toolNames.filter((name) => assertToolScope(ctx, name) === null);
+}
 
 /**
  * Live proposal-queue tools — finance-manager only (`positions:propose` / `principles:propose`).

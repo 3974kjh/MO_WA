@@ -62,6 +62,42 @@
 
 ## Current History
 
+## 2026-11-21 — BE-04 MCP DB 모드 인증 (`MCP_AUTH_MODE=db`)
+
+### Context
+
+- 구현 배경: Preview whoami가 `auth_mode=db`로 bot / bot_client_id / scopes를 반환하도록 `mcp_authenticate` DB 경로를 완성한다. 기본값은 기존 env/spike 경로 유지(프로덕션 플립 금지).
+- 관련 문서: spike-plan S1–S12, work-breakdown BE-04, R-PERM-10
+- 관련 Phase: M1 BE 재구축
+
+### Scope
+
+- 포함: HMAC→`mcp_authenticate` RPC, 401/429(+Retry-After), `mintBotRepoIdentity`→`forBot`(x-mowa-bot-id=인증 bot), profile·mode 포함 McpContext, 스코프 필터 tools/list, rate_limited 감사 sink, 단위 테스트·로컬 smoke 스크립트
+- 제외: 프로덕션 `MCP_AUTH_MODE=db` 전환(BE-12), wrangler.jsonc vars, S11 Grok connector, 프로덕션 호스트 스모크
+
+### Logic and Flow
+
+- 주요 데이터 흐름: Bearer 파싱 실패 시 DB 미호출 → pepper HMAC → env 모드 기존 비교 / db 모드 RPC → allowed=false면 429+audit / 성공 시 mint+forBot → handleMcp가 스코프 허용 툴만 등록
+- 핵심 상태/계산 로직: 클라이언트 `x-mowa-bot-id`는 읽지 않음(BE-04-H). whoami는 ctx의 bot/bot_client_id/auth_mode/scopes
+- 서버/Supabase 연동: service_role `mcp_authenticate`; `createRepoAuditSink` → `mcp_audit_log`
+
+### Files
+
+- 생성: `src/lib/server/repo/mcpAuditSink.ts`, `src/lib/server/mcp/version.ts`, `src/lib/server/mcp/tools/tools.spec.ts`, `scripts/mcp-smoke.mjs`
+- 수정: `src/lib/server/mcp/auth.ts`, `types.ts`, `scopes.ts`, `handler.ts`, `tools/index.ts`, `testing.ts`, `index.ts`, `auth.spec.ts`, `src/routes/api/mcp/+server.ts`, `src/lib/server/repo/index.ts`
+
+### Decisions
+
+- 결정: 기본 `MCP_AUTH_MODE` 미설정 = env. Preview에서 db를 쓰려면 Cloudflare Dashboard Preview env만 설정(wrangler.jsonc 금지)
+- 이유: 프로덕션 플립은 BE-12
+- 대안: wrangler vars — Dashboard 잠김 위험으로 채택하지 않음
+
+### Verification
+
+- 실행한 검증: `pnpm check`; vitest server; `MOWA_ALLOW_GATED_TEST=1 pnpm test:db` (mowa_local)
+- 결과: check 0; server unit 141; test:db 230 pass
+- 남은 리스크: Preview Dashboard에 `MCP_AUTH_MODE=db` + 로컬 봇 키 시드 후 whoami 확인(키 미로그)
+
 ## 2026-11-21 — BE-05 MCP 감사 로그·응답 규약
 
 ### Context
