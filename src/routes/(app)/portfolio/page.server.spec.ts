@@ -7,6 +7,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+type AnyLoader = (...args: unknown[]) => Promise<unknown>;
+
 const repo = vi.hoisted(() => ({
 	forUser: vi.fn(() => ({})),
 	listQueueProposals: vi.fn(),
@@ -15,7 +17,16 @@ const repo = vi.hoisted(() => ({
 	listProposalHistory: vi.fn(),
 	listInstrumentMeta: vi.fn(),
 	listPrincipleQueue: vi.fn(),
-	listPrincipleHistory: vi.fn()
+	listPrincipleHistory: vi.fn(),
+	listPortfolioPositionDetails: vi.fn<AnyLoader>(async () => ({ data: [], error: null })),
+	listOpenProposalRefs: vi.fn<AnyLoader>(async () => ({
+		data: { positions: [], holdCount: 0 },
+		error: null
+	})),
+	loadDashboardValuation: vi.fn<AnyLoader>(async () => ({
+		data: { totalKrw: null, usdkrw: null, usdkrwAsOf: null, positions: [] },
+		error: null
+	}))
 }));
 vi.mock('$lib/server/repo', () => repo);
 
@@ -259,8 +270,127 @@ describe('FE-07 portfolio load', () => {
 				asset_type: 'stock'
 			}
 		]);
-		// 감시 가격 등 직접 기록 값은 화면 데이터에 싣지 않는다
-		expect(JSON.stringify(out)).not.toMatch(/trigger_price|watch_only|breakeven/);
+		// 기록 수정 대상(holdings)에는 감시 가격 등 봇 전용 값을 싣지 않는다.
+		// FE-05 표(portfolio.rows)는 손익분기 가격·감시 가격·관심만을 읽기 전용으로 보인다(입력란 없음은 화면 spec).
+		expect(JSON.stringify(out.holdings)).not.toMatch(/trigger_price|watch_only|breakeven/);
+	});
+
+	it('FE-05: 표 행(보유·매수 계획·보유 종료) + 평가금액·환율·행 배지·보류 건수, 원문 오류 없음', async () => {
+		repo.listQueueProposals.mockResolvedValue(emptyPage);
+		repo.listPositionCards.mockResolvedValue({
+			data: [{ ...position, latest_price: 80, latest_price_currency: 'KRW' }],
+			error: null
+		});
+		repo.listAttentionNeeded.mockResolvedValue({
+			data: { positions: [], principles: [] },
+			error: null
+		});
+		repo.listProposalHistory.mockResolvedValue(emptyPage);
+		repo.listPrincipleQueue.mockResolvedValue(emptyPage);
+		repo.listPrincipleHistory.mockResolvedValue(emptyPage);
+		repo.listInstrumentMeta.mockResolvedValue({
+			data: [
+				{ id: 'i1', name: '실데이터종목', ticker: 'RD', asset_type: 'stock' },
+				{ id: 'i9', name: '끝난종목', ticker: 'ZZ', asset_type: 'stock' }
+			],
+			error: null
+		});
+		const d = {
+			breakeven: 66,
+			memo: '근거 한 줄',
+			trigger_price: null,
+			trigger_direction: 'below',
+			watch_only: false,
+			closed_at: null,
+			market: 'KRX'
+		};
+		repo.listPortfolioPositionDetails.mockResolvedValueOnce({
+			data: [
+				{
+					...d,
+					id: 'p1',
+					instrument_id: 'i1',
+					status: 'holding',
+					currency: 'KRW',
+					qty: 6,
+					avg_price: 72
+				},
+				{
+					...d,
+					id: 'c9',
+					instrument_id: 'i9',
+					status: 'closed',
+					currency: 'KRW',
+					qty: 0,
+					avg_price: 5
+				}
+			],
+			error: null
+		});
+		repo.listOpenProposalRefs.mockResolvedValueOnce({
+			data: { positions: [{ position_id: 'p1', status: 'pending' }], holdCount: 3 },
+			error: null
+		});
+		repo.loadDashboardValuation.mockResolvedValueOnce({
+			data: {
+				totalKrw: 480,
+				usdkrw: 1300,
+				usdkrwAsOf: '2026-11-20',
+				positions: [{ id: 'p1', valueKrw: 480 }]
+			},
+			error: null
+		});
+		const out = (await call()) as {
+			portfolio: {
+				rows: Array<Record<string, unknown>>;
+				totalKrw: number;
+				usdkrw: number;
+				holdCount: number;
+			};
+			portfolioError: string | null;
+			valuationError: string | null;
+		};
+		expect(out.portfolio.rows.map((r) => r.id)).toEqual(['p1', 'c9']);
+		expect(out.portfolio.rows[0]).toMatchObject({
+			name: '실데이터종목',
+			price: 80,
+			value_krw: 480,
+			breakeven: 66,
+			open_status: 'pending'
+		});
+		expect(out.portfolio.rows[1]).toMatchObject({ status: 'closed', value_krw: null });
+		expect(out.portfolio).toMatchObject({ totalKrw: 480, usdkrw: 1300, holdCount: 3 });
+		expect(out.portfolioError).toBeNull();
+		expect(out.valuationError).toBeNull();
+		// 환율 기준 시각 줄은 이번 범위가 아니다(F 묶음)
+		expect(JSON.stringify(out.portfolio)).not.toContain('usdkrwAsOf');
+	});
+
+	it('FE-05: 표·valuation 오류는 일반 문구만', async () => {
+		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const raw = new Error('permission denied for table positions');
+		repo.listQueueProposals.mockResolvedValue(emptyPage);
+		repo.listPositionCards.mockResolvedValue({ data: [], error: null });
+		repo.listAttentionNeeded.mockResolvedValue({
+			data: { positions: [], principles: [] },
+			error: null
+		});
+		repo.listProposalHistory.mockResolvedValue(emptyPage);
+		repo.listPrincipleQueue.mockResolvedValue(emptyPage);
+		repo.listPrincipleHistory.mockResolvedValue(emptyPage);
+		repo.listInstrumentMeta.mockResolvedValue({ data: [], error: null });
+		repo.listPortfolioPositionDetails.mockResolvedValueOnce({ data: [], error: raw });
+		repo.loadDashboardValuation.mockResolvedValueOnce({ data: null, error: raw });
+		repo.listOpenProposalRefs.mockResolvedValueOnce({
+			data: { positions: [], holdCount: 0 },
+			error: raw
+		});
+		const out = (await call()) as Record<string, unknown>;
+		expect(out.portfolioError).toBe('목록을 불러오지 못했어요.');
+		expect(out.valuationError).toBe('정보를 불러오지 못했어요.');
+		expect((out.portfolio as { holdCount: unknown }).holdCount).toBeNull();
+		expect(JSON.stringify(out)).not.toMatch(/permission denied/);
+		log.mockRestore();
 	});
 
 	it('비로그인은 401(레이아웃이 먼저 /login으로 보낸다)', async () => {

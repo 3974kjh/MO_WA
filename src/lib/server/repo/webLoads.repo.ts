@@ -481,6 +481,97 @@ export async function listPositionCards(
 	};
 }
 
+/** FE-05 포트폴리오 표 전용 읽기 값(보유·매수 계획·보유 종료). 쓰기 경로 없음. */
+export type PortfolioPositionDetail = {
+	id: string;
+	instrument_id: string;
+	status: 'holding' | 'planned' | 'closed';
+	currency: 'KRW' | 'USD';
+	qty: number | null;
+	avg_price: number | null;
+	breakeven: number | null;
+	memo: string | null;
+	trigger_price: number | null;
+	trigger_direction: 'below' | 'above';
+	watch_only: boolean;
+	closed_at: string | null;
+	/** 종목 시장(통화 불일치 ⚠ 판정용). 종목을 못 읽으면 null */
+	market: string | null;
+};
+
+/**
+ * FE-05: 포트폴리오 표 행(보관 안 된 holding·planned·closed). 손익분기 가격·메모·감시 가격은 **읽기 전용**으로만 싣는다.
+ * 종목 시장은 같은 요청에서 instruments(market)로 붙인다(요청 1번).
+ */
+export async function listPortfolioPositionDetails(
+	repo: RepoClient
+): Promise<{ data: PortfolioPositionDetail[]; error: Error | null }> {
+	const ownerId = requireOwnerId(repo);
+	let q = fromRepo(repo, 'positions')
+		.select(
+			'id, instrument_id, status, currency, qty, avg_price, breakeven, memo, trigger_price, trigger_direction, watch_only, closed_at, instruments(market)'
+		)
+		.is('archived_at', null)
+		.in('status', ['holding', 'planned', 'closed']);
+	q = withOwnerFilter(q, ownerId);
+	const { data, error } = await q;
+	if (error) return { data: [], error: error as Error };
+	const rows = (data ?? []) as unknown as Array<
+		Omit<PortfolioPositionDetail, 'market'> & {
+			instruments: { market: string | null } | Array<{ market: string | null }> | null;
+		}
+	>;
+	return {
+		data: rows.map(({ instruments, ...r }) => {
+			const inst = Array.isArray(instruments) ? instruments[0] : instruments;
+			return {
+				...r,
+				trigger_direction: r.trigger_direction === 'above' ? 'above' : 'below',
+				watch_only: Boolean(r.watch_only),
+				market: inst?.market ?? null
+			};
+		}),
+		error: null
+	};
+}
+
+/** FE-05: 행 '확인 대기' 배지와 '보류 N건 별도'용. 제안 본문은 읽지 않는다. */
+export type OpenProposalRefs = {
+	/** position_id가 있는 pending·on_hold 포지션 제안 */
+	positions: Array<{ position_id: string; status: 'pending' | 'on_hold' }>;
+	/** 보류(on_hold) 건수: 포지션 제안 + 원칙 개정 요청 */
+	holdCount: number;
+};
+
+export async function listOpenProposalRefs(
+	repo: RepoClient
+): Promise<{ data: OpenProposalRefs; error: Error | null }> {
+	const ownerId = requireOwnerId(repo);
+	let posQ = fromRepo(repo, 'position_proposals')
+		.select('position_id, status')
+		.in('status', ['pending', 'on_hold']);
+	posQ = withOwnerFilter(posQ, ownerId);
+	let prinQ = fromRepo(repo, 'principle_proposals').select('id', { count: 'exact', head: true });
+	prinQ = withOwnerFilter(prinQ, ownerId).eq('status', 'on_hold');
+	const [pos, prin] = await Promise.all([posQ, prinQ]);
+	const empty = { positions: [], holdCount: 0 };
+	if (pos.error) return { data: empty, error: pos.error as Error };
+	if (prin.error) return { data: empty, error: prin.error as Error };
+	const rows = (pos.data ?? []) as Array<{ position_id: string | null; status: string }>;
+	return {
+		data: {
+			positions: rows
+				.filter((r) => r.position_id != null)
+				.map((r) => ({
+					position_id: r.position_id!,
+					status: r.status === 'on_hold' ? 'on_hold' : 'pending'
+				})),
+			holdCount: rows.filter((r) => r.status === 'on_hold').length + (prin.count ?? 0)
+		},
+		error: null
+	};
+}
+
 /**
  * FE-03: 이미 읽은 포지션 카드(listPositionCards)를 넘기면 다시 읽지 않는다.
  * 넘기지 않으면 예전처럼 직접 읽는다.

@@ -13,6 +13,7 @@ vi.mock('$app/forms', () => ({ deserialize: (t: string) => JSON.parse(t) }));
 
 import Page from './+page.svelte';
 import { makeItem } from '$lib/queue/testItem';
+import { makeRow } from '$lib/portfolio/testRow';
 import { toast } from '$lib/components/ui/toast.svelte';
 
 const base = {
@@ -25,6 +26,9 @@ const base = {
 	historyError: null,
 	holdings: [],
 	positionsError: null,
+	portfolio: { rows: [], totalKrw: null, usdkrw: null, holdCount: 0 },
+	portfolioError: null,
+	valuationError: null,
 	attentionNeeded: [],
 	attentionError: null
 };
@@ -60,7 +64,7 @@ describe('FE-07 변경 요청 렌더', () => {
 		const t = text(container);
 		expect(t).toContain('확인할 요청이 없어요');
 		expect(t).toContain('아직 보유 기록이 없어요');
-		expect(t).toContain('자산 비중은 준비 중이에요');
+		expect(t).toContain('비중을 낼 평가금액이 없어요');
 		expect(t).not.toMatch(/P-04\d\d|295\.04|290\.98|SGOV|NAVER|알파벳|예시|충돌/);
 		expect(container.querySelector('#queue')).not.toBeNull();
 	});
@@ -343,7 +347,11 @@ describe('FE-07 변경 요청 렌더', () => {
 						approval_version: 5,
 						asset_type: 'stock'
 					}
-				]
+				],
+				portfolio: {
+					...base.portfolio,
+					rows: [makeRow({ id: 'pos-9', name: '보유종목', qty: 7, avg_price: 3333 })]
+				}
 			} as never
 		});
 		(container.querySelector('[data-action="correct"]') as HTMLElement).click();

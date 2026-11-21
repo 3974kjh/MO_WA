@@ -11,6 +11,8 @@ import {
 	listInstrumentLabels,
 	listInstrumentMeta,
 	listJournalPage,
+	listOpenProposalRefs,
+	listPortfolioPositionDetails,
 	listAttentionNeeded,
 	countPendingProposals,
 	listPrincipleHistory,
@@ -419,5 +421,71 @@ describe('FE-07 countPendingProposals: nav 대기 건수 = pending 포지션 + p
 			expect(data).toBe(0);
 			expect(error).not.toBeNull();
 		}
+	});
+});
+
+describe('FE-05 포트폴리오 읽기 로더', () => {
+	it('listPortfolioPositionDetails: GET 한 번, owner·보관 제외·3상태, 시장은 embed', async () => {
+		const { repo, requests } = stubClient({
+			positions: [
+				{
+					id: 'p',
+					instrument_id: 'i',
+					status: 'closed',
+					currency: 'KRW',
+					qty: 0,
+					avg_price: 10,
+					breakeven: null,
+					memo: '메모',
+					trigger_price: null,
+					trigger_direction: 'up?',
+					watch_only: null,
+					closed_at: null,
+					instruments: { market: 'KRX' }
+				}
+			]
+		});
+		const { data, error } = await listPortfolioPositionDetails(repo);
+		expect(error).toBeNull();
+		expect(data[0]).toMatchObject({
+			id: 'p',
+			market: 'KRX',
+			trigger_direction: 'below',
+			watch_only: false
+		});
+		expect(data[0]).not.toHaveProperty('instruments');
+		expect(requests).toHaveLength(1);
+		expect(requests[0].method).toBe('GET');
+		expectOwnerOnly(requests[0].params);
+		expect(requests[0].params.get('archived_at')).toBe('is.null');
+		expect(requests[0].params.get('status')).toBe('in.(holding,planned,closed)');
+		expect(requests[0].params.get('select')).toContain('instruments(market)');
+	});
+
+	it('listOpenProposalRefs: position_id 있는 pending·on_hold, 보류 = 포지션 on_hold + 원칙 on_hold', async () => {
+		const { repo, requests } = stubClient({
+			position_proposals: [
+				{ position_id: 'a', status: 'pending' },
+				{ position_id: 'b', status: 'on_hold' },
+				{ position_id: null, status: 'on_hold' }
+			],
+			principle_proposals: [{ id: 'r1' }, { id: 'r2' }]
+		});
+		const { data, error } = await listOpenProposalRefs(repo);
+		expect(error).toBeNull();
+		expect(data.positions).toEqual([
+			{ position_id: 'a', status: 'pending' },
+			{ position_id: 'b', status: 'on_hold' }
+		]);
+		expect(data.holdCount).toBe(4);
+		expect(requests.every((r) => r.method === 'GET' || r.method === 'HEAD')).toBe(true);
+		for (const r of requests) expectOwnerOnly(r.params);
+	});
+
+	it('listOpenProposalRefs: 오류면 빈 값 + 오류', async () => {
+		const { repo } = stubClient({}, ['principle_proposals']);
+		const { data, error } = await listOpenProposalRefs(repo);
+		expect(error).not.toBeNull();
+		expect(data).toEqual({ positions: [], holdCount: 0 });
 	});
 });

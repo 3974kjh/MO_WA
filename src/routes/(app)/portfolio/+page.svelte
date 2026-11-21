@@ -1,8 +1,11 @@
 <script lang="ts">
 	/**
-	 * 포트폴리오 `/portfolio` — FE-07 변경 요청(#queue). 시안 `screens/portfolio.html`(큐 구역)·
-	 * `screens/approval-override.html`. 시안의 상태 고정 버튼·안내줄·상태 범례·샘플 데이터는 넣지 않는다.
-	 * - 보유 표·자산 비중 본문은 FE-05. 여기서는 기록 수정(§7-12) 진입점만 보유 목록에 둔다.
+	 * 포트폴리오 `/portfolio` — FE-05 지표 4·보유/매수 계획 표·자산 비중·수익률 막대 + FE-07 변경 요청(#queue).
+	 * 시안 `screens/portfolio.html`·`screens/approval-override.html`. 시안의 상태 고정 버튼·안내줄·상태 범례·샘플 데이터는 넣지 않는다.
+	 * - FE-05 표는 읽기 전용(DS 원칙 5, G-4): 수량·평균 단가·상태·통화·감시 가격·방향·손익분기 가격·관심만 입력란이 없다.
+	 *   기록 수정(§7-12) 진입점은 보유 기록 행의 '기록 수정' 버튼(FE-07과 같은 동작·같은 요청).
+	 * - 숫자는 승인된 보유 기록 값만. 대기 요청이 있는 행은 배지만 붙인다. 매수 계획 행은 수량·평균 단가 '—'.
+	 *   보유 종료 행은 '전체'에서만 보인다.
 	 * - G-2: 반영·고쳐서 반영·기록 수정은 확인 → 낙관적 UI → 5초 뒤 요청. 되돌리기·탭 닫기·이동이면 보내지 않는다.
 	 *   거절은 확인 뒤 즉시. 보류·확인했어요는 바로 처리.
 	 * - 원칙 개정 요청(R-)도 같은 목록에 섞여 나온다: 반영은 ?/approvePrinciple(5초 유예 동일),
@@ -14,7 +17,36 @@
 	import { beforeNavigate, invalidateAll } from '$app/navigation';
 	import { deserialize } from '$app/forms';
 	import type { PageData } from './$types';
+	import Badge from '$lib/components/ui/Badge.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
+	import DataTable from '$lib/components/ui/DataTable.svelte';
+	import Delta from '$lib/components/ui/Delta.svelte';
+	import MetricTile from '$lib/components/ui/MetricTile.svelte';
+	import Money from '$lib/components/ui/Money.svelte';
+	import StatusBadge from '$lib/components/ui/StatusBadge.svelte';
+	import type { Col } from '$lib/components/ui/types';
+	import BarChart from '$lib/components/charts/BarChart.svelte';
+	import DonutChart from '$lib/components/charts/DonutChart.svelte';
+	import TriggerGauge from '$lib/components/dashboard/TriggerGauge.svelte';
+	import { holdingSummary, positionLabel, weightItems } from '$lib/dashboard/home';
+	import { DIRECTION_BADGE, distanceLabel, triggerState } from '$lib/dashboard/trigger';
+	import {
+		avgPending,
+		avgText,
+		currencyMismatch,
+		filterRows,
+		G4_NOTICE,
+		memoLine,
+		priceText,
+		qtyText,
+		rowReturnPct,
+		rowWeightPct,
+		segmentCounts,
+		STATUS_LABEL,
+		unitText,
+		type PortfolioRow,
+		type Segment
+	} from '$lib/portfolio/view';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import ErrorState from '$lib/components/ui/ErrorState.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
@@ -31,7 +63,6 @@
 		ACTION_ERROR_TEXT,
 		classifyActionResult,
 		diffRows,
-		formatField,
 		isPreBlocked,
 		sortHistory,
 		type ActionOutcome,
@@ -109,7 +140,36 @@
 		const ids = new Set(local.map((i) => i.id));
 		return sortHistory([...local, ...data.history.items.filter((i) => !ids.has(i.id))]);
 	});
-	let holdings = $derived(data.holdings.map((h) => ({ ...h, ...(correctionLocal[h.id] ?? {}) })));
+	/* ── FE-05 표·지표 (기록 수정 5초 유예 중이면 그 값으로 보인다) ── */
+	let segment = $state<Segment>('all');
+	let rows = $derived(
+		(data.portfolio?.rows ?? []).map((r) => ({ ...r, ...(correctionLocal[r.id] ?? {}) }))
+	);
+	let counts = $derived(segmentCounts(rows));
+	let visibleRows = $derived(filterRows(rows, segment));
+	let correctable = $derived(new Set(data.holdings.map((h) => h.id)));
+	let usdkrw = $derived(data.portfolio?.usdkrw ?? null);
+	let summary = $derived(holdingSummary(rows, usdkrw));
+	let heldCount = $derived(
+		rows.filter((r) => r.status === 'holding' && r.qty != null && r.qty > 0).length
+	);
+	let weights = $derived(weightItems(rows));
+	let bars = $derived(
+		rows
+			.filter((r) => r.status === 'holding')
+			.flatMap((r) => {
+				const v = rowReturnPct(r);
+				return v == null ? [] : [{ label: r.ticker?.trim() || positionLabel(r), value: v }];
+			})
+	);
+	let segOptions = $derived<{ value: Segment; label: string }[]>([
+		{ value: 'all', label: '전체' },
+		{ value: 'holding', label: `보유 ${counts.holding}` },
+		{ value: 'planned', label: `매수 계획 ${counts.planned}` }
+	]);
+	const pct1 = (v: number) => `${v.toFixed(1)}%`;
+	const fx = (v: number) =>
+		`${v.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}원`;
 
 	async function postAction(name: string, fields: Record<string, string>): Promise<ActionOutcome> {
 		const body = new FormData();
@@ -316,12 +376,168 @@
 		{ value: 'closed', label: '지난 내역' },
 		{ value: 'all', label: '전체' }
 	];
-	const STATUS_TEXT: Record<string, string> = { holding: '보유', planned: '매수 계획' };
+
+	const columns: Col<PortfolioRow>[] = [
+		{ key: 'name', label: '종목', title: true, render: nameCell },
+		{ key: 'qty', label: '수량', align: 'right', render: qtyCell },
+		{ key: 'avg_price', label: '평균 단가', align: 'right', render: avgCell },
+		{ key: 'breakeven', label: '손익분기 가격', align: 'right', render: breakevenCell },
+		{ key: 'price', label: '현재가', align: 'right', render: priceCell },
+		{ key: 'return', label: '수익률', align: 'right', render: returnCell },
+		{ key: 'value_krw', label: '평가금액', align: 'right', render: valueCell },
+		{ key: 'weight', label: '비중', align: 'right', render: weightCell },
+		{ key: 'memo', label: '감시 가격까지', render: memoCell },
+		{ key: 'actions', label: '작업', render: actionCell }
+	];
 </script>
+
+{#snippet nameCell(r: PortfolioRow)}
+	<div class="t-name">
+		{positionLabel(r)}
+		{#if r.status === 'planned'}
+			<Badge tone="info">{r.watch_only ? '관심' : STATUS_LABEL.planned}</Badge>
+		{:else if r.status === 'closed'}
+			<Badge>{STATUS_LABEL.closed}</Badge>
+		{/if}
+		{#if r.open_status}<StatusBadge status={r.open_status} />{/if}
+	</div>
+	<div class="t-sub">
+		{#if r.ticker}<span>{r.ticker}</span>{/if}
+		<span class="ccy" data-testid="row-ccy">{r.currency}</span>
+		{#if currencyMismatch(r)}
+			<Badge tone="warn" icon="⚠" title="종목 시장·가격 기록의 통화와 보유 통화가 달라요"
+				>통화 확인</Badge
+			>
+		{/if}
+	</div>
+{/snippet}
+
+{#snippet qtyCell(r: PortfolioRow)}{qtyText(r)}{/snippet}
+
+{#snippet avgCell(r: PortfolioRow)}
+	<span>{avgText(r)}</span>
+	{#if avgPending(r)}<span class="pending-note">입력 대기</span>{/if}
+{/snippet}
+
+{#snippet breakevenCell(r: PortfolioRow)}{unitText(r.breakeven, r.currency)}{/snippet}
+
+{#snippet priceCell(r: PortfolioRow)}{priceText(r)}{/snippet}
+
+{#snippet returnCell(r: PortfolioRow)}
+	{@const v = rowReturnPct(r)}
+	{#if v != null}<Delta value={v} digits={1} />{:else}—{/if}
+{/snippet}
+
+{#snippet valueCell(r: PortfolioRow)}
+	{#if r.status === 'holding' && r.value_krw != null}<Money value={r.value_krw} />{:else}—{/if}
+{/snippet}
+
+{#snippet weightCell(r: PortfolioRow)}
+	{@const w = rowWeightPct(r, summary.totalKrw)}
+	{w != null ? pct1(w) : '—'}
+{/snippet}
+
+{#snippet memoCell(r: PortfolioRow)}
+	{@const memo = memoLine(r.memo)}
+	{@const t =
+		r.status === 'closed'
+			? null
+			: triggerState({
+					price: r.price,
+					trigger: r.trigger_price,
+					direction: r.trigger_direction,
+					watchOnly: r.watch_only
+				})}
+	<div class="memo-cell">
+		{#if t && t.state !== 'watch'}
+			{@const d = DIRECTION_BADGE[t.direction]}
+			<div class="memo-trig">
+				<Badge tone={t.direction === 'above' ? 'info' : 'default'} icon={d.icon} title={d.title}
+					>{d.label}</Badge
+				>
+				<span class="num">{unitText(r.trigger_price, r.currency)}</span>
+				{#if 'distance' in t}<span class="num dist">{distanceLabel(t.distance)}</span>{/if}
+				{#if t.state === 'warn'}<Badge tone="warn" icon="⚠">3% 이내</Badge>
+				{:else if t.state === 'hit'}<Badge tone="accent" icon="✓">도달</Badge>
+				{:else if t.state === 'unpriced'}<Badge>현재가 없음</Badge>{/if}
+			</div>
+			{#if 'distance' in t}<TriggerGauge distance={t.distance} />{/if}
+		{:else if r.watch_only}
+			<Badge>관심만</Badge>
+		{/if}
+		{#if memo}<span class="memo">{memo}</span>
+		{:else if !t || (t.state === 'watch' && !r.watch_only)}<span class="memo">—</span>{/if}
+	</div>
+{/snippet}
+
+{#snippet actionCell(r: PortfolioRow)}
+	{#if correctable.has(r.id)}
+		<button
+			type="button"
+			class="btn sm"
+			data-action="correct"
+			aria-disabled={busy[r.id] ? 'true' : undefined}
+			onclick={() => {
+				if (!busy[r.id]) correctionTarget = data.holdings.find((x) => x.id === r.id) ?? null;
+			}}>기록 수정<span class="sr-only"> · {positionLabel(r)}</span></button
+		>
+	{/if}
+{/snippet}
 
 <svelte:head><title>포트폴리오 · MO_WA</title></svelte:head>
 
 <div class="pf" data-testid="portfolio-page">
+	<div class="tiles" data-testid="portfolio-tiles">
+		<MetricTile
+			label="총 평가금액"
+			foot={data.valuationError
+				? '잠시 후 다시 시도해 주세요.'
+				: summary.unpriced > 0
+					? `가격 없는 ${summary.unpriced}종목 제외`
+					: '평가금액 기준'}
+		>
+			{#snippet value()}
+				{#if !data.valuationError && summary.totalKrw != null}<Money
+						value={summary.totalKrw}
+					/>{:else}—{/if}
+			{/snippet}
+		</MetricTile>
+		<MetricTile
+			label="평가손익"
+			delta={data.valuationError ? undefined : (summary.pnlPct ?? undefined)}
+			deltaDigits={1}
+			foot={data.valuationError
+				? '잠시 후 다시 시도해 주세요.'
+				: summary.pnlCount < heldCount
+					? `평균 단가·가격 있는 ${summary.pnlCount}종목 기준`
+					: '수익률'}
+		>
+			{#snippet value()}
+				{#if !data.valuationError && summary.pnlKrw != null}<Money
+						value={summary.pnlKrw}
+						plus
+						tone="sign"
+					/>{:else}—{/if}
+			{/snippet}
+		</MetricTile>
+		<MetricTile
+			label="달러 환율"
+			value={!data.valuationError && usdkrw != null ? fx(usdkrw) : '—'}
+			foot={data.valuationError
+				? '잠시 후 다시 시도해 주세요.'
+				: usdkrw != null
+					? '달러 종목은 이 환율로 원화 환산'
+					: '환율 기록 없음'}
+		/>
+		<MetricTile
+			label="확인 대기"
+			value="{data.pendingCount ?? 0}건"
+			foot={data.portfolio?.holdCount != null
+				? `보류 ${data.portfolio.holdCount}건 별도`
+				: '보류 건수를 불러오지 못했어요'}
+		/>
+	</div>
+
 	<nav class="tabs" aria-label="포트폴리오 구역">
 		<a href="#holdings" aria-current={section === 'holdings'} onclick={() => (section = 'holdings')}
 			>보유·매수 계획</a
@@ -335,55 +551,75 @@
 	</nav>
 
 	<div class="grid">
-		<Card class="c-7" flush title="보유·매수 계획">
+		<Card class="c-12" flush title="보유·매수 계획">
+			{#snippet aside()}
+				{#if !data.positionsError && !data.portfolioError && rows.length > 0}
+					<SegmentedControl
+						ariaLabel="보유·매수 계획 구분"
+						options={segOptions}
+						value={segment}
+						onchange={(v) => (segment = v)}
+					/>
+				{/if}
+			{/snippet}
 			<div id="holdings" class="anchor"></div>
-			{#if data.positionsError}
-				<ErrorState desc="잠시 후 다시 시도해 주세요." />
-			{:else if holdings.length === 0}
+			{#if data.positionsError || data.portfolioError}
+				<div class="pad"><ErrorState desc="잠시 후 다시 시도해 주세요." /></div>
+			{:else if rows.length === 0}
 				<EmptyState
 					icon="💼"
 					title="아직 보유 기록이 없어요"
 					desc="봇이 보낸 변경 요청을 반영하면 여기에 보여요."
 				/>
 			{:else}
-				<ul class="holdings" aria-label="보유 기록">
-					{#each holdings as h (h.id)}
-						<li class="h-row">
-							<div class="h-main">
-								<span class="h-name">{h.name}</span>
-								<span class="h-sub">{STATUS_TEXT[h.status] ?? ''}</span>
-							</div>
-							<dl class="h-kv">
-								<dt>수량</dt>
-								<dd class="num">{formatField('qty', h.qty, h.currency, h.asset_type)}</dd>
-								<dt>평균 단가</dt>
-								<dd class="num">
-									{formatField('avg_price', h.avg_price, h.currency, h.asset_type)}
-								</dd>
-							</dl>
-							<button
-								type="button"
-								class="btn sm"
-								data-action="correct"
-								aria-disabled={busy[h.id] ? 'true' : undefined}
-								onclick={() => {
-									if (!busy[h.id])
-										correctionTarget = data.holdings.find((x) => x.id === h.id) ?? null;
-								}}>기록 수정<span class="sr-only"> · {h.name}</span></button
-							>
-						</li>
-					{/each}
-				</ul>
-				<p class="foot-note">
-					수량·평균 단가는 여기서 직접 고칠 수 없어요. 각 보유 행의 <b>기록 수정</b>에서 확인하면
-					바로 반영되고 활동 기록에 남아요(5초 안에 되돌릴 수 있어요).
-				</p>
+				<div data-testid="portfolio-table">
+					<DataTable
+						{columns}
+						rows={visibleRows}
+						mobile="cards"
+						caption="보유·매수 계획"
+						rowKey={(r) => r.id}
+					>
+						{#snippet empty()}
+							<p class="empty-row">
+								{segment === 'planned' ? '매수 계획이 없어요' : '보유 중인 종목이 없어요'}
+							</p>
+						{/snippet}
+					</DataTable>
+				</div>
+			{/if}
+			<p class="foot-note" data-testid="g4-notice">{G4_NOTICE}</p>
+		</Card>
+
+		<Card class="c-5" title="자산 비중" sub="평가금액 기준">
+			<div id="weights" class="anchor"></div>
+			{#if data.positionsError || data.valuationError}
+				<ErrorState desc="잠시 후 다시 시도해 주세요." />
+			{:else if weights.length === 0}
+				<EmptyState icon="◔" title="비중을 낼 평가금액이 없어요" />
+			{:else}
+				<DonutChart
+					items={weights}
+					ariaLabel="보유 종목 비중"
+					total={summary.totalKrw ?? undefined}
+					sub="총 평가금액"
+					valueKind="KRW"
+				/>
+				<dl class="kv">
+					<dt>달러 자산</dt>
+					<dd class="num">{summary.usdSharePct != null ? pct1(summary.usdSharePct) : '—'}</dd>
+				</dl>
 			{/if}
 		</Card>
 
-		<Card class="c-5" title="자산 비중">
-			<div id="weights" class="anchor"></div>
-			<EmptyState icon="🥧" title="자산 비중은 준비 중이에요" desc="곧 이 자리에서 볼 수 있어요." />
+		<Card class="c-7" title="종목별 수익률" sub="평균 단가 대비 %">
+			{#if data.positionsError || data.portfolioError}
+				<ErrorState desc="잠시 후 다시 시도해 주세요." />
+			{:else if bars.length === 0}
+				<EmptyState icon="📊" title="수익률을 낼 보유 종목이 없어요" />
+			{:else}
+				<BarChart items={bars} ariaLabel="종목별 평균 단가 대비 수익률" digits={1} />
+			{/if}
 		</Card>
 
 		<section class="c-12 queue" id="queue" aria-labelledby="queue-title">
@@ -613,6 +849,13 @@
 		grid-column: span 12;
 		min-width: 0;
 	}
+	/* 태블릿(640~1023): 비중 | 수익률 2열, PC: 5 | 7 */
+	@media (min-width: 640px) {
+		.grid > :global(.c-7),
+		.grid > :global(.c-5) {
+			grid-column: span 6;
+		}
+	}
 	@media (min-width: 1024px) {
 		.grid > :global(.c-7) {
 			grid-column: span 7;
@@ -700,44 +943,93 @@
 	.foot-note {
 		padding: 10px 16px 14px;
 	}
-	.holdings {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-	}
-	.h-row {
-		display: flex;
-		align-items: center;
+	.tiles {
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
 		gap: 12px;
-		padding: 12px 16px;
-		border-top: 1px solid var(--color-line);
-		flex-wrap: wrap;
 	}
-	.h-main {
-		flex: 1 1 140px;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
+	@media (max-width: 1023px) {
+		.tiles {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
 	}
-	.h-name {
+	@media (max-width: 639px) {
+		.tiles {
+			gap: 8px;
+		}
+	}
+	.pad {
+		padding: 0 16px 16px;
+	}
+	.t-name {
 		font-weight: 600;
 		overflow-wrap: anywhere;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 4px 6px;
 	}
-	.h-sub {
+	.t-sub {
+		font-size: var(--text-xs);
+		color: var(--color-subtle);
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 4px 6px;
+	}
+	.ccy {
+		font-size: var(--text-xs);
+		font-weight: 700;
+		padding: 0 6px;
+		border-radius: var(--radius-xs);
+		border: 1px solid var(--color-line);
+		color: var(--color-muted);
+	}
+	.pending-note {
+		display: block;
 		font-size: var(--text-xs);
 		color: var(--color-subtle);
 	}
-	.h-kv {
-		display: grid;
-		grid-template-columns: auto auto;
-		gap: 2px 10px;
-		font-size: var(--text-sm);
-		margin: 0;
+	.memo-cell {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		min-width: 170px;
+		text-align: left;
 	}
-	.h-kv dt {
+	.memo-trig {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 4px 6px;
+		font-size: var(--text-xs);
+	}
+	.dist {
+		font-weight: 700;
+	}
+	.memo {
+		font-size: var(--text-xs);
+		color: var(--color-subtle);
+		overflow-wrap: anywhere;
+	}
+	.empty-row {
+		text-align: center;
+		color: var(--color-subtle);
+		padding: 16px 0;
+	}
+	.kv {
+		display: grid;
+		grid-template-columns: 1fr auto;
+		gap: 4px 12px;
+		margin: 12px 0 0;
+		padding-top: 12px;
+		border-top: 1px solid var(--color-line);
+		font-size: var(--text-sm);
+	}
+	.kv dt {
 		color: var(--color-subtle);
 	}
-	.h-kv dd {
+	.kv dd {
 		margin: 0;
 		text-align: right;
 	}

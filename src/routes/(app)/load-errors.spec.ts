@@ -11,6 +11,11 @@ vi.mock('$lib/server/repo', () => ({
 	listInstrumentMeta: vi.fn(async () => ({ data: [], error: RAW })),
 	listPrincipleQueue: vi.fn(async () => ({ data: { items: [], total: 0 }, error: RAW })),
 	listPrincipleHistory: vi.fn(async () => ({ data: { items: [], total: 0 }, error: RAW })),
+	listPortfolioPositionDetails: vi.fn(async () => ({ data: [], error: RAW })),
+	listOpenProposalRefs: vi.fn(async () => ({
+		data: { positions: [], holdCount: 0 },
+		error: RAW
+	})),
 	loadDashboardValuation: vi.fn(async () => ({ data: null, error: RAW })),
 	getLatestIndicator: vi.fn(async () => ({ data: null, error: null })),
 	listBriefingsWithKospi: vi.fn(async () => ({ data: { items: [] }, error: null })),

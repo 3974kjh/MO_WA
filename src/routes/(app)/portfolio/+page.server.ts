@@ -4,11 +4,14 @@ import {
 	forUser,
 	listAttentionNeeded,
 	listInstrumentMeta,
+	listOpenProposalRefs,
+	listPortfolioPositionDetails,
 	listPositionCards,
 	listPrincipleHistory,
 	listPrincipleQueue,
 	listProposalHistory,
 	listQueueProposals,
+	loadDashboardValuation,
 	type InstrumentMeta
 } from '$lib/server/repo';
 import {
@@ -32,14 +35,17 @@ import {
 	type PositionLike
 } from '$lib/queue/view';
 import type { CorrectionTarget } from '$lib/queue/proposals';
+import { buildPortfolioRows } from '$lib/portfolio/view';
 
 /** FE-07 '지난 내역' 첫 쪽(최근 결정 20건). */
 const HISTORY_PAGE = { page: 1, pageSize: 20, offset: 0, limit: 20 } as const;
 
 /**
- * 포트폴리오 `/portfolio` — FE-07 변경 요청(#queue).
+ * 포트폴리오 `/portfolio` — FE-05 보유·매수 계획 표·지표·비중(읽기 전용) + FE-07 변경 요청(#queue).
  * 확인 대기(pending+on_hold) · 지난 내역(종결) · 확인 필요(BE-19 attention_started_at 14일) · 보유(기록 수정 대상).
  * 포지션 요청(P-)과 원칙 개정 요청(R-)을 같은 목록에 최신순으로 섞어 보인다(각 최근 20건).
+ * FE-05: 표 행(holding·planned·closed, 손익분기 가격·메모·감시 가격은 읽기 전용), 평가금액·환율(홈과 같은 valuation),
+ * 행 배지·보류 건수용 열린 요청 참조만 더 읽는다. 쓰기 액션은 그대로.
  * 오류 원문은 서버 로그에만(publicListError). 값이 없으면 빈 배열 — 화면은 빈 상태만 보인다.
  */
 export const load: PageServerLoad = async ({ locals, url }) => {
@@ -47,14 +53,17 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const repo = forUser(locals.supabase, user.id);
 	const queueParams = parsePageParams(url, { defaultSize: 20 });
 
-	const [queue, positions, attention, history, pQueue, pHistory] = await Promise.all([
-		listQueueProposals(repo, queueParams),
-		listPositionCards(repo),
-		listAttentionNeeded(repo),
-		listProposalHistory(repo, HISTORY_PAGE),
-		listPrincipleQueue(repo, HISTORY_PAGE),
-		listPrincipleHistory(repo, HISTORY_PAGE)
-	]);
+	const [queue, positions, attention, history, pQueue, pHistory, details, openRefs] =
+		await Promise.all([
+			listQueueProposals(repo, queueParams),
+			listPositionCards(repo),
+			listAttentionNeeded(repo),
+			listProposalHistory(repo, HISTORY_PAGE),
+			listPrincipleQueue(repo, HISTORY_PAGE),
+			listPrincipleHistory(repo, HISTORY_PAGE),
+			listPortfolioPositionDetails(repo),
+			listOpenProposalRefs(repo)
+		]);
 
 	const positionCards = positions.error ? [] : positions.data;
 	const queueCards = queue.error ? [] : queue.data.items;
@@ -71,9 +80,16 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		(c.position_id ? (positionById.get(c.position_id)?.instrument_id ?? null) : null);
 
 	const allCards = [...queueCards, ...attentionCards, ...historyCards];
-	const meta = await listInstrumentMeta(repo, [
-		...positionCards.map((p) => p.instrument_id),
-		...allCards.map(instrumentOf).filter((id): id is string => id != null)
+	const detailRows = details.error ? [] : details.data;
+	const [meta, valuation] = await Promise.all([
+		listInstrumentMeta(repo, [
+			...positionCards.map((p) => p.instrument_id),
+			...detailRows.map((d) => d.instrument_id),
+			...allCards.map(instrumentOf).filter((id): id is string => id != null)
+		]),
+		positions.error
+			? Promise.resolve({ data: null, error: positions.error })
+			: loadDashboardValuation(repo, positionCards)
 	]);
 	publicListError('portfolio.instruments', meta.error, INFO_LOAD_ERROR);
 	const instrumentById = new Map<string, InstrumentMeta>((meta.data ?? []).map((m) => [m.id, m]));
@@ -93,8 +109,26 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		};
 	});
 
+	const valueById = new Map((valuation.data?.positions ?? []).map((v) => [v.id, v.valueKrw]));
+	const portfolioRows = buildPortfolioRows({
+		details: detailRows,
+		prices: positionCards,
+		labels: instrumentById,
+		valueById,
+		open: openRefs.error ? [] : openRefs.data.positions
+	});
+	publicListError('portfolio.openRefs', openRefs.error, INFO_LOAD_ERROR);
+
 	return {
 		title: '포트폴리오',
+		portfolio: {
+			rows: portfolioRows,
+			totalKrw: valuation.data?.totalKrw ?? null,
+			usdkrw: valuation.data?.usdkrw ?? null,
+			holdCount: openRefs.error ? null : openRefs.data.holdCount
+		},
+		portfolioError: publicListError('portfolio.details', positions.error ?? details.error),
+		valuationError: publicListError('portfolio.valuation', valuation.error, INFO_LOAD_ERROR),
 		queue: {
 			items: [...queueCards.map(view), ...principleQueue.map(principleToQueueItem)].sort(
 				byCreatedDesc
