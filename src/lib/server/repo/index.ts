@@ -31,6 +31,7 @@ export {
 	INSTRUMENT_PATCHABLE
 } from './patch';
 export { archiveRow, restoreRow, type ArchivableTable } from './archive';
+export { pingDatabase, type DatabasePingResult } from './health';
 export * from './instruments.repo';
 export * from './journal.repo';
 export * from './positions.repo';
