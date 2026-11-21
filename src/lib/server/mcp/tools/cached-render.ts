@@ -6,6 +6,9 @@
  * - fallback (`too-large` | `render-error`) is never cached
  * - memory store is NOT used in production; DB columns are written only via
  *   `mowa_set_report_render_cache` (GUC `mowa.render_cache_write` + column GRANTs)
+ *
+ * Auth assumption: bots present a bot API key (Bearer) to MCP; only the MCP server
+ * process holds the service_role key used for the RPC. Bots never receive service_role.
  */
 import {
 	RENDERER_VERSION,

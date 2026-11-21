@@ -233,6 +233,8 @@ await db.query(`insert into auth.users(id, email) values ('${U}','me@x'),('${X}'
 const user = (sql) => run('authenticated', U, null, sql);
 const other = (sql) => run('authenticated', X, null, sql);
 let FM, EA, HS;
+// Simulates the MCP server DB session: process holds service_role; bot identity is only
+// x-mowa-bot-id. External bots never get the service_role key — they send Bearer bot keys to MCP.
 const asBot = (b) => (sql) => run('service_role', null, b, sql);
 let pass = 0,
 	fail = 0;
@@ -1958,6 +1960,8 @@ await err(
 );
 
 console.log('\n[BE-07 render cache column grants + GUC trigger]');
+// Probes below use asBot(FM)/asBot(EA) = MCP server path (service_role + bot header).
+// They do NOT mean bots hold a service_role JWT; bots authenticate with Bearer bot keys only.
 eq(
 	'authenticated lacks UPDATE(body_blocks) on reports',
 	(
@@ -2025,7 +2029,7 @@ await err(
 	/permission denied|body_blocks|R-PERM-01/
 );
 await err(
-	'bot PostgREST path cannot UPDATE reports.body_blocks directly (no GUC)',
+	'MCP-server session (service_role+bot header) cannot UPDATE body_blocks without GUC',
 	() => fm(`update reports set body_blocks='{"evil":true}'::jsonb where id='${rep}'`),
 	/permission denied|body_blocks|R-PERM-01/
 );
@@ -2045,7 +2049,7 @@ await err(
 		),
 	/R-PERM-03|missing bot identity/
 );
-await ok('owning bot render RPC writes body_blocks/toc (GUC path)', () =>
+await ok('owning-bot MCP path render RPC writes body_blocks/toc (GUC path)', () =>
 	fm(
 		`select public.mowa_set_report_render_cache('${rep}', '${U}', '{"key":"k","bodyBlocks":{"a":"<p>x</p>","b":"","hasSplit":false}}'::jsonb, '[]'::jsonb)`
 	)

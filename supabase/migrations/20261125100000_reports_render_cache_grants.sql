@@ -5,7 +5,18 @@
 -- Why not column REVOKE alone:
 --   Postgres table-level INSERT/UPDATE grants imply all columns; column REVOKE does not
 --   override that. We REVOKE table-level INSERT/UPDATE, then re-GRANT every column except
---   body_blocks/toc. Future columns added to reports need an explicit GRANT here.
+--   body_blocks/toc.
+--
+-- IMPORTANT — adding a column to public.reports later:
+--   Because table-level INSERT/UPDATE are revoked, a new column is NOT writable until you
+--   explicitly GRANT INSERT (col) / UPDATE (col) ON public.reports TO authenticated, service_role
+--   in a follow-up migration (or extend the grant lists below). Do not rely on DEFAULT PRIVILEGES
+--   alone for this table after this file. Never GRANT body_blocks/toc to those roles.
+--
+-- Trust boundary (product rules — keep out of locked rules.md; document here only):
+--   External bots hold a bot API key (Bearer mowa_…) only. The Supabase service_role key lives
+--   solely in the MCP server process. Bots never receive service_role; DB probes that SET ROLE
+--   service_role + x-mowa-bot-id simulate the MCP server path, not a bot-held service key.
 --
 -- No new columns. HMAC / wrangler secrets are not used.
 -- Do NOT apply this file to remote/Preview from the agent — PM only.
@@ -28,7 +39,7 @@ revoke insert, update on table public.reports from public, anon, authenticated, 
 -- 2) Re-GRANT every writable column except body_blocks / toc / generated search_tsv.
 --    authenticated + service_role had table INSERT/UPDATE via ALTER DEFAULT PRIVILEGES.
 --    anon never had writes — do not grant.
---    NOTE: when adding a new reports column, GRANT INSERT/UPDATE on it here for these roles.
+--    Any future reports column MUST be added to both GRANT lists below (or a new migration).
 grant insert (
   id, owner_id, kind, subtype, domain, slug, title, headline,
   report_date, period_start, period_end, summary, body_md,
