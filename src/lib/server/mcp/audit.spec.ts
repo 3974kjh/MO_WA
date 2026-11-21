@@ -54,17 +54,46 @@ describe('M-1 secret masking', () => {
 		expect(looksLikeSecretValue('Bearer market briefing')).toBe(false);
 	});
 
+	// Replaces 231c98a it.each value-shape cases under the official M-1 rules
+	// (free-text mask; Bearer only with MCP key / JWT — not bare "Bearer abc…").
+	it.each([
+		['JWT eyJ…', SAMPLE_JWT],
+		['Bearer + JWT', `Bearer ${SAMPLE_JWT}`],
+		['MCP key prefix', SAMPLE_MCP_KEY]
+	] as const)('redacts secret value shape: %s', (_label, value) => {
+		expect(looksLikeSecretValue(value)).toBe(true);
+		const preview = buildArgsPreview({ note: value });
+		const json = JSON.stringify(preview);
+		expect(json).not.toContain(SAMPLE_MCP_KEY);
+		expect(json).not.toContain(SAMPLE_JWT);
+		expect(typeof preview.note).toBe('string');
+		expect(String(preview.note)).toContain('[REDACTED]');
+	});
+
+	it('does not over-mask Bearer market… titles', () => {
+		const preview = buildArgsPreview({ title: 'Bearer market briefing' });
+		expect(preview.title).toBe('Bearer market briefing');
+	});
+
 	it('preview redacts embedded secrets and body length', () => {
 		const body = 'A'.repeat(100);
 		const preview = buildArgsPreview({
 			title: `my key is ${SAMPLE_MCP_KEY}`,
 			body_md: body,
+			summary: 'line1\nline2',
 			note: 'Bearer market ok'
 		});
 		expect(JSON.stringify(preview)).not.toContain(SAMPLE_MCP_KEY);
 		expect(preview.title).toBe('my key is [REDACTED]');
 		expect(preview.note).toBe('Bearer market ok');
 		expect(preview.body_md).toEqual({ length: 100 });
+		expect(preview.summary).toEqual({ length: 'line1\nline2'.length });
+		assertPreviewHasNoRawBody(preview, {
+			title: `my key is ${SAMPLE_MCP_KEY}`,
+			body_md: body,
+			summary: 'line1\nline2',
+			note: 'Bearer market ok'
+		});
 	});
 });
 
@@ -85,14 +114,34 @@ describe('digestArgs keeps body text (secret-masked only)', () => {
 });
 
 describe('M-2 errorCodeToAuditResult', () => {
-	it('maps codes', () => {
+	it('maps FORBIDDEN_SCOPE → denied', () => {
 		expect(errorCodeToAuditResult('FORBIDDEN_SCOPE')).toBe('denied');
+	});
+	it('maps RATE_LIMITED → rate_limited', () => {
 		expect(errorCodeToAuditResult('RATE_LIMITED')).toBe('rate_limited');
+	});
+	it('maps everything else → error', () => {
 		expect(errorCodeToAuditResult('VALIDATION')).toBe('error');
+		expect(errorCodeToAuditResult('INTERNAL')).toBe('error');
+		expect(errorCodeToAuditResult('CONFLICT')).toBe('error');
 	});
 });
 
-describe('M-3 / Low identity strip', () => {
+describe('M-3 / Low identity strip (R-PERM-03)', () => {
+	it('records R-PERM-03 only when sent identity differs from ctx', () => {
+		const ctx = createStubMcpContext();
+		const mismatch = sanitizeIdentityFields({ owner_id: 'attacker', title: 'x' }, ctx);
+		expect(mismatch.identityMismatch).toBe(true);
+		expect(mismatch.ruleIds).toEqual(['R-PERM-03']);
+		expect(mismatch.args.owner_id).toBeUndefined();
+		expect(mismatch.args.title).toBe('x');
+
+		const same = sanitizeIdentityFields({ owner_id: ctx.ownerId, title: 'y' }, ctx);
+		expect(same.identityMismatch).toBe(false);
+		expect(same.ruleIds).toEqual([]);
+		expect(same.args.owner_id).toBeUndefined();
+	});
+
 	it('normalizes owner-id / botClientId / created_by; UUID case-insensitive', () => {
 		const ctx = createStubMcpContext();
 		const same = sanitizeIdentityFields(
@@ -100,6 +149,7 @@ describe('M-3 / Low identity strip', () => {
 			ctx
 		);
 		expect(same.identityMismatch).toBe(false);
+		expect(same.ruleIds).toEqual([]);
 		expect(same.args['owner-id']).toBeUndefined();
 
 		const mismatch = sanitizeIdentityFields(
@@ -107,27 +157,39 @@ describe('M-3 / Low identity strip', () => {
 			ctx
 		);
 		expect(mismatch.identityMismatch).toBe(true);
+		expect(mismatch.ruleIds).toEqual(['R-PERM-03']);
 		expect(mismatch.args.botClientId).toBeUndefined();
 		expect(mismatch.args.created_by).toBeUndefined();
 	});
 
-	it('strips nested identity; skips __proto__', () => {
+	it('strips camelCase nested identity; skips __proto__', () => {
 		const ctx = createStubMcpContext();
-		const polluted = JSON.parse('{"items":[{"owner_id":"spoof","qty":1}]}');
-		Object.defineProperty(polluted, '__proto__', { value: { polluted: true }, enumerable: true });
+		const polluted = JSON.parse(
+			'{"ownerId":"spoof","items":[{"owner_id":"nested-spoof","qty":1}],"meta":{"user_id":"u1","proposedByType":"user"}}'
+		);
+		Object.defineProperty(polluted, '__proto__', {
+			value: { polluted: true },
+			enumerable: true
+		});
 		const result = sanitizeIdentityFields(polluted, ctx);
 		expect(result.identityMismatch).toBe(true);
+		expect(result.ruleIds).toEqual(['R-PERM-03']);
+		expect(result.args.ownerId).toBeUndefined();
 		expect((result.args.items as Array<Record<string, unknown>>)[0]).toEqual({ qty: 1 });
+		expect(result.args.meta).toEqual({});
 		expect(Object.prototype.hasOwnProperty.call(result.args, '__proto__')).toBe(false);
 	});
 
-	it('botProposalIdentity matches PR #7', () => {
+	it('botProposalIdentity matches PR #7 (no proposed_by_bot_id / proposer_type)', () => {
 		const ctx = createStubMcpContext();
-		expect(botProposalIdentity(ctx)).toEqual({
+		const stamp = botProposalIdentity(ctx);
+		expect(stamp).toEqual({
 			proposed_by: ctx.botClientId,
 			proposed_by_type: 'bot',
 			proposed_by_user: null
 		});
+		expect('proposed_by_bot_id' in stamp).toBe(false);
+		expect('proposer_type' in stamp).toBe(false);
 	});
 });
 
@@ -143,7 +205,9 @@ describe('M-6 import:all', () => {
 			'FORBIDDEN_SCOPE'
 		);
 		expect(hasScope(importer, 'principles:propose')).toBe(false);
+		// Official M-6: no inventing import_legacy_* — unregistered → FORBIDDEN
 		expect(assertToolScope(importer, 'import_legacy_positions')?.isError).toBe(true);
+		expect(assertToolScope(importer, 'import_legacy_journal')?.isError).toBe(true);
 	});
 });
 
@@ -186,25 +250,28 @@ describe('no ctx → onError Workers log', () => {
 	});
 });
 
-describe('response + outcomes', () => {
-	it('success warnings / FORBIDDEN_SCOPE / four results', async () => {
+describe('response + outcomes (L-1/L-2/L-3/L-5/M-5)', () => {
+	it('success may include warnings[]; error includes code + errors[]', () => {
 		expect(
 			mcpSuccess({
 				id: 'x',
 				warnings: [{ rule: 'R-VAL-M01', message: 'm' }]
 			}).structuredContent.warnings?.[0]?.rule
 		).toBe('R-VAL-M01');
-		expect(validationError([{ rule: 'R-VAL-T05', message: 'm' }]).structuredContent.code).toBe(
-			'VALIDATION'
-		);
+		const err = validationError([{ rule: 'R-VAL-T05', message: 'm' }]);
+		expect(err.isError).toBe(true);
+		expect(err.structuredContent.code).toBe('VALIDATION');
+		expect(err.structuredContent.errors[0]?.rule).toBe('R-VAL-T05');
+	});
 
+	it('records all four results; warnings from data go to audit; row shape matches PR #7', async () => {
 		const sink = createMemoryAuditSink();
 		const waitUntil = createImmediateWaitUntil();
 		const recorder = createAuditRecorder({ sink, waitUntil });
 		const ctx = createStubMcpContext({ scopes: ['read', 'journal:write'] });
 		const longBody = 'BODY_' + 'Z'.repeat(80);
 
-		await runAuditedToolCall({
+		const okRes = await runAuditedToolCall({
 			ctx,
 			args: { title: 'entry', body_md: longBody },
 			meta: { tool: 'add_journal_entry', userAgent: 'vitest' },
@@ -217,6 +284,10 @@ describe('response + outcomes', () => {
 				affectedIds: [{ table: 'journal_entries', id: 'j1' }]
 			})
 		});
+		expect(okRes.isError).toBeFalsy();
+		if (!okRes.isError) {
+			expect(okRes.structuredContent.warnings?.[0]?.rule).toBe('R-VAL-J06');
+		}
 
 		await runAuditedToolCall({
 			ctx: createStubMcpContext({ scopes: ['read'] }),
@@ -243,16 +314,20 @@ describe('response + outcomes', () => {
 			['denied', 'error', 'ok', 'rate_limited'].sort()
 		);
 		const ok = sink.rows.find((r) => r.result === 'ok');
-		expect(ok?.warnings[0]?.rule).toBe('R-VAL-J06');
+		expect(ok?.owner_id).toBe(ctx.ownerId);
+		expect(ok?.user_id).toBeNull();
 		expect(ok?.user_agent).toBe('vitest');
+		expect(ok?.warnings[0]?.rule).toBe('R-VAL-J06');
+		expect(ok?.rule_ids).toContain('R-VAL-J06');
 		expect(ok?.affected_ids).toEqual([{ table: 'journal_entries', id: 'j1' }]);
 		expect(JSON.stringify(ok?.args_preview)).not.toContain(longBody);
 
 		const denied = sink.rows.find((r) => r.result === 'denied');
+		expect(denied?.error_code).toBe('FORBIDDEN_SCOPE');
 		expect(denied?.rule_ids).toEqual(expect.arrayContaining(['R-PERM-04', 'R-PERM-03']));
 	});
 
-	it('M-5 unexpected → internalError', async () => {
+	it('M-5 unexpected → internalError (message_len log, no secret leak)', async () => {
 		const sink = createMemoryAuditSink();
 		const waitUntil = createImmediateWaitUntil();
 		const recorder = createAuditRecorder({ sink, waitUntil });
@@ -269,14 +344,52 @@ describe('response + outcomes', () => {
 		});
 		await recorder.drain();
 		expect(res.isError).toBe(true);
-		if (res.isError) expect(res.structuredContent.code).toBe('INTERNAL');
+		if (res.isError) {
+			expect(res.structuredContent.code).toBe('INTERNAL');
+			expect(JSON.stringify(res.structuredContent)).not.toContain('secret=abc');
+		}
+		expect(String(logError.mock.calls[0]?.[0])).toMatch(/^Error \(message_len=\d+\)$/);
 		expect(String(logError.mock.calls[0]?.[0])).not.toContain('secret=abc');
+		expect(sink.rows[0]?.result).toBe('error');
+		expect(sink.rows[0]?.error_code).toBe('INTERNAL');
 	});
 
-	it('L-2 previewOrRedacted', () => {
+	it('L-2 preview validation failure yields {_redacted:true} (row still insertable)', async () => {
 		const body = 'LEAKED_BODY_CONTENT_' + 'Q'.repeat(40);
 		expect(() => assertPreviewHasNoRawBody({ body_md: body }, { body_md: body })).toThrow();
 		expect(previewOrRedacted({ body_md: body }, { body_md: body })).toEqual({ _redacted: true });
+
+		const sink = createMemoryAuditSink();
+		const waitUntil = createImmediateWaitUntil();
+		const recorder = createAuditRecorder({ sink, waitUntil });
+		recorder.record({
+			ctx: createStubMcpContext(),
+			tool: 'whoami',
+			args: { body_md: body },
+			result: 'ok'
+		});
+		await recorder.drain();
+		expect(sink.rows).toHaveLength(1);
+		expect(JSON.stringify(sink.rows[0]?.args_preview)).not.toContain(body);
+	});
+
+	it('same owner_id as ctx does not log R-PERM-03', async () => {
+		const sink = createMemoryAuditSink();
+		const waitUntil = createImmediateWaitUntil();
+		const recorder = createAuditRecorder({ sink, waitUntil });
+		const ctx = createStubMcpContext({ scopes: ['read'] });
+		await runAuditedToolCall({
+			ctx,
+			args: { owner_id: ctx.ownerId },
+			meta: { tool: 'whoami' },
+			recorder,
+			handler: async ({ args }) => {
+				expect(args.owner_id).toBeUndefined();
+				return { data: { ok: true } };
+			}
+		});
+		await recorder.drain();
+		expect(sink.rows[0]?.rule_ids).not.toContain('R-PERM-03');
 	});
 
 	it('denied/ok share digest for same stripped+masked args', async () => {
@@ -306,19 +419,24 @@ describe('response + outcomes', () => {
 	});
 });
 
-describe('display id', () => {
-	it('P-/R- rules', () => {
+describe('display id nit (also covered in display-id.spec.ts)', () => {
+	it('formats owner-scoped P- / R- ids', () => {
 		expect(mowaDisplayId('P', 412)).toBe('P-0412');
+		expect(mowaDisplayId('R', 1)).toBe('R-0001');
+		expect(mowaDisplayId('P', 10_000)).toBe('P-10000');
+		expect(toSnakeLower('botClientId')).toBe('bot_client_id');
+	});
+
+	it('rejects P-0000 and leading-zero 5-digit forms; allows P-0412 and P-10000', () => {
 		expect(isOwnerScopedDisplayId('P-0412')).toBe(true);
 		expect(isOwnerScopedDisplayId('P-10000')).toBe(true);
 		expect(isOwnerScopedDisplayId('P-0000')).toBe(false);
 		expect(isOwnerScopedDisplayId('P-01234')).toBe(false);
-		expect(toSnakeLower('botClientId')).toBe('bot_client_id');
 	});
 });
 
 describe('mcpError', () => {
-	it('CONFLICT', () => {
+	it('builds CONFLICT envelope', () => {
 		expect(mcpError('CONFLICT', [{ rule: 'R-VAL-R11', message: 'x' }]).structuredContent.code).toBe(
 			'CONFLICT'
 		);
