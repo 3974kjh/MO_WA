@@ -3,8 +3,7 @@ import type { McpContext, McpToolErrorResult } from './types';
 
 /**
  * Tool → required scope mapping (design §5-2).
- * Incomplete until BE-06+ registers tools; unknown tools require `read` as a safe default
- * only when explicitly listed. Unmapped tools are treated as out of catalog → denied.
+ * Unmapped tools are treated as out of catalog → denied.
  */
 export const TOOL_REQUIRED_SCOPE: Readonly<Record<string, string>> = {
 	whoami: 'read',
@@ -29,15 +28,28 @@ export const TOOL_REQUIRED_SCOPE: Readonly<Record<string, string>> = {
 	cancel_principle_proposal: 'principles:propose',
 	add_journal_entry: 'journal:write',
 	update_journal_entry: 'journal:write',
-	archive_journal_entry: 'journal:write'
+	archive_journal_entry: 'journal:write',
+	/** Importer-only migration tools (pre-M5). Require `import:all` explicitly — not a wildcard. */
+	import_legacy_positions: 'import:all',
+	import_legacy_journal: 'import:all'
 };
+
+/**
+ * Tools that accept `import:all` as their required scope (M-6).
+ * `import:all` must NOT satisfy other scopes (e.g. principles:propose).
+ */
+export const IMPORT_ALL_TOOLS = new Set(
+	Object.entries(TOOL_REQUIRED_SCOPE)
+		.filter(([, scope]) => scope === 'import:all')
+		.map(([tool]) => tool)
+);
 
 export function requiredScopeForTool(tool: string): string | null {
 	return TOOL_REQUIRED_SCOPE[tool] ?? null;
 }
 
 export function hasScope(ctx: Pick<McpContext, 'scopes'>, scope: string): boolean {
-	return ctx.scopes.includes(scope) || ctx.scopes.includes('import:all');
+	return ctx.scopes.includes(scope);
 }
 
 /**

@@ -2,6 +2,7 @@ import { sha256Hex } from './crypto';
 import type {
 	AuditSink,
 	McpActorType,
+	McpAffectedId,
 	McpAuditLogRow,
 	McpAuditResult,
 	McpContext,
@@ -9,22 +10,6 @@ import type {
 	McpRuleIssue,
 	WaitUntilFn
 } from './types';
-
-/** Fields that must never appear as raw values in args_preview (secrets / large bodies). */
-const REDACT_SECRET_KEYS = new Set([
-	'authorization',
-	'password',
-	'secret',
-	'token',
-	'api_key',
-	'apikey',
-	'key_hash',
-	'pepper',
-	'mcp_key_pepper',
-	'access_token',
-	'refresh_token',
-	'service_role_key'
-]);
 
 /** Long-text / body fields: preview stores length only (design §5-6). */
 const BODY_LENGTH_ONLY_KEYS = new Set([
@@ -41,7 +26,26 @@ const BODY_LENGTH_ONLY_KEYS = new Set([
 	'payload'
 ]);
 
+/**
+ * Normalized key substrings that mark secrets (M-1).
+ * Key is lowercased with `_` / `-` removed before matching.
+ */
+const SECRET_KEY_PATTERNS = [
+	'token',
+	'secret',
+	'passw',
+	'authorization',
+	'cookie',
+	'apikey',
+	'credential',
+	'session',
+	'bearer',
+	'pepper',
+	'keyhash'
+] as const;
+
 const PREVIEW_MAX_BYTES = 2048;
+const MCP_KEY_PREFIX = 'mowa_';
 
 export type BuildArgsPreviewOptions = {
 	/** Max UTF-8 byte size of serialized preview (default 2KB). */
@@ -56,9 +60,28 @@ function utf8Bytes(s: string): number {
 	return new TextEncoder().encode(s).length;
 }
 
+/** Lowercase + strip `_` / `-` for pattern matching (M-1). */
+export function normalizeKey(key: string): string {
+	return key.toLowerCase().replace(/[_-]/g, '');
+}
+
+export function isSecretKeyName(key: string): boolean {
+	const norm = normalizeKey(key);
+	return SECRET_KEY_PATTERNS.some((p) => norm.includes(p));
+}
+
+/** Value-shape secret detectors (M-1). */
+export function looksLikeSecretValue(value: unknown): boolean {
+	if (typeof value !== 'string' || value.length < 8) return false;
+	const trimmed = value.trim();
+	if (trimmed.startsWith('eyJ')) return true; // JWT
+	if (/^Bearer\s+\S+/i.test(trimmed)) return true;
+	if (trimmed.startsWith(MCP_KEY_PREFIX)) return true;
+	return false;
+}
+
 /**
  * Stable JSON for digests: sort object keys recursively.
- * Arrays keep order; values are not redacted here (digest covers full sanitized args).
  */
 export function stableStringify(value: unknown): string {
 	if (value === undefined) return 'null';
@@ -71,22 +94,25 @@ export function stableStringify(value: unknown): string {
 	return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(',')}}`;
 }
 
-function redactValue(key: string, value: unknown): unknown {
-	const lower = key.toLowerCase();
-	if (REDACT_SECRET_KEYS.has(lower) || lower.endsWith('_secret') || lower.endsWith('_pepper')) {
+/**
+ * Deep-redact for preview + digest (L-4: one pipeline after identity strip).
+ */
+export function redactArgs(value: unknown, key = 'root'): unknown {
+	if (isSecretKeyName(key) || looksLikeSecretValue(value)) {
 		return { redacted: true };
 	}
+	const lower = key.toLowerCase();
 	if (BODY_LENGTH_ONLY_KEYS.has(lower) || lower.endsWith('_md') || lower.endsWith('_body')) {
 		if (typeof value === 'string') return { length: value.length };
 		if (value == null) return { length: 0 };
 		return { length: utf8Bytes(stableStringify(value)) };
 	}
 	if (Array.isArray(value)) {
-		return value.map((item, i) => redactValue(String(i), item));
+		return value.map((item, i) => redactArgs(item, String(i)));
 	}
 	if (isPlainObject(value)) {
 		const out: Record<string, unknown> = {};
-		for (const [k, v] of Object.entries(value)) out[k] = redactValue(k, v);
+		for (const [k, v] of Object.entries(value)) out[k] = redactArgs(v, k);
 		return out;
 	}
 	return value;
@@ -95,7 +121,7 @@ function redactValue(key: string, value: unknown): unknown {
 /**
  * Build args_preview for mcp_audit_log.
  * - Never includes raw request body / long markdown — length only.
- * - Never includes secret values.
+ * - Never includes secret values (key patterns + value shapes).
  * - Truncated to 2KB.
  */
 export function buildArgsPreview(
@@ -104,12 +130,11 @@ export function buildArgsPreview(
 ): Record<string, unknown> {
 	const maxBytes = options.maxBytes ?? PREVIEW_MAX_BYTES;
 	const root = args == null ? {} : isPlainObject(args) ? args : { value: args };
-	const redacted = redactValue('root', root) as Record<string, unknown>;
+	const redacted = redactArgs(root) as Record<string, unknown>;
 
 	let json = JSON.stringify(redacted);
-	if (utf8Bytes(json) <= maxBytes) return redacted as Record<string, unknown>;
+	if (utf8Bytes(json) <= maxBytes) return redacted;
 
-	// Truncate: keep key set with a marker rather than raw body slice.
 	const truncated: Record<string, unknown> = {
 		_truncated: true,
 		_bytes: utf8Bytes(json),
@@ -122,42 +147,45 @@ export function buildArgsPreview(
 	return truncated;
 }
 
+/**
+ * Digest = sha256(sorted JSON after redact) (L-4).
+ * Callers must pass identity-stripped args so denied/ok share the same pipeline.
+ */
 export async function digestArgs(args: unknown): Promise<string> {
-	return sha256Hex(stableStringify(args ?? {}));
+	const redacted = redactArgs(args == null ? {} : args);
+	return sha256Hex(stableStringify(redacted));
 }
 
 export type RecordAuditInput = {
 	actorType?: McpActorType;
-	ctx?: Pick<McpContext, 'botClientId' | 'ownerId'> | null;
+	/** Required for tool-call audits — owner_id NOT NULL in mcp_audit_log. */
+	ctx: Pick<McpContext, 'botClientId' | 'ownerId'>;
+	userId?: string | null;
 	tool: string;
 	requestId?: string | null;
+	/** Prefer identity-stripped args (same input for digest + preview). */
 	args?: unknown;
 	result: McpAuditResult;
 	errorCode?: McpErrorCode | null;
 	ruleIds?: string[];
 	warnings?: McpRuleIssue[];
-	affectedIds?: string[];
+	affectedIds?: McpAffectedId[];
 	durationMs?: number | null;
 	ip?: string | null;
+	userAgent?: string | null;
 };
 
 export type AuditRecorder = {
 	record(input: RecordAuditInput): void;
-	/** Flush pending waitUntil tasks (tests). */
 	drain(): Promise<void>;
 };
 
 export type CreateAuditRecorderOptions = {
 	sink: AuditSink;
 	waitUntil: WaitUntilFn;
-	/** Optional logger for sink failures (never log secrets / raw bodies). */
 	onError?: (err: unknown) => void;
 };
 
-/**
- * Create an audit recorder that writes via waitUntil (design §5-6).
- * Auth failures without bot identity should not call this — Workers logs only.
- */
 export function createAuditRecorder(options: CreateAuditRecorderOptions): AuditRecorder {
 	const pending = new Set<Promise<unknown>>();
 
@@ -187,24 +215,28 @@ async function writeAuditRow(sink: AuditSink, input: RecordAuditInput): Promise<
 		...warnings.map((w) => w.rule).filter(Boolean)
 	]);
 
+	const args = input.args ?? {};
+	const argsPreview = safeArgsPreview(args);
+
 	const row: McpAuditLogRow = {
-		actor_type: input.actorType ?? (input.ctx ? 'bot' : 'system'),
-		bot_client_id: input.ctx?.botClientId ?? null,
-		owner_id: input.ctx?.ownerId ?? null,
+		owner_id: input.ctx.ownerId,
+		actor_type: input.actorType ?? 'bot',
+		bot_client_id: input.ctx.botClientId,
+		user_id: input.userId ?? null,
 		tool: input.tool,
 		request_id: input.requestId ?? null,
-		args_digest: await digestArgs(input.args),
-		args_preview: buildArgsPreview(input.args),
+		args_digest: await digestArgs(args),
+		args_preview: argsPreview,
 		result: input.result,
 		error_code: input.errorCode ?? null,
 		rule_ids: ruleIds,
 		warnings,
 		affected_ids: input.affectedIds ?? [],
 		duration_ms: input.durationMs ?? null,
-		ip: input.ip ?? null
+		ip: input.ip ?? null,
+		user_agent: input.userAgent ?? null
 	};
 
-	assertPreviewHasNoRawBody(row.args_preview, input.args);
 	await sink.insert(row);
 }
 
@@ -213,39 +245,60 @@ function uniqueStrings(values: string[]): string[] {
 }
 
 /**
- * Guard: if the original args contained a long body string, preview must not embed it.
- * Used in tests and as a runtime sanity check (throws only when a raw body substring leaks).
+ * L-2: if preview validation fails, keep the audit row with a redacted marker
+ * instead of dropping the insert.
+ */
+export function previewOrRedacted(
+	preview: Record<string, unknown>,
+	originalArgs: unknown
+): Record<string, unknown> {
+	try {
+		assertPreviewHasNoRawBody(preview, originalArgs);
+		return preview;
+	} catch {
+		return { _redacted: true };
+	}
+}
+
+export function safeArgsPreview(args: unknown): Record<string, unknown> {
+	return previewOrRedacted(buildArgsPreview(args), args);
+}
+
+/**
+ * Guard: preview must not embed long bodies or secret values from original args.
  */
 export function assertPreviewHasNoRawBody(
 	preview: Record<string, unknown>,
 	originalArgs: unknown
 ): void {
-	if (!isPlainObject(originalArgs)) return;
 	const serialized = JSON.stringify(preview);
-	for (const [key, value] of Object.entries(originalArgs)) {
-		const lower = key.toLowerCase();
-		if (
-			typeof value === 'string' &&
-			value.length >= 24 &&
-			(BODY_LENGTH_ONLY_KEYS.has(lower) || lower.endsWith('_md') || lower.endsWith('_body'))
-		) {
-			if (serialized.includes(value)) {
+	const scan = (value: unknown, key: string) => {
+		if (typeof value === 'string') {
+			if (
+				value.length >= 24 &&
+				(BODY_LENGTH_ONLY_KEYS.has(key.toLowerCase()) ||
+					key.toLowerCase().endsWith('_md') ||
+					key.toLowerCase().endsWith('_body')) &&
+				serialized.includes(value)
+			) {
 				throw new Error('args_preview must not contain raw body content');
 			}
-		}
-		if (
-			typeof value === 'string' &&
-			value.length >= 8 &&
-			(REDACT_SECRET_KEYS.has(lower) || lower.endsWith('_secret') || lower.endsWith('_pepper'))
-		) {
-			if (serialized.includes(value)) {
+			if (
+				(isSecretKeyName(key) || looksLikeSecretValue(value)) &&
+				value.length >= 8 &&
+				serialized.includes(value)
+			) {
 				throw new Error('args_preview must not contain secret values');
 			}
+		} else if (Array.isArray(value)) {
+			value.forEach((item, i) => scan(item, String(i)));
+		} else if (isPlainObject(value)) {
+			for (const [k, v] of Object.entries(value)) scan(v, k);
 		}
-	}
+	};
+	scan(originalArgs, 'root');
 }
 
-/** In-memory sink for tests. */
 export function createMemoryAuditSink(): AuditSink & { rows: McpAuditLogRow[] } {
 	const rows: McpAuditLogRow[] = [];
 	return {
@@ -256,7 +309,6 @@ export function createMemoryAuditSink(): AuditSink & { rows: McpAuditLogRow[] } 
 	};
 }
 
-/** Sync waitUntil that still runs async work (awaits via drain). */
 export function createImmediateWaitUntil(): WaitUntilFn & { promises: Promise<unknown>[] } {
 	const promises: Promise<unknown>[] = [];
 	const fn = ((p: Promise<unknown>) => {
@@ -266,14 +318,15 @@ export function createImmediateWaitUntil(): WaitUntilFn & { promises: Promise<un
 	return fn;
 }
 
-/** Map platform.ctx.waitUntil when present; otherwise track for fire-and-forget. */
-export function platformWaitUntil(platform: { ctx?: { waitUntil?: WaitUntilFn } } | undefined): WaitUntilFn {
+export function platformWaitUntil(
+	platform: { ctx?: { waitUntil?: WaitUntilFn } } | undefined
+): WaitUntilFn {
 	if (platform?.ctx?.waitUntil) {
 		return (p) => platform.ctx!.waitUntil!(p);
 	}
 	return (p) => {
 		void p.catch(() => {
-			/* swallow — request already completed */
+			/* swallow */
 		});
 	};
 }

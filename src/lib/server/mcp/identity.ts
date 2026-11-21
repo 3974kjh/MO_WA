@@ -1,81 +1,137 @@
 import type { McpContext } from './types';
 
 /**
- * Client fields that must never be trusted (R-PERM-03).
- * Server overwrites with authenticated context values.
+ * Client identity / proposer fields that must never be trusted (R-PERM-03).
+ * Snake + camel; stripped recursively including nested objects and array items.
  */
 export const IMPERSONATION_KEYS = [
 	'owner_id',
+	'ownerId',
+	'user_id',
+	'userId',
 	'source_bot_id',
+	'sourceBotId',
 	'proposed_by',
+	'proposedBy',
 	'proposed_by_type',
+	'proposedByType',
 	'proposed_by_user',
+	'proposedByUser',
 	'proposed_by_user_id',
+	'proposedByUserId',
 	'proposed_by_bot_id',
-	'proposer_type'
+	'proposedByBotId',
+	'proposer_type',
+	'proposerType'
 ] as const;
 
 export type ImpersonationKey = (typeof IMPERSONATION_KEYS)[number];
 
+const IDENTITY_KEY_SET = new Set<string>(IMPERSONATION_KEYS);
+
 export type SanitizeIdentityResult = {
-	/** Args with impersonation fields overwritten by server values. */
+	/** Args with all identity fields stripped (handlers use ctx only). */
 	args: Record<string, unknown>;
-	/** True when the client attempted to set any impersonation field. */
-	impersonationAttempted: boolean;
-	/** Rule ids to attach to the audit row when an attempt was rewritten. */
+	/**
+	 * True when a sent identity value differed from ctx (design §5-6).
+	 * Same-as-ctx values are stripped without logging R-PERM-03.
+	 */
+	identityMismatch: boolean;
+	/** Rule ids when identityMismatch — `{R-PERM-03}`. */
 	ruleIds: string[];
 };
 
-function hasOwn(obj: Record<string, unknown>, key: string): boolean {
-	return Object.prototype.hasOwnProperty.call(obj, key);
+/**
+ * PR #7 / position_proposals_prepare stamp for bot inserts.
+ * Handlers must pick fields explicitly — do not spread client args into inserts.
+ */
+export function botProposalIdentity(ctx: Pick<McpContext, 'botClientId'>): {
+	proposed_by: string;
+	proposed_by_type: 'bot';
+	proposed_by_user: null;
+} {
+	return {
+		proposed_by: ctx.botClientId,
+		proposed_by_type: 'bot',
+		proposed_by_user: null
+	};
+}
+
+function expectedForKey(
+	key: string,
+	ctx: Pick<McpContext, 'ownerId' | 'botClientId'>
+): unknown {
+	switch (key) {
+		case 'owner_id':
+		case 'ownerId':
+			return ctx.ownerId;
+		case 'source_bot_id':
+		case 'sourceBotId':
+		case 'proposed_by':
+		case 'proposedBy':
+		case 'proposed_by_bot_id':
+		case 'proposedByBotId':
+			return ctx.botClientId;
+		case 'proposed_by_type':
+		case 'proposedByType':
+		case 'proposer_type':
+		case 'proposerType':
+			return 'bot';
+		case 'proposed_by_user':
+		case 'proposedByUser':
+		case 'proposed_by_user_id':
+		case 'proposedByUserId':
+		case 'user_id':
+		case 'userId':
+			return null;
+		default:
+			return undefined;
+	}
+}
+
+function valuesDiffer(sent: unknown, expected: unknown): boolean {
+	if (expected === null) {
+		return sent !== null && sent !== undefined;
+	}
+	return sent !== expected;
 }
 
 /**
- * Overwrite identity / proposer fields with server context (R-PERM-03).
- * Client-supplied values are discarded; attempt is recorded via ruleIds.
+ * Strip identity fields recursively. Record R-PERM-03 only when a sent value
+ * differs from authenticated ctx (same owner_id as ctx → strip only).
  */
 export function sanitizeIdentityFields(
 	args: Record<string, unknown>,
 	ctx: Pick<McpContext, 'ownerId' | 'botClientId'>
 ): SanitizeIdentityResult {
-	const out: Record<string, unknown> = { ...args };
-	let impersonationAttempted = false;
+	let identityMismatch = false;
 
-	for (const key of IMPERSONATION_KEYS) {
-		if (hasOwn(args, key)) {
-			impersonationAttempted = true;
+	const walk = (value: unknown): unknown => {
+		if (Array.isArray(value)) {
+			return value.map((item) => walk(item));
 		}
-	}
-
-	// Always stamp server identity on write-shaped payloads when any stamp key was present
-	// or when callers pass through a full args object that may carry them later.
-	if (impersonationAttempted || hasOwn(args, 'owner_id') || hasOwn(args, 'source_bot_id')) {
-		out.owner_id = ctx.ownerId;
-		out.source_bot_id = ctx.botClientId;
-	}
-
-	if (impersonationAttempted) {
-		// Proposer claims from bot keys are ignored; server stamps bot identity (R-VAL-P11 / R-PERM-03).
-		if (
-			hasOwn(args, 'proposed_by') ||
-			hasOwn(args, 'proposed_by_type') ||
-			hasOwn(args, 'proposed_by_user') ||
-			hasOwn(args, 'proposed_by_user_id') ||
-			hasOwn(args, 'proposed_by_bot_id') ||
-			hasOwn(args, 'proposer_type')
-		) {
-			out.proposed_by_type = 'bot';
-			out.proposer_type = 'bot';
-			out.proposed_by_bot_id = ctx.botClientId;
-			delete out.proposed_by;
-			delete out.proposed_by_user;
-			delete out.proposed_by_user_id;
+		if (typeof value !== 'object' || value === null) {
+			return value;
 		}
-	}
+		const obj = value as Record<string, unknown>;
+		const out: Record<string, unknown> = {};
+		for (const [key, child] of Object.entries(obj)) {
+			if (IDENTITY_KEY_SET.has(key)) {
+				const expected = expectedForKey(key, ctx);
+				if (valuesDiffer(child, expected)) {
+					identityMismatch = true;
+				}
+				continue; // strip — handlers read identity from ctx
+			}
+			out[key] = walk(child);
+		}
+		return out;
+	};
 
+	const stripped = walk(args) as Record<string, unknown>;
 	return {
-		args: out,
-		impersonationAttempted,
-		ruleIds: impersonationAttempted ? ['R-PERM-03'] : []
+		args: stripped,
+		identityMismatch,
+		ruleIds: identityMismatch ? ['R-PERM-03'] : []
 	};
 }

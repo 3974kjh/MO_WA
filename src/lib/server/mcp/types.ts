@@ -1,9 +1,10 @@
 /**
  * Shared MCP types for BE-05 (audit + response contract).
- * Auth DB mode (BE-04) is out of scope — consumers inject or stub McpContext.
+ * Auth DB mode (BE-04) is out of scope — consumers inject McpContext.
+ * Row shape aligned with BE-01 `mcp_audit_log` (PR #7 contract; migrations not applied here).
  */
 
-/** Authenticated bot context. BE-04 fills this from mcp_authenticate; tests stub it. */
+/** Authenticated bot context. BE-04 fills this from mcp_authenticate. */
 export type McpContext = {
 	botClientId: string;
 	ownerId: string;
@@ -57,11 +58,18 @@ export type McpToolErrorResult = {
 
 export type McpToolResult = McpToolSuccessResult | McpToolErrorResult;
 
-/** Row written to mcp_audit_log (R-SYS-05). No SQL migration here — BE-01 owns schema. */
+/** `mcp_audit_log.affected_ids` jsonb element (PR #7). */
+export type McpAffectedId = { table: string; id: string };
+
+/**
+ * Row written to mcp_audit_log (R-SYS-05).
+ * Matches BE-01 schema: owner_id NOT NULL, affected_ids [{table,id}], user_id, user_agent.
+ */
 export type McpAuditLogRow = {
+	owner_id: string;
 	actor_type: McpActorType;
 	bot_client_id: string | null;
-	owner_id: string | null;
+	user_id: string | null;
 	tool: string;
 	request_id: string | null;
 	args_digest: string;
@@ -70,9 +78,10 @@ export type McpAuditLogRow = {
 	error_code: McpErrorCode | null;
 	rule_ids: string[];
 	warnings: McpRuleIssue[];
-	affected_ids: string[];
+	affected_ids: McpAffectedId[];
 	duration_ms: number | null;
 	ip: string | null;
+	user_agent: string | null;
 };
 
 export type AuditSink = {
@@ -81,3 +90,8 @@ export type AuditSink = {
 
 /** Cloudflare `ctx.waitUntil` compatible; tests inject a sync collector. */
 export type WaitUntilFn = (promise: Promise<unknown>) => void;
+
+/** Auth context provider contract (BE-04 implements). */
+export type McpAuthProvider = {
+	resolve(request: Request): Promise<McpContext | null>;
+};

@@ -95,8 +95,13 @@
 ### Verification
 
 - 실행한 검증: `pnpm exec vitest run --project server src/lib/server/mcp`
-- 결과: 18 passed
+- 결과: 28 passed (review follow-up: M-1~M-6, L-1~L-5, display-id nit)
 - 남은 리스크: 실제 `mcp_audit_log` insert는 BE-01 마이그레이션·admin sink 배선 후
+
+### Review follow-up (same PR)
+
+- M-1 pattern+value redaction; M-2 `errorCodeToAuditResult`; M-3 recursive strip + R-PERM-03 only on mismatch + PR#7 `proposed_by` stamp; M-4 stub moved to `testing.ts` (not barrel); M-5 `internalError` for unexpected throws; M-6 `import:all` not wildcard
+- L-1 `data.warnings` → audit; L-2 `{_redacted:true}` on preview fail; L-3 row shape (`owner_id` NOT NULL, `affected_ids[{table,id}]`, `user_id`/`user_agent`); L-4 digest after strip+redact; L-5 R-PERM-03 on denied; nit reject `P-0000`/`P-01234`
 
 ## 2026-05-29 — Scenario Lab Dashboard Projection
 

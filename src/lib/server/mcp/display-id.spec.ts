@@ -19,10 +19,12 @@ describe('mowa_display_id', () => {
 		expect(() => mowaDisplayId('P', 1.5)).toThrow(/positive/);
 	});
 
-	it('isOwnerScopedDisplayId accepts only P-/R-', () => {
+	it('isOwnerScopedDisplayId: allow P-0412 / P-10000; reject P-0000 / P-01234', () => {
 		expect(isOwnerScopedDisplayId('P-0412')).toBe(true);
 		expect(isOwnerScopedDisplayId('R-0001')).toBe(true);
 		expect(isOwnerScopedDisplayId('P-10000')).toBe(true);
+		expect(isOwnerScopedDisplayId('P-0000')).toBe(false);
+		expect(isOwnerScopedDisplayId('P-01234')).toBe(false);
 		expect(isOwnerScopedDisplayId('PP-0412')).toBe(false);
 		expect(isOwnerScopedDisplayId('X-0412')).toBe(false);
 	});

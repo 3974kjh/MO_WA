@@ -17,7 +17,21 @@ export function mowaDisplayId(prefix: DisplayIdPrefix, n: number): string {
 	return `${prefix}-${body}`;
 }
 
-/** True only for owner-scoped P-/R- display ids produced by mowaDisplayId. */
+/**
+ * True only for owner-scoped P-/R- display ids produced by mowaDisplayId.
+ * Rejects `P-0000` and 5+ digit forms with a leading zero (`P-01234`).
+ * Allows `P-0412` (4-digit pad) and `P-10000`.
+ */
 export function isOwnerScopedDisplayId(value: string): boolean {
-	return /^(P|R)-(\d{4}|\d{5,})$/.test(value) && !value.startsWith('PP-');
+	if (value.startsWith('PP-')) return false;
+	const m = /^(P|R)-(\d+)$/.exec(value);
+	if (!m) return false;
+	const digits = m[2];
+	if (digits.length === 4) {
+		return digits !== '0000';
+	}
+	if (digits.length >= 5) {
+		return digits[0] !== '0';
+	}
+	return false;
 }

@@ -1,15 +1,10 @@
-import type { McpContext } from './types';
-
 /**
- * Auth context provider for MCP (BE-04 will implement DB mode).
- * BE-05 only defines the contract + a test stub so later tickets can hook in.
+ * Test-only MCP helpers (M-4).
+ * NOT exported from the package barrel — import from this path in specs only.
  */
-export type McpAuthProvider = {
-	/** Resolve authenticated context for a request. Throws or returns null on failure. */
-	resolve(request: Request): Promise<McpContext | null>;
-};
+import type { McpAuthProvider, McpContext } from './types';
 
-/** Deterministic stub for unit tests and local hooks until BE-04 lands. */
+/** Deterministic stub context for unit tests. */
 export function createStubMcpContext(overrides: Partial<McpContext> = {}): McpContext {
 	return {
 		botClientId: overrides.botClientId ?? '00000000-0000-4000-8000-000000000001',

@@ -7,20 +7,22 @@ export {
 	createImmediateWaitUntil,
 	createMemoryAuditSink,
 	digestArgs,
+	isSecretKeyName,
+	looksLikeSecretValue,
+	normalizeKey,
 	platformWaitUntil,
+	redactArgs,
+	previewOrRedacted,
+	safeArgsPreview,
 	stableStringify,
 	type AuditRecorder,
 	type CreateAuditRecorderOptions,
 	type RecordAuditInput
 } from './audit';
-export {
-	createStubAuthProvider,
-	createStubMcpContext,
-	type McpAuthProvider
-} from './context';
 export { isOwnerScopedDisplayId, mowaDisplayId, type DisplayIdPrefix } from './display-id';
 export {
 	conflictError,
+	errorCodeToAuditResult,
 	forbiddenScopeError,
 	fromMcpToolError,
 	internalError,
@@ -28,9 +30,11 @@ export {
 	mcpSuccess,
 	McpToolError,
 	notFoundError,
+	redactedErrorMessage,
 	validationError
 } from './errors';
 export {
+	botProposalIdentity,
 	IMPERSONATION_KEYS,
 	sanitizeIdentityFields,
 	type ImpersonationKey,
@@ -39,6 +43,7 @@ export {
 export {
 	assertToolScope,
 	hasScope,
+	IMPORT_ALL_TOOLS,
 	requiredScopeForTool,
 	TOOL_REQUIRED_SCOPE
 } from './scopes';
@@ -52,8 +57,10 @@ export {
 export type {
 	AuditSink,
 	McpActorType,
+	McpAffectedId,
 	McpAuditLogRow,
 	McpAuditResult,
+	McpAuthProvider,
 	McpContext,
 	McpErrorCode,
 	McpErrorContent,
