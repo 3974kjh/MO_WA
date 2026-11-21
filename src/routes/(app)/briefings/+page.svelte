@@ -33,7 +33,7 @@
 	// 입력 중인 글자(끝 공백 포함)는 지키고, 뒤로 가기 등으로 URL이 바뀌었을 때만 맞춘다.
 	let qInput = $state('');
 	let box = $state<ReturnType<typeof SearchBox>>();
-	// FE-10 Low-1: 입력 대기 중이거나 우리가 보낸 q로의 이동이 아직 안 끝났으면 입력창을 덮지 않는다.
+	// FE-10 Low-1: 입력 대기 중이거나 우리가 보낸 q의 이동이 아직 안 끝났으면 입력창을 덮지 않는다.
 	const sync = createSearchSync();
 	$effect.pre(() => {
 		const q = data.query.q;
@@ -52,7 +52,7 @@
 
 	/**
 	 * 쿼리 이동. 대기 중인 디바운스는 먼저 취소하고, 입력창의 현재 글자를 같은 이동에 싣는다
-	 * (200ms 뒤 이전 q가 이 이동을 덮어쓰지 않도록). pageNo는 페이지 이동용.
+	 * (200ms 뒤 이전 q가 이 이동을 덮어쓰지 않도록).
 	 */
 	function navigate(next: Partial<BriefingQuery>, replaceState = false, pageNo?: number) {
 		box?.cancel();

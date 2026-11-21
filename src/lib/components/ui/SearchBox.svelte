@@ -6,6 +6,7 @@
 	import Search from '@lucide/svelte/icons/search';
 	import { untrack } from 'svelte';
 	import { debounce as debounceFn } from '$lib/routing/debounce';
+	import { shouldFlushOnKey } from '$lib/routing/searchKeys';
 
 	let {
 		value = $bindable(''),
@@ -48,7 +49,7 @@
 
 	function keydown(e: KeyboardEvent) {
 		// 한글 조합 중 Enter는 조합 확정용이라 건너뛴다.
-		if (e.key === 'Enter' && !e.isComposing) flush();
+		if (shouldFlushOnKey(e)) flush();
 	}
 
 	$effect(() => () => emit.cancel());

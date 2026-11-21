@@ -3,12 +3,11 @@
  *
  * `q`는 `.or()` 문자열에 들어가므로 PostgREST 예약 문자(`,` `(` `)` `"` `:` `\`)와
  * LIKE 와일드카드(`%` `_` `*`), 따옴표를 공백으로 바꾼 뒤 큰따옴표로 감싼다.
+ * FE-04: 브리핑 q는 `reports.search_tsv` 전문 검색 + title(pg_trgm)/headline 부분 일치(briefingTextFilter).
+ * 일지 q는 journal_entries에 tsvector 컬럼이 없어(마이그레이션 필요) title/memo_md ilike를 유지한다.
  *
  * `tag`는 허용 문자(문자·숫자·공백·`._-`)만 통과시키고, 배열 원소를 큰따옴표로 감싼
  * `{"tag"}` 리터럴로 보낸다(postgrest-js `contains(string[])`는 원소를 따옴표 없이 잇는다).
- *
- * FE-04: 브리핑 q는 `reports.search_tsv` 전문 검색 + title(pg_trgm)/headline 부분 일치(briefingTextFilter).
- * 일지 q: journal_entries.search_tsv(마이그레이션) + title/memo_md ilike.
  */
 import {
 	isValidTag,
@@ -23,7 +22,7 @@ export type JournalListFilter = Pick<JournalQuery, 'type' | 'ticker' | 'q'>;
 /** 검색어 → `"%term%"`(or() 값). 남는 글자가 없으면 null. */
 export function ilikeValue(q: string): string | null {
 	const t = q
-		.replace(/[%_*\\,()":']/g, ' ')
+		.replace(/[%_*\\,()":]/g, ' ')
 		.replace(/\s+/g, ' ')
 		.trim();
 	return t ? `"%${t}%"` : null;
@@ -47,17 +46,6 @@ export function briefingTextFilter(q: string): string | null {
 	if (!v) return null;
 	const term = v.slice(2, -2);
 	return [`search_tsv.wfts(simple)."${term}"`, `title.ilike.${v}`, `headline.ilike.${v}`].join(',');
-}
-
-/**
- * 일지 검색어: `journal_entries.search_tsv`(title·memo_md) + title/memo_md 부분 일치.
- * search_tsv 컬럼이 아직 없으면 PostgREST가 거부하므로 마이그레이션 적용 후 사용.
- */
-export function journalTextFilter(q: string): string | null {
-	const v = ilikeValue(q);
-	if (!v) return null;
-	const term = v.slice(2, -2);
-	return [`search_tsv.wfts(simple)."${term}"`, `title.ilike.${v}`, `memo_md.ilike.${v}`].join(',');
 }
 
 /** 필터 적용에 필요한 최소 빌더 모양(Supabase PostgrestFilterBuilder와 호환). */
@@ -102,8 +90,6 @@ export function applyJournalFilter<Q extends FilterableQuery<Q>>(
 	let out = q;
 	if (f.type) out = out.eq('kind', f.type);
 	if (f.ticker) out = out.contains('tickers', [f.ticker]);
-	// Keep title/memo_md ilike until journal search_tsv migration is applied remotely;
-	// local stacks with the migration can still match via ilike.
 	const text = f.q ? ilikeAnyOf(['title', 'memo_md'], f.q) : null;
 	if (text) out = out.or(text);
 	return out;
