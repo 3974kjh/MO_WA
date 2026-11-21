@@ -38,6 +38,16 @@ export type JournalQuery = { type: JournalType | ''; ticker: string; view: Journ
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const TICKER_RE = /^[A-Za-z0-9][A-Za-z0-9.-]{0,19}$/;
+/**
+ * 태그 허용 문자: 문자·숫자·공백·`.` `_` `-` (FE-10 Low-2).
+ * PostgREST `cs.{…}` 배열 리터럴에서 의미가 있는 `,` `{` `}` `"` `\` 등은 들어올 수 없다.
+ */
+const TAG_RE = /^[\p{L}\p{N}][\p{L}\p{M}\p{N} ._-]*$/u;
+
+/** 정규화된 태그가 허용 문자만으로 이뤄졌는지(빈 값은 false). */
+export function isValidTag(tag: string): boolean {
+	return tag.length > 0 && tag.length <= TAG_MAX && TAG_RE.test(tag);
+}
 
 /** 앞뒤 공백 제거, 연속 공백 1칸, 제어 문자 제거, 길이 상한. */
 export function cleanText(raw: string | null | undefined, max = QUERY_TEXT_MAX): string {
@@ -46,6 +56,8 @@ export function cleanText(raw: string | null | undefined, max = QUERY_TEXT_MAX):
 		raw
 			// eslint-disable-next-line no-control-regex
 			.replace(/[\u0000-\u001f\u007f]/g, ' ')
+			// 폭 0 문자(ZWSP·ZWNJ·ZWJ·WJ·BOM)는 보이지 않으므로 지운다.
+			.replace(/[\u200b-\u200d\u2060\ufeff]/g, '')
 			.replace(/\s+/g, ' ')
 			.trim()
 			.slice(0, max)
@@ -59,9 +71,11 @@ function oneOf<T extends string>(list: readonly T[], v: string | null): T | null
 
 export function parseBriefingQuery(sp: URLSearchParams): BriefingQuery {
 	const month = sp.get('month') ?? '';
+	const tag = cleanText(sp.get('tag'), TAG_MAX);
 	return {
 		q: cleanText(sp.get('q')),
-		tag: cleanText(sp.get('tag'), TAG_MAX),
+		// 허용 밖 문자가 섞인 태그는 통째로 버린다(DB로 보내지 않는다).
+		tag: isValidTag(tag) ? tag : '',
 		month: MONTH_RE.test(month) ? month : ''
 	};
 }

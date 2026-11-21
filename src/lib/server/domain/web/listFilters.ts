@@ -2,9 +2,17 @@
  * FE-10: 목록 검색 필터 → PostgREST 조건. 값은 `$lib/routing/listQuery`에서 이미 정규화된 것을 받는다.
  *
  * `q`는 `.or()` 문자열에 들어가므로 PostgREST 예약 문자(`,` `(` `)` `"` `:` `\`)와
- * LIKE 와일드카드(`%` `_` `*`), 따옴표를 공백으로 바꾼 뒤 큰따옴표로 감싼다.
+ * LIKE 와일드카드(`%` `_` `*`)를 공백으로 바꾼 뒤 큰따옴표로 감싼다.
+ *
+ * `tag`는 허용 문자(문자·숫자·공백·`._-`)만 통과시키고, 배열 원소를 큰따옴표로 감싼
+ * `{"tag"}` 리터럴로 보낸다(postgrest-js `contains(string[])`는 원소를 따옴표 없이 잇는다).
  */
-import { monthRange, type BriefingQuery, type JournalQuery } from '$lib/routing/listQuery';
+import {
+	isValidTag,
+	monthRange,
+	type BriefingQuery,
+	type JournalQuery
+} from '$lib/routing/listQuery';
 
 export type BriefingListFilter = Pick<BriefingQuery, 'q' | 'tag' | 'month'>;
 export type JournalListFilter = Pick<JournalQuery, 'type' | 'ticker' | 'q'>;
@@ -12,7 +20,7 @@ export type JournalListFilter = Pick<JournalQuery, 'type' | 'ticker' | 'q'>;
 /** 검색어 → `"%term%"`(or() 값). 남는 글자가 없으면 null. */
 export function ilikeValue(q: string): string | null {
 	const t = q
-		.replace(/[%_*\\,()"':]/g, ' ')
+		.replace(/[%_*\\,()":]/g, ' ')
 		.replace(/\s+/g, ' ')
 		.trim();
 	return t ? `"%${t}%"` : null;
@@ -29,10 +37,20 @@ export function ilikeAnyOf(columns: readonly string[], q: string): string | null
 export type FilterableQuery<Q> = {
 	eq(col: string, v: string): Q;
 	or(filters: string): Q;
-	contains(col: string, v: string[]): Q;
+	/** 문자열이면 배열 리터럴 그대로(`cs.{…}`), 배열이면 postgrest-js가 원소를 잇는다. */
+	contains(col: string, v: string | string[]): Q;
 	gte(col: string, v: string): Q;
 	lt(col: string, v: string): Q;
 };
+
+/**
+ * 태그 → `{"tag"}` 배열 리터럴. 허용 밖이면 null(필터를 붙이지 않고 DB로 보내지 않는다).
+ * 허용 문자에는 `"`·`\`가 없으므로 따옴표 안에서 이스케이프할 것이 없다(추가 방어).
+ */
+export function tagArrayLiteral(tag: string | undefined): string | null {
+	if (!tag || !isValidTag(tag)) return null;
+	return `{"${tag}"}`;
+}
 
 export function applyBriefingFilter<Q extends FilterableQuery<Q>>(
 	q: Q,
@@ -42,7 +60,8 @@ export function applyBriefingFilter<Q extends FilterableQuery<Q>>(
 	let out = q;
 	const text = f.q ? ilikeAnyOf(['headline', 'title'], f.q) : null;
 	if (text) out = out.or(text);
-	if (f.tag) out = out.contains('tags', [f.tag]);
+	const tag = tagArrayLiteral(f.tag);
+	if (tag) out = out.contains('tags', tag);
 	const range = f.month ? monthRange(f.month) : null;
 	if (range) out = out.gte('report_date', range.from).lt('report_date', range.to);
 	return out;
