@@ -143,7 +143,7 @@
 		padding-top: calc(8px + var(--safe-top));
 	}
 	.grab {
-		width: 40px;
+		width: var(--size-touch);
 		height: 4px;
 		border-radius: 2px;
 		background: var(--color-line-strong);

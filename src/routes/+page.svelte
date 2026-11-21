@@ -13,16 +13,16 @@
 </svelte:head>
 
 <main
-	class="grid min-h-screen place-items-center bg-canvas-parchment px-lg py-section text-ink"
+	class="grid min-h-dvh place-items-center bg-canvas px-lg py-section text-text"
 	data-testid="mo-wa-authenticated-landing"
 >
 	<section class="grid w-full max-w-[440px] justify-items-center gap-lg text-center">
-		<MoWaLogo size={64} />
+		<MoWaLogo size={64} showWordmark={false} />
 		<div class="grid gap-sm">
 			<h1 class="font-display text-[48px] leading-[1.05] font-semibold tracking-[-0.32px]">
 				MO_WA
 			</h1>
-			<p class="text-[17px] leading-[1.47] tracking-[-0.374px] text-ink-muted-80">
+			<p class="text-[17px] leading-[1.47] tracking-[-0.374px] text-muted">
 				Money and Wallet in one place
 				{#if data.user?.email}
 					<br />

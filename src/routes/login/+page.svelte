@@ -14,17 +14,15 @@
 	<meta name="description" content="MO_WA protected dashboard login." />
 </svelte:head>
 
-<main class="grid min-h-screen place-items-center bg-canvas-parchment px-lg py-section text-ink">
-	<section
-		class="grid w-full max-w-[440px] gap-lg rounded-lg border border-hairline bg-canvas p-xl"
-	>
+<main class="grid min-h-dvh place-items-center bg-canvas px-lg py-section text-text">
+	<section class="grid w-full max-w-[440px] gap-lg rounded-lg border border-line bg-surface p-xl">
 		<header class="grid justify-items-center gap-sm text-center">
-			<MoWaLogo size={52} />
+			<MoWaLogo size={52} showWordmark={false} />
 			<div class="grid gap-xxs">
 				<h1 class="font-display text-[40px] leading-[1.1] font-semibold tracking-[-0.28px]">
 					MO_WA
 				</h1>
-				<p class="text-[17px] leading-[1.47] tracking-[-0.374px] text-ink-muted-80">
+				<p class="text-[17px] leading-[1.47] tracking-[-0.374px] text-muted">
 					Money and Wallet in one place
 				</p>
 			</div>
@@ -32,7 +30,7 @@
 
 		<form
 			method="POST"
-			class="grid gap-md"
+			class="login-form grid gap-md"
 			use:enhance={() => {
 				submitting = true;
 				return async ({ update }) => {
@@ -46,7 +44,7 @@
 
 			{#if form?.message}
 				<p
-					class="rounded-md bg-canvas-parchment p-sm text-[14px] leading-[1.43] tracking-[-0.224px] text-ink-muted-80"
+					class="rounded-md bg-surface-2 p-sm text-[14px] leading-[1.43] tracking-[-0.224px] text-muted"
 					aria-live="polite"
 				>
 					{form.message}
@@ -57,3 +55,40 @@
 		</form>
 	</section>
 </main>
+
+<style>
+	/*
+	 * handoff §13-8: 공유 Input(레거시 대시보드와 공용)은 수정하지 않고 로그인에서만 보완한다.
+	 * - 입력 높이 40(min-h-11=44 → 40), 모바일(<640) 입력 글자 16px(iOS 확대 방지)
+	 * - text-ink(다크 값 없음) → text-text 매핑: 다크에서 라벨·입력 글자가 보이도록. pill·데스크톱 17px 유지
+	 */
+	.login-form :global(input) {
+		min-height: 0;
+		height: 2.5rem;
+		padding-block: 0;
+		color: var(--color-text);
+	}
+	.login-form :global(label > span) {
+		color: var(--color-text);
+	}
+	/* 공유 Input의 hairline(다크 값 없음)은 그대로 두고 로그인에서만 line-strong(대비 3:1, 토큰 주석) */
+	.login-form :global(input) {
+		border-color: var(--color-line-strong);
+	}
+	/* 공유 Button(primary)의 레거시 파랑 → 공식 틸 bg-accent text-on-accent. 높이(~47px)는 유지 */
+	.login-form :global(button[type='submit']) {
+		background-color: var(--color-accent);
+		color: var(--color-on-accent);
+	}
+	.login-form :global(button[type='submit']:hover:not(:disabled)) {
+		background-color: var(--color-accent-hover);
+	}
+	.login-form :global(input::placeholder) {
+		color: var(--color-subtle);
+	}
+	@media (max-width: 639px) {
+		.login-form :global(input) {
+			font-size: 1rem;
+		}
+	}
+</style>
