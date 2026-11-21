@@ -1,6 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { parsePageParams } from '$lib/server/domain/web/pagination';
+import { HOME_BRIEFINGS_PAGE } from '$lib/server/domain/web/homePage';
 import {
 	forUser,
 	getLatestIndicator,
@@ -10,9 +10,10 @@ import {
 
 /**
  * 홈(`/`) — (app) 셸 안. BE-11 dashboard valuation + kospi + recent briefings.
+ * L-8: `?page` / `?pageSize`를 받지 않고 page 1 · size 5로 고정한다.
  * 로그아웃은 전용 경로 `/logout`(LOGOUT_PATH) — 여기로 action을 옮기지 않는다.
  */
-export const load: PageServerLoad = async ({ locals, parent, url }) => {
+export const load: PageServerLoad = async ({ locals, parent }) => {
 	await parent();
 	if (!locals.user?.id) redirect(303, '/login');
 
@@ -20,7 +21,7 @@ export const load: PageServerLoad = async ({ locals, parent, url }) => {
 	const [valuation, kospi, recentBriefings] = await Promise.all([
 		loadDashboardValuation(repo),
 		getLatestIndicator(repo, 'kospi'),
-		listBriefingsWithKospi(repo, parsePageParams(url, { defaultSize: 5 }))
+		listBriefingsWithKospi(repo, HOME_BRIEFINGS_PAGE)
 	]);
 
 	return {
