@@ -65,6 +65,12 @@ export const ACCOUNT_NAV: NavEntry[] = [
 	{ id: 'settings', label: '설정', icon: 'settings' }
 ];
 
+/**
+ * 로그아웃 폼 액션 경로(전용 라우트 src/routes/logout, 기본 액션).
+ * 셸·더보기 시트·홈이 모두 이 값을 쓴다. `/`의 위치와 무관하게 어느 화면에서도 같은 경로다.
+ */
+export const LOGOUT_PATH = '/logout' as const;
+
 /** 경로 → 현재 섹션. 상세 경로(/briefings/2026-11-20)도 상위 섹션으로 본다. */
 export function sectionFromPath(pathname: string): SectionId | null {
 	if (pathname === '/') return 'dashboard';
