@@ -10,6 +10,7 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import MetricTile from '$lib/components/ui/MetricTile.svelte';
 	import Money from '$lib/components/ui/Money.svelte';
+	import StatusBadge from '$lib/components/ui/StatusBadge.svelte';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import { fixtureProposals } from '$lib/fixtures/proposals';
 
@@ -28,7 +29,7 @@
 	backHref={detail ? '/dev/shell?current=briefings' : null}
 >
 	<div class="grid">
-		<Card title="AppShell 확인" tone="accent">
+		<Card title="AppShell 확인">
 			<p class="muted">
 				현재 섹션: <b>{current}</b>{detail ? ' · 상세 화면' : ''}. 대기 pill = pending
 				{pendingCount}건(보류 제외, 픽스처). 폭을 바꿔 사이드바(≥1024) · 레일(640~1023) · 하단
@@ -43,16 +44,13 @@
 				{#snippet value()}<Money value={-2_271_309} />{/snippet}
 			</MetricTile>
 		</div>
-		<Card title="승인 대기" tone="warn">
+		<Card title="승인 대기">
 			{#snippet aside()}<Badge tone="warn">{pendingCount}건</Badge>{/snippet}
 			<ul class="q">
 				{#each fixtureProposals as p (p.id)}
 					<li>
 						<b>{p.ticker}</b> <span class="muted">{p.title}</span>
-						<Badge
-							tone={p.status === 'pending' ? 'warn' : p.status === 'approved' ? 'ok' : 'default'}
-							>{p.status}</Badge
-						>
+						<StatusBadge status={p.status} />
 					</li>
 				{/each}
 			</ul>

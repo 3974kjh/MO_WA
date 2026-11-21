@@ -1,11 +1,11 @@
 <script lang="ts">
 	/**
 	 * 금액·단가 (FE-02, H §10, DS §3-1)
-	 * - kind=amount: 만 원 축약 + title/aria-label=정확한 값, tabindex=0, 점선 밑줄(.tip). <640에서는 탭하면 '정확한 금액' 하단 시트.
+	 * - kind=amount: 만 원 축약 + title/aria-label=정확한 값, tabindex=0, 점선 밑줄(.tip). <640은 탭하면 '정확한 금액' 하단 시트, ≥640은 클릭·포커스·Enter/Space로 정확값 팝오버(title은 보조).
 	 * - kind=unit(주가·평단·손익분기): 절대 축약하지 않는다.
 	 */
 	import { formatMoney, type Currency, type MoneyKind } from '$lib/format/money';
-	import { EXACT_SHEET_MQ, exactValue } from './exactValue.svelte';
+	import { EXACT_SHEET_MQ, exactPopover, exactValue } from './exactValue.svelte';
 
 	let {
 		value,
@@ -47,11 +47,25 @@
 		return '금액';
 	}
 
+	/** <640: '정확한 금액' 하단 시트. ≥640: role=tooltip 팝오버(클릭·Enter/Space 토글, 포커스로도 열림). */
 	function openExact(e: Event) {
-		// PC(≥640)는 title/aria-label 툴팁만. 모바일에서만 시트를 연다.
-		if (!window.matchMedia(EXACT_SHEET_MQ).matches) return;
+		const el = e.currentTarget as HTMLElement;
 		e.preventDefault();
-		exactValue.show(contextLabel(e.currentTarget as HTMLElement), f.exact);
+		if (window.matchMedia(EXACT_SHEET_MQ).matches) {
+			exactValue.show(contextLabel(el), f.exact);
+		} else {
+			exactPopover.toggle(el, contextLabel(el), f.exact);
+		}
+	}
+
+	function focusExact(e: FocusEvent) {
+		const el = e.currentTarget as HTMLElement;
+		if (window.matchMedia(EXACT_SHEET_MQ).matches || !el.matches(':focus-visible')) return;
+		if (exactPopover.anchor !== el) exactPopover.show(el, contextLabel(el), f.exact);
+	}
+
+	function blurExact(e: FocusEvent) {
+		if (exactPopover.anchor === e.currentTarget) exactPopover.hide();
 	}
 </script>
 
@@ -63,6 +77,8 @@
 		title={f.exact}
 		aria-label={f.exact}
 		onclick={openExact}
+		onfocus={focusExact}
+		onblur={blurExact}
 		onkeydown={(e) => {
 			if (e.key === 'Enter' || e.key === ' ') openExact(e);
 		}}

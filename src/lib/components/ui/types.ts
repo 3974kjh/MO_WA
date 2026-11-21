@@ -1,7 +1,6 @@
 import type { Snippet } from 'svelte';
 
 export type BadgeTone = 'default' | 'up' | 'down' | 'warn' | 'info' | 'ok' | 'accent';
-export type CardTone = 'default' | 'accent' | 'warn';
 export type BannerTone = 'info' | 'warn' | 'err';
 export type SheetVariant = 'bottom' | 'full' | 'center';
 

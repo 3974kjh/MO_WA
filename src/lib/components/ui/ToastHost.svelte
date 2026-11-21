@@ -64,7 +64,7 @@
 	@media (max-width: 639px) {
 		/* 하단 탭(52px + safe-area) 위 */
 		.toasts {
-			bottom: calc(var(--size-tabbar) + var(--safe-bottom) + 20px);
+			bottom: calc(var(--size-tabbar) + var(--inset-b) + 20px);
 		}
 	}
 </style>

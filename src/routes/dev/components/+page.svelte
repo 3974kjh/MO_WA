@@ -5,6 +5,7 @@
 	 */
 	import { resolve } from '$app/paths';
 	import Badge from '$lib/components/ui/Badge.svelte';
+	import StatusBadge from '$lib/components/ui/StatusBadge.svelte';
 	import Banner from '$lib/components/ui/Banner.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import DataTable from '$lib/components/ui/DataTable.svelte';
@@ -374,13 +375,17 @@
 		<div class="cards3">
 			<Card title="기본 카드" headingLevel={3}>
 				{#snippet aside()}<Badge>라벨</Badge>{/snippet}
-				<p class="ts muted">제목·보조·본문 순. 패딩 16, 반경 10, 1px 테두리 + 약한 그림자.</p>
+				<p class="ts muted">
+					제목·보조·본문 순. 패딩 16, 반경 12, 라이트는 그림자만·다크는 연한 1px 선.
+				</p>
 			</Card>
-			<Card title="강조 카드" tone="accent" headingLevel={3}>
-				<p class="ts muted">좌측 4px 액센트(요약·핵심).</p>
+			<Card title="상태 배지 카드" headingLevel={3}>
+				{#snippet aside()}<StatusBadge status="pending" />{/snippet}
+				<p class="ts muted">상태·강조는 헤더 우측 StatusBadge(아이콘+글자)로. 왼쪽 색선 없음.</p>
 			</Card>
-			<Card title="주의 카드" tone="warn" headingLevel={3}>
-				<p class="ts muted">좌측 앰버(승인 대기·한도 근접).</p>
+			<Card title="확인 필요 카드" headingLevel={3}>
+				{#snippet aside()}<StatusBadge status="conflict" />{/snippet}
+				<p class="ts muted">충돌·만료는 warn 채움 배지로 눈에 띄게.</p>
 			</Card>
 		</div>
 	</section>
@@ -490,7 +495,7 @@
 	<section class="sec" id="sheet">
 		<h2>시트 · 모달</h2>
 		<p class="lead">
-			&lt;640: 바텀시트(최대 86vh, 그랩 핸들)·전체 화면 / ≥640: 중앙 모달 520px. 포커스 트랩, Esc,
+			&lt;640: 바텀시트(최대 86dvh, 그랩 핸들)·전체 화면 / ≥640: 중앙 모달 520px. 포커스 트랩, Esc,
 			스크림 클릭, 닫힐 때 트리거로 포커스 복귀.
 		</p>
 		<div class="demo">

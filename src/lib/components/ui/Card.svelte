@@ -1,9 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import type { CardTone } from './types';
 
 	let {
-		tone = 'default',
 		flush = false,
 		title,
 		sub,
@@ -12,8 +10,6 @@
 		class: className = '',
 		children
 	}: {
-		/** accent=강조(좌측 틸 4px, 요약) · warn=주의(좌측 앰버 4px, 승인 대기) */
-		tone?: CardTone;
 		/** 패딩 없음(표·목록을 가장자리까지) */
 		flush?: boolean;
 		title?: string;
@@ -27,7 +23,7 @@
 	} = $props();
 </script>
 
-<section class="card tone-{tone} {className}" class:flush>
+<section class="card {className}" class:flush>
 	{#if title || aside || sub}
 		<header class="card-head">
 			{#if title}
@@ -42,7 +38,7 @@
 <style>
 	.card {
 		background: var(--color-surface);
-		border: 1px solid var(--color-line);
+		border: 1px solid var(--color-card-line); /* 라이트 transparent(그림자만), 다크 연한 1px */
 		border-radius: var(--radius-md);
 		box-shadow: var(--shadow-card);
 		padding: 16px;
@@ -69,11 +65,5 @@
 	}
 	.flush .card-head {
 		padding: 14px 16px 0;
-	}
-	.tone-accent {
-		background: var(--color-accent-soft);
-	}
-	.tone-warn {
-		background: var(--color-warn-soft);
 	}
 </style>
