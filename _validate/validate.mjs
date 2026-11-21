@@ -595,22 +595,64 @@ await err('TRUNCATE principle_proposals denied to service_role', () => run('serv
 await err('TRUNCATE reports denied to service_role', () => run('service_role', null, FM, 'truncate public.reports'), /permission denied/);
 await err('TRUNCATE instruments denied to service_role', () => run('service_role', null, FM, 'truncate public.instruments'), /permission denied/);
 await err('TRUNCATE display_sequences denied to service_role', () => run('service_role', null, FM, 'truncate public.display_sequences'), /permission denied/);
+// Prove defaults with real CREATE (ACL inspection alone can false-pass).
+await db.query(`
+  create or replace function public.mowa_probe_priv_fn()
+  returns int language sql immutable as $f$ select 1 $f$`);
 eq(
-	'default privileges: no PUBLIC EXECUTE on new functions',
+	'new function is not executable by anon (global PUBLIC EXECUTE revoked)',
 	(
-		await db.query(`
-      select not exists (
-        select 1
-          from pg_default_acl d
-          cross join lateral aclexplode(d.defaclacl) a
-         where d.defaclnamespace = 'public'::regnamespace
-           and d.defaclobjtype = 'f'
-           and a.grantee = 0
-           and a.privilege_type = 'EXECUTE'
-      ) as ok`)
+		await db.query(
+			`select has_function_privilege('anon', 'public.mowa_probe_priv_fn()', 'EXECUTE') as ok`
+		)
+	).rows[0].ok,
+	false
+);
+eq(
+	'new function remains executable by authenticated',
+	(
+		await db.query(
+			`select has_function_privilege('authenticated', 'public.mowa_probe_priv_fn()', 'EXECUTE') as ok`
+		)
 	).rows[0].ok,
 	true
 );
+await db.query(`drop function public.mowa_probe_priv_fn()`);
+
+await db.query(`
+  create table public.mowa_probe_priv_tbl (
+    id int primary key,
+    owner_id uuid
+  )`);
+eq(
+	'new table: authenticated lacks TRUNCATE by default',
+	(
+		await db.query(
+			`select has_table_privilege('authenticated', 'public.mowa_probe_priv_tbl', 'TRUNCATE') as ok`
+		)
+	).rows[0].ok,
+	false
+);
+eq(
+	'new table: authenticated lacks DELETE by default',
+	(
+		await db.query(
+			`select has_table_privilege('authenticated', 'public.mowa_probe_priv_tbl', 'DELETE') as ok`
+		)
+	).rows[0].ok,
+	false
+);
+eq(
+	'new table: authenticated still has SELECT by default (or via grants)',
+	(
+		await db.query(
+			`select has_table_privilege('authenticated', 'public.mowa_probe_priv_tbl', 'SELECT') as ok`
+		)
+	).rows[0].ok,
+	true
+);
+await db.query(`drop table public.mowa_probe_priv_tbl`);
+
 eq(
 	'service_role lacks TRUNCATE on owned-data tables',
 	(

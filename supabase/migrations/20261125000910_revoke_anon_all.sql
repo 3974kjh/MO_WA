@@ -4,7 +4,8 @@
 --
 -- Privilege RULE (repeat in every new migration that creates functions/tables):
 --   * New functions must not grant PUBLIC/anon EXECUTE; grant only roles that need it.
---   * New tables must REVOKE TRUNCATE from service_role (and anon/PUBLIC as needed).
+--   * New tables must REVOKE TRUNCATE from service_role; REVOKE TRUNCATE, DELETE from authenticated
+--     (TRUNCATE bypasses RLS). Include matching revokes in the same migration that creates objects.
 -- ALTER DEFAULT PRIVILEGES below (and in 000100) prevent defaults from reappearing.
 
 do $$
@@ -17,6 +18,16 @@ begin
 end
 $$;
 
+-- Global (schema-less): cluster-wide PUBLIC EXECUTE must be revoked FOR ROLE <creator>
+alter default privileges for role postgres revoke execute on functions from public;
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'supabase_admin') then
+    execute 'alter default privileges for role supabase_admin revoke execute on functions from public';
+  end if;
+end
+$$;
+
 alter default privileges in schema public revoke all on tables from anon;
 alter default privileges in schema public revoke all on sequences from anon;
 alter default privileges in schema public revoke all on functions from anon;
@@ -25,6 +36,7 @@ alter default privileges in schema public revoke execute on functions from anon;
 alter default privileges in schema public grant execute on functions to authenticated;
 alter default privileges in schema public grant execute on functions to service_role;
 alter default privileges in schema public revoke truncate on tables from service_role;
+alter default privileges in schema public revoke truncate, delete on tables from authenticated;
 
 -- L-3: revoke EXECUTE from PUBLIC as well as anon; keep authenticated / service_role / needed roles
 do $$
