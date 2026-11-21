@@ -10,7 +10,11 @@
  * use recursively key-sorted canonical JSON — never a stringify replacer array.
  */
 import { mapDbErrorToRuleIds } from '$lib/server/domain/validation/mapDbError';
-import { SERVER_FILLED_KEYS, type RepoClient } from './client';
+import {
+	serverFilledKeysForTable,
+	type RepoClient,
+	type StripTable
+} from './client';
 import { fromRepo } from './db';
 import { requireOwnerId } from './owner';
 
@@ -29,8 +33,8 @@ export type ClientRefTable =
 	| 'position_proposals'
 	| 'principle_proposals';
 
-function isServerFilledKey(key: string): boolean {
-	if ((SERVER_FILLED_KEYS as readonly string[]).includes(key)) return true;
+function isServerFilledKey(key: string, table?: StripTable | null): boolean {
+	if (serverFilledKeysForTable(table).includes(key)) return true;
 	if (key.startsWith('proposed_by')) return true;
 	return false;
 }
@@ -81,10 +85,11 @@ export function canonicalJson(value: unknown): string {
  */
 export function clientRefContentMatches(
 	attempted: Record<string, unknown>,
-	existing: Record<string, unknown>
+	existing: Record<string, unknown>,
+	table?: ClientRefTable | null
 ): boolean {
 	const cleaned = dropUndefinedKeys(attempted) as Record<string, unknown>;
-	const keys = Object.keys(cleaned).filter((k) => !isServerFilledKey(k));
+	const keys = Object.keys(cleaned).filter((k) => !isServerFilledKey(k, table));
 	const slice = (row: Record<string, unknown>): Record<string, unknown> => {
 		const out: Record<string, unknown> = Object.create(null);
 		for (const key of keys) {
@@ -127,7 +132,7 @@ export async function resolveClientRefConflict<T extends Record<string, unknown>
 		};
 	}
 	const existing = data as Record<string, unknown>;
-	if (clientRefContentMatches(attempted, existing)) {
+	if (clientRefContentMatches(attempted, existing, table)) {
 		return { data: existing as T, error: null };
 	}
 	return {

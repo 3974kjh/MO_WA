@@ -3,7 +3,8 @@
  * Not exported from `$lib/server/repo` index. Do not import outside `repo/*`.
  *
  * `fromRepo` forces owner_id on select/update/delete filters and on
- * insert/upsert payloads. Tables without owner_id are listed explicitly.
+ * insert/upsert payloads. Upsert also requires onConflict to include owner_id
+ * and rejects client-supplied row `id`.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '$lib/types/database.types';
@@ -40,6 +41,13 @@ type EqBuilder = {
 	[key: string]: unknown;
 };
 
+type UpsertOptions = {
+	onConflict?: string;
+	ignoreDuplicates?: boolean;
+	count?: string;
+	defaultToNull?: boolean;
+};
+
 /** Stamp owner_id onto insert/upsert rows; throw on mismatched owner_id. */
 export function stampOwnerOnPayload(payload: unknown, ownerId: string): unknown {
 	if (Array.isArray(payload)) {
@@ -54,17 +62,60 @@ function stampOwnerOnRow(row: unknown, ownerId: string): unknown {
 	if ('owner_id' in r && r.owner_id != null && r.owner_id !== '' && r.owner_id !== ownerId) {
 		throw new Error("[R-SYS-01] owner_id mismatch: cannot write another owner's row");
 	}
-	return { ...r, owner_id: ownerId };
+	const out: Record<string, unknown> = Object.create(null);
+	for (const [k, v] of Object.entries(r)) {
+		Object.defineProperty(out, k, {
+			value: v,
+			enumerable: true,
+			writable: true,
+			configurable: true
+		});
+	}
+	Object.defineProperty(out, 'owner_id', {
+		value: ownerId,
+		enumerable: true,
+		writable: true,
+		configurable: true
+	});
+	return out;
+}
+
+function payloadHasClientId(payload: unknown): boolean {
+	if (Array.isArray(payload)) return payload.some((row) => payloadHasClientId(row));
+	if (!payload || typeof payload !== 'object') return false;
+	return Object.prototype.hasOwnProperty.call(payload, 'id');
+}
+
+/** onConflict must list owner_id (comma/space separated column names). */
+export function assertUpsertOnConflictIncludesOwner(options: UpsertOptions | undefined): void {
+	const raw = options?.onConflict;
+	if (typeof raw !== 'string' || !raw.trim()) {
+		throw new Error(
+			'[R-SYS-01] upsert requires onConflict including owner_id (owner-scoped unique key)'
+		);
+	}
+	const cols = raw.split(/[\s,]+/).map((c) => c.trim()).filter(Boolean);
+	if (!cols.includes('owner_id')) {
+		throw new Error(
+			`[R-SYS-01] upsert onConflict must include owner_id (got "${raw}")`
+		);
+	}
+}
+
+export function assertUpsertPayloadHasNoId(payload: unknown): void {
+	if (payloadHasClientId(payload)) {
+		throw new Error('[R-SYS-01] upsert must not include client-supplied id');
+	}
 }
 
 /**
  * Force owner_id:
  * - select / update / delete → `.eq('owner_id', ownerId)`
- * - insert / upsert → stamp payload (throw if conflicting owner_id)
+ * - insert → stamp payload
+ * - upsert → stamp payload + require onConflict with owner_id + reject id
  */
 function withForcedOwner(builder: EqBuilder, ownerId: string): EqBuilder {
 	const filterOps = new Set(['select', 'update', 'delete']);
-	const writeOps = new Set(['insert', 'upsert']);
 	return new Proxy(builder, {
 		get(target, prop, receiver) {
 			const value = Reflect.get(target, prop, receiver);
@@ -74,10 +125,22 @@ function withForcedOwner(builder: EqBuilder, ownerId: string): EqBuilder {
 					return next.eq('owner_id', ownerId);
 				};
 			}
-			if (typeof prop === 'string' && writeOps.has(prop) && typeof value === 'function') {
+			if (prop === 'insert' && typeof value === 'function') {
 				return (payload: unknown, ...rest: unknown[]) => {
 					const stamped = stampOwnerOnPayload(payload, ownerId);
 					return (value as (...a: unknown[]) => EqBuilder).apply(target, [stamped, ...rest]);
+				};
+			}
+			if (prop === 'upsert' && typeof value === 'function') {
+				return (payload: unknown, options?: UpsertOptions, ...rest: unknown[]) => {
+					assertUpsertPayloadHasNoId(payload);
+					assertUpsertOnConflictIncludesOwner(options);
+					const stamped = stampOwnerOnPayload(payload, ownerId);
+					return (value as (...a: unknown[]) => EqBuilder).apply(target, [
+						stamped,
+						options,
+						...rest
+					]);
 				};
 			}
 			if (typeof value === 'function') {

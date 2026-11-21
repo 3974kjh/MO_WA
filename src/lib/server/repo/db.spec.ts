@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { forUser } from './client';
-import { fromRepo, stampOwnerOnPayload } from './db';
+import {
+	assertUpsertOnConflictIncludesOwner,
+	assertUpsertPayloadHasNoId,
+	fromRepo,
+	stampOwnerOnPayload
+} from './db';
 
 describe('fromRepo owner_id forcing', () => {
 	it('forces .eq(owner_id) on select/update/delete for owner-scoped tables', () => {
@@ -52,34 +57,50 @@ describe('fromRepo owner_id forcing', () => {
 		expect(inserted[1]).toEqual({ title: 't2', owner_id: 'owner-xyz' });
 	});
 
-	it('stamps owner_id on upsert and rejects mismatched owner_id', () => {
+	it('upsert requires onConflict with owner_id; rejects client id and owner mismatch', () => {
 		const upserted: unknown[] = [];
-		const inserted: unknown[] = [];
 		const fakeDb = {
 			from: () => ({
 				upsert: (payload: unknown) => {
 					upserted.push(payload);
 					return { select: () => ({ single: async () => ({ data: payload, error: null }) }) };
 				},
-				insert: (payload: unknown) => {
-					inserted.push(payload);
-					return { select: () => ({ single: async () => ({ data: payload, error: null }) }) };
-				}
+				insert: () => ({
+					select: () => ({ single: async () => ({ data: null, error: null }) })
+				})
 			})
 		} as never;
 		const repo = forUser(fakeDb, 'owner-xyz');
 
-		fromRepo(repo, 'reports').upsert({ title: 'u' });
-		expect(upserted[0]).toEqual({ title: 'u', owner_id: 'owner-xyz' });
+		fromRepo(repo, 'reports').upsert(
+			{ title: 'u', client_ref: 'c' },
+			{ onConflict: 'owner_id,client_ref' }
+		);
+		expect(upserted[0]).toEqual({ title: 'u', client_ref: 'c', owner_id: 'owner-xyz' });
 
+		expect(() => fromRepo(repo, 'reports').upsert({ title: 'u' })).toThrow(
+			/onConflict.*owner_id/i
+		);
 		expect(() =>
-			fromRepo(repo, 'reports').upsert({ title: 'evil', owner_id: 'other-owner' })
+			fromRepo(repo, 'reports').upsert({ title: 'u' }, { onConflict: 'id' })
+		).toThrow(/onConflict must include owner_id/i);
+		expect(() =>
+			fromRepo(repo, 'reports').upsert(
+				{ id: 'row-uuid', title: 'u' },
+				{ onConflict: 'owner_id,client_ref' }
+			)
+		).toThrow(/must not include client-supplied id/i);
+		expect(() =>
+			fromRepo(repo, 'reports').upsert(
+				{ title: 'evil', owner_id: 'other-owner' },
+				{ onConflict: 'owner_id,client_ref' }
+			)
 		).toThrow(/owner_id mismatch/i);
 
-		expect(() =>
-			fromRepo(repo, 'reports').insert({ title: 'evil', owner_id: 'other-owner' })
-		).toThrow(/owner_id mismatch/i);
-		expect(inserted).toEqual([]);
+		expect(() => assertUpsertOnConflictIncludesOwner({ onConflict: 'id' })).toThrow(
+			/owner_id/
+		);
+		expect(() => assertUpsertPayloadHasNoId({ id: 'x' })).toThrow(/id/i);
 	});
 
 	it('stampOwnerOnPayload handles arrays', () => {

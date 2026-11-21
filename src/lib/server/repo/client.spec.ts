@@ -139,19 +139,34 @@ describe('repo identity / M-4', () => {
 		expect('source_bot_id' in safe).toBe(false);
 	});
 
-	it('strips server-filled keys on first insert (Low-3)', () => {
-		const safe = stripClientIdentity({
-			title: 't',
-			status: 'approved',
-			expires_at: '2026-01-01',
-			decided_at: '2026-01-01',
-			acknowledged_at: '2026-01-01',
-			attention_started_at: '2026-01-01',
-			client_ref: 'ref-1'
-		});
-		expect(safe).toEqual({ title: 't', client_ref: 'ref-1' });
-		expect('status' in safe).toBe(false);
-		expect('expires_at' in safe).toBe(false);
+	it('strips proposal-only server keys; keeps status on positions/reports', () => {
+		const proposal = stripClientIdentity(
+			{
+				title: 't',
+				status: 'approved',
+				expires_at: '2026-01-01',
+				decided_at: '2026-01-01',
+				acknowledged_at: '2026-01-01',
+				attention_started_at: '2026-01-01',
+				client_ref: 'ref-1'
+			},
+			'position_proposals'
+		);
+		expect(proposal).toEqual({ title: 't', client_ref: 'ref-1' });
+		expect('status' in proposal).toBe(false);
+
+		const position = stripClientIdentity(
+			{ title: 't', status: 'holding', client_ref: 'x' },
+			'positions'
+		);
+		expect(position.status).toBe('holding');
+
+		const report = stripClientIdentity(
+			{ title: 'r', status: 'draft', slug: 's' },
+			'reports'
+		);
+		expect(report.status).toBe('draft');
+		expect(Object.getPrototypeOf(report)).toBeNull();
 	});
 
 	it('strips system patch fields (M-3)', () => {
@@ -170,12 +185,13 @@ describe('repo identity / M-4', () => {
 		}
 	});
 
-	it('pickPatchable keeps only table allowlist fields', () => {
+	it('pickPatchable keeps status for positions (not stripped globally)', () => {
 		const patch = pickPatchable(
-			{ memo: 'm', qty: 1, archived_at: 'x', version: 2, evil: true },
+			{ memo: 'm', qty: 1, status: 'closed', archived_at: 'x', version: 2, evil: true },
 			POSITION_PATCHABLE
 		);
-		expect(patch).toEqual({ memo: 'm', qty: 1 });
+		expect(patch).toEqual({ memo: 'm', qty: 1, status: 'closed' });
+		expect(Object.getPrototypeOf(patch)).toBeNull();
 	});
 });
 

@@ -39,7 +39,7 @@ export async function createReport(
 ): Promise<{ data: ReportRow | null; error: Error | null }> {
 	const stamps = serverCreateStamps(repo.actor);
 	const row = {
-		...stripClientIdentity(input as Record<string, unknown>),
+		...stripClientIdentity(input as Record<string, unknown>, 'reports'),
 		...stamps
 	};
 	const { data, error } = await fromRepo(repo, 'reports').insert(row).select('*').single();

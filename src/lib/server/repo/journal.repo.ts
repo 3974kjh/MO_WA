@@ -34,7 +34,7 @@ export async function createJournalEntry(
 ): Promise<{ data: JournalEntryRow | null; error: Error | null }> {
 	const stamps = serverCreateStamps(repo.actor);
 	const row: Record<string, unknown> = {
-		...stripClientIdentity(input as Record<string, unknown>),
+		...stripClientIdentity(input as Record<string, unknown>, 'journal_entries'),
 		...stamps
 	};
 	const { data, error } = await fromRepo(repo, 'journal_entries').insert(row).select('*').single();

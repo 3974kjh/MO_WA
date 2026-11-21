@@ -25,6 +25,17 @@ export type RepoClient = {
 	readonly actor: RepoActor;
 };
 
+/** Tables that may be passed to stripClientIdentity / compare helpers. */
+export type StripTable =
+	| 'reports'
+	| 'positions'
+	| 'journal_entries'
+	| 'instruments'
+	| 'position_proposals'
+	| 'principle_proposals'
+	| 'decisions'
+	| 'events';
+
 function freezeRepo(actor: RepoActor, db: SupabaseClient<Database>): RepoClient {
 	const frozenActor = Object.freeze({ ...actor });
 	const repo = Object.freeze({ actor: frozenActor }) as RepoClient;
@@ -69,10 +80,10 @@ export function serverCreateStamps(actor: RepoActor): {
 }
 
 /**
- * Server-owned / trigger-filled columns — never accept from the client on
- * insert/update (Low-3). Kept out of R-PERM-11 content compare as well.
+ * Server-owned columns common to all tables — never accept from the client.
+ * Note: `status` is NOT here — it is a domain field on positions/reports.
  */
-export const SERVER_FILLED_KEYS = [
+export const SERVER_FILLED_COMMON = [
 	'owner_id',
 	'source_bot_id',
 	'display_no',
@@ -83,11 +94,6 @@ export const SERVER_FILLED_KEYS = [
 	'archived_at',
 	'created_at',
 	'updated_at',
-	'status',
-	'expires_at',
-	'decided_at',
-	'acknowledged_at',
-	'attention_started_at',
 	// M-2 / PR #7 naming — never accept client proposer fields
 	'proposer_type',
 	'proposed_by_bot_id',
@@ -98,18 +104,57 @@ export const SERVER_FILLED_KEYS = [
 ] as const;
 
 /**
+ * Proposal-queue server fields — strip only for position_proposals /
+ * principle_proposals. Do NOT strip from positions or reports.
+ */
+export const SERVER_FILLED_PROPOSAL_ONLY = [
+	'status',
+	'expires_at',
+	'decided_at',
+	'acknowledged_at',
+	'attention_started_at'
+] as const;
+
+const PROPOSAL_TABLES = new Set<StripTable>(['position_proposals', 'principle_proposals']);
+
+/** @deprecated Prefer SERVER_FILLED_COMMON + table-scoped helpers. */
+export const SERVER_FILLED_KEYS = [
+	...SERVER_FILLED_COMMON,
+	...SERVER_FILLED_PROPOSAL_ONLY
+] as const;
+
+export function serverFilledKeysForTable(table?: StripTable | null): readonly string[] {
+	if (table && PROPOSAL_TABLES.has(table)) {
+		return [...SERVER_FILLED_COMMON, ...SERVER_FILLED_PROPOSAL_ONLY];
+	}
+	return [...SERVER_FILLED_COMMON];
+}
+
+function assignOwn(out: Record<string, unknown>, key: string, value: unknown): void {
+	Object.defineProperty(out, key, {
+		value,
+		enumerable: true,
+		writable: true,
+		configurable: true
+	});
+}
+
+/**
  * Strip client-supplied identity / system fields before insert/update.
- * Removes all `proposed_by*` plus server-filled columns (Low-3).
- * Do not rely only on PR #7 triggers or CHECKs.
+ * Pass `table` so proposal-only keys (status, expires_at, …) are stripped only
+ * for proposal tables — positions/reports keep domain `status`.
+ * Result is a null-prototype object (Nit: `__proto__` cannot pollute).
  */
 export function stripClientIdentity<T extends Record<string, unknown>>(
-	row: T
+	row: T,
+	table?: StripTable | null
 ): Record<string, unknown> {
-	const out: Record<string, unknown> = {};
+	const block = new Set(serverFilledKeysForTable(table));
+	const out: Record<string, unknown> = Object.create(null);
 	for (const [key, value] of Object.entries(row)) {
 		if (key.startsWith('proposed_by')) continue;
-		if ((SERVER_FILLED_KEYS as readonly string[]).includes(key)) continue;
-		out[key] = value;
+		if (block.has(key)) continue;
+		assignOwn(out, key, value);
 	}
 	return out;
 }

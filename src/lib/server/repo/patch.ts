@@ -1,8 +1,10 @@
 /**
  * M-3: only table-specific patchable fields. System columns never pass through a patch.
  * Archive / restore go through dedicated helpers (not generic update).
+ *
+ * Do NOT run the proposal-scoped strip here — positions/reports `status` must
+ * remain patchable via the allowlist.
  */
-import { stripClientIdentity } from './client';
 
 export const SYSTEM_PATCH_BLOCKLIST = [
 	'id',
@@ -80,18 +82,31 @@ export const INSTRUMENT_PATCHABLE = [
 	'is_watchlist'
 ] as const;
 
+function assignOwn(out: Record<string, unknown>, key: string, value: unknown): void {
+	Object.defineProperty(out, key, {
+		value,
+		enumerable: true,
+		writable: true,
+		configurable: true
+	});
+}
+
+/**
+ * Keep only allowlisted fields; drop system blocklist + proposed_by*.
+ * Does not strip domain `status` on positions/reports.
+ * Result is a null-prototype object.
+ */
 export function pickPatchable(
 	patch: Record<string, unknown>,
 	allow: readonly string[]
 ): Record<string, unknown> {
-	const stripped = stripClientIdentity(patch);
-	const out: Record<string, unknown> = {};
+	const out: Record<string, unknown> = Object.create(null);
 	const allowSet = new Set(allow);
-	for (const [key, value] of Object.entries(stripped)) {
+	for (const [key, value] of Object.entries(patch)) {
 		if (key.startsWith('proposed_by')) continue;
 		if ((SYSTEM_PATCH_BLOCKLIST as readonly string[]).includes(key)) continue;
 		if (!allowSet.has(key)) continue;
-		out[key] = value;
+		assignOwn(out, key, value);
 	}
 	return out;
 }

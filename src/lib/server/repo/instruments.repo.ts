@@ -26,7 +26,7 @@ export async function createInstrument(
 ): Promise<{ data: InstrumentRow | null; error: Error | null }> {
 	const stamps = serverCreateStamps(repo.actor);
 	const row = {
-		...stripClientIdentity(input as Record<string, unknown>),
+		...stripClientIdentity(input as Record<string, unknown>, 'instruments'),
 		...stamps
 	};
 	const { data, error } = await fromRepo(repo, 'instruments').insert(row).select('*').single();

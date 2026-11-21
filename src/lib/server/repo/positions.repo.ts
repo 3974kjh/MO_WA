@@ -27,7 +27,7 @@ export async function createPosition(
 ): Promise<{ data: PositionRow | null; error: Error | null }> {
 	const stamps = serverCreateStamps(repo.actor);
 	const row = {
-		...stripClientIdentity(input as Record<string, unknown>),
+		...stripClientIdentity(input as Record<string, unknown>, 'positions'),
 		...stamps
 	};
 	const { data, error } = await fromRepo(repo, 'positions').insert(row).select('*').single();

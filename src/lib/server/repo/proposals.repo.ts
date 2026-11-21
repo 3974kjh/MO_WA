@@ -36,7 +36,7 @@ export async function createPositionProposal(
 ): Promise<{ data: PositionProposalRow | null; error: Error | null }> {
 	const ownerId = requireOwnerId(repo);
 	const row: Record<string, unknown> = {
-		...stripClientIdentity(input as Record<string, unknown>),
+		...stripClientIdentity(input as Record<string, unknown>, 'position_proposals'),
 		owner_id: ownerId
 	};
 	const { data, error } = await fromRepo(repo, 'position_proposals')
