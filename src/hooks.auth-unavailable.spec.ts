@@ -1,5 +1,5 @@
 /**
- * Option-B / M-1 integration: real createSupabaseServerClient + mock fetch.
+ * Option-B / Low-1 / Low-2 integration: real createSupabaseServerClient + mock fetch.
  * Does not mock `$lib/supabase/server` and never pushes into pendingCookies directly.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -31,9 +31,15 @@ function expiredSessionCookieValue() {
 	return `base64-${Buffer.from(JSON.stringify(session), 'utf8').toString('base64url')}`;
 }
 
-function makeEvent(pathname: string, opts: { https?: boolean } = {}) {
+function makeEvent(
+	pathname: string,
+	opts: { https?: boolean; extraCookies?: Record<string, string> } = {}
+) {
 	const origin = opts.https ? 'https://localhost' : 'http://localhost';
 	const jar = new Map<string, string>([[COOKIE_NAME, expiredSessionCookieValue()]]);
+	for (const [name, value] of Object.entries(opts.extraCookies ?? {})) {
+		jar.set(name, value);
+	}
 	const cookies = {
 		getAll: () => [...jar.entries()].map(([name, value]) => ({ name, value })),
 		set: vi.fn((name: string, value: string, options?: { maxAge?: number }) => {
@@ -59,6 +65,22 @@ function setCookieHeader(response: Response): string {
 	return response.headers.get('set-cookie') ?? '';
 }
 
+function refreshSessionPayload() {
+	return {
+		access_token: 'new-access-token-value-that-is-long-enough',
+		refresh_token: 'new-refresh-token',
+		expires_in: 3600,
+		expires_at: Math.floor(Date.now() / 1000) + 3600,
+		token_type: 'bearer',
+		user: {
+			id: '00000000-0000-4000-8000-000000000001',
+			aud: 'authenticated',
+			role: 'authenticated',
+			email: 'user@example.com'
+		}
+	};
+}
+
 describe('hooks Auth unavailable (real SSR client + mock fetch)', () => {
 	const originalFetch = globalThis.fetch;
 
@@ -75,7 +97,7 @@ describe('hooks Auth unavailable (real SSR client + mock fetch)', () => {
 		vi.clearAllMocks();
 	});
 
-	it('M-1: refresh 429 → 503 without Set-Cookie clears (page)', async () => {
+	it('refresh 429 → 503 with no Set-Cookie (delete-only pending is dropped)', async () => {
 		globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
 			const url = String(input);
 			if (url.includes('/auth/v1/token')) {
@@ -95,11 +117,11 @@ describe('hooks Auth unavailable (real SSR client + mock fetch)', () => {
 
 		expect(response.status).toBe(503);
 		expect(response.headers.get('cache-control')).toBe('private, no-store');
-		expect(setCookieHeader(response)).not.toContain('Max-Age=0');
+		expect(setCookieHeader(response)).toBe('');
 		expect(event.cookies.delete).not.toHaveBeenCalled();
 	});
 
-	it('M-1: HTML 500 (AuthUnknownError) → 503 without Set-Cookie clears (API)', async () => {
+	it('HTML Auth gateway error → 503 with no Set-Cookie (delete-only pending is dropped)', async () => {
 		globalThis.fetch = vi.fn(async () => {
 			return new Response('<html>gateway error</html>', {
 				status: 500,
@@ -115,31 +137,77 @@ describe('hooks Auth unavailable (real SSR client + mock fetch)', () => {
 
 		expect(response.status).toBe(503);
 		expect(response.headers.get('cache-control')).toBe('private, no-store');
-		expect(setCookieHeader(response)).not.toContain('Max-Age=0');
-		expect(setCookieHeader(response)).not.toMatch(/sb-testproject-auth-token=;/);
+		expect(setCookieHeader(response)).toBe('');
 		expect(event.cookies.delete).not.toHaveBeenCalled();
 	});
 
-	it('M-2: https 503 applies Secure when a persistable cookie is present', async () => {
-		// First exercise real client path (refresh 429 → only clears in pending).
-		globalThis.fetch = vi.fn(async () => {
-			return new Response(JSON.stringify({ error: 'rate_limit', message: 'too many' }), {
-				status: 429,
-				headers: { 'content-type': 'application/json' }
-			});
+	it('Low-2: refresh 200 then /user 500 → 503 with rotation cookie and fragment delete', async () => {
+		globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url.includes('/auth/v1/token') && url.includes('refresh_token')) {
+				return new Response(JSON.stringify(refreshSessionPayload()), {
+					status: 200,
+					headers: { 'content-type': 'application/json' }
+				});
+			}
+			if (url.includes('/auth/v1/user')) {
+				return new Response(JSON.stringify({ message: 'upstream boom' }), {
+					status: 500,
+					headers: { 'content-type': 'application/json' }
+				});
+			}
+			return new Response('unexpected', { status: 500 });
 		}) as typeof fetch;
 
-		const event = makeEvent('/', { https: true });
+		const event = makeEvent('/', {
+			extraCookies: { [`${COOKIE_NAME}.0`]: 'stale-fragment' }
+		});
 		const response = await handle({
 			event: event as never,
-			resolve: async () => new Response('nope')
+			resolve: async () => new Response('should-not-run')
 		} as never);
 
 		expect(response.status).toBe(503);
-		// No persistable cookies on 429 clear-only path — Secure assertion lives on
-		// authUnavailableResponse unit test; here we still prove https hook wiring
-		// does not emit Max-Age=0 clears.
-		expect(setCookieHeader(response)).not.toContain('Max-Age=0');
+		expect(response.headers.get('cache-control')).toBe('private, no-store');
+		const header = setCookieHeader(response);
+		expect(header).toContain(`${COOKIE_NAME}=`);
+		expect(header).toContain('base64-');
+		expect(header).toContain('Max-Age=0');
+		expect(header).toContain(`${COOKIE_NAME}.0=`);
+	});
+
+	it('Low-2: https refresh 200 then /user 500 → 503 Set-Cookie includes Secure', async () => {
+		globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url.includes('/auth/v1/token') && url.includes('refresh_token')) {
+				return new Response(JSON.stringify(refreshSessionPayload()), {
+					status: 200,
+					headers: { 'content-type': 'application/json' }
+				});
+			}
+			if (url.includes('/auth/v1/user')) {
+				return new Response(JSON.stringify({ message: 'upstream boom' }), {
+					status: 500,
+					headers: { 'content-type': 'application/json' }
+				});
+			}
+			return new Response('unexpected', { status: 500 });
+		}) as typeof fetch;
+
+		const event = makeEvent('/', {
+			https: true,
+			extraCookies: { [`${COOKIE_NAME}.0`]: 'stale-fragment' }
+		});
+		const response = await handle({
+			event: event as never,
+			resolve: async () => new Response('should-not-run')
+		} as never);
+
+		expect(response.status).toBe(503);
 		expect(event.url.protocol).toBe('https:');
+		const header = setCookieHeader(response);
+		expect(header).toContain('base64-');
+		expect(header).toContain('Secure');
+		expect(header).toContain('Max-Age=0');
 	});
 });

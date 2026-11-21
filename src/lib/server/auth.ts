@@ -45,9 +45,9 @@ export function cache<T>(fn: () => T): () => T {
  * Includes unreachable Auth (0/5xx/retryable), rate limits (429), AuthUnknownError,
  * and non-numeric status.
  *
- * Note: Auth may still emit setAll clears (value '' / maxAge 0) via _removeSession on
- * refresh 429 or HTML 500. Those clears are dropped in authUnavailableResponse so the
- * browser keeps its cookie; only cookie *settings that still have a value* are appended.
+ * Auth may emit setAll clears (value '' / maxAge 0) via _removeSession. On 503,
+ * delete-only clears are dropped so the browser keeps its session; if Auth also
+ * wrote valued rotation cookies, deletes are kept alongside them (Low-1).
  */
 export function isAuthUnavailable(error: { status?: number; name?: string }): boolean {
 	if (error.name === 'AuthRetryableFetchError' || error.name === 'AuthUnknownError') {
@@ -81,11 +81,25 @@ export function resolveAuthenticatedUser(result: UserResponse): AuthUserResoluti
 	return { kind: 'anonymous', user: null, clearCookies: true };
 }
 
-/** Cookie settings that still have a value (not an Auth _removeSession clear). */
+/** Cookie settings that still have a value (not an Auth clear / fragment delete). */
 export function isPersistableSetCookie(cookie: PendingSetCookie): boolean {
 	if (cookie.value === '') return false;
 	if (cookie.options.maxAge === 0) return false;
 	return true;
+}
+
+/**
+ * Low-1: if Auth wrote any valued rotation cookie, also keep delete cookies
+ * (value==='' / maxAge===0) so stale fragments are removed. If the pending set is
+ * delete-only (e.g. refresh 429 / HTML 500 _removeSession), drop everything so a
+ * 503 does not wipe the browser session.
+ */
+export function cookiesForAuthUnavailableResponse(
+	pendingCookies: PendingSetCookie[]
+): PendingSetCookie[] {
+	const hasValued = pendingCookies.some(isPersistableSetCookie);
+	if (!hasValued) return [];
+	return pendingCookies;
 }
 
 /** Serialize one Set-Cookie header line (option B; no reliance on error(503)). */
@@ -114,8 +128,9 @@ export type AuthUnavailableResponseOptions = {
 };
 
 /**
- * Build a 503 and attach persistable Auth cookies from this request (criterion 3 option B).
- * Drops value==='' / maxAge===0 clears so outages do not wipe the browser session cookie.
+ * Build a 503 and attach Auth cookies from this request (criterion 3 option B).
+ * Valued rotation cookies are always attached; delete cookies are attached only
+ * alongside them (Low-1). Delete-only outages attach nothing.
  * SvelteKit does not guarantee Set-Cookie when hooks return a Response without resolve().
  */
 export function authUnavailableResponse(
@@ -127,8 +142,7 @@ export function authUnavailableResponse(
 		'cache-control': 'private, no-store'
 	});
 
-	for (const cookie of pendingCookies) {
-		if (!isPersistableSetCookie(cookie)) continue;
+	for (const cookie of cookiesForAuthUnavailableResponse(pendingCookies)) {
 		const withSecure: PendingSetCookie = {
 			...cookie,
 			options: {

@@ -130,18 +130,18 @@ describe('BE-02 auth.getUser transition', () => {
 		expect(result.kind).toBe('unavailable');
 	});
 
-	it('option B / M-2: 503 appends persistable cookies with Secure, skips clears, sets cache-control', () => {
+	it('Low-1 / M-2: valued rotation keeps delete cookies and applies Secure + cache-control', () => {
 		const response = authUnavailableResponse(
 			[
+				{
+					name: 'sb-testproject-auth-token.0',
+					value: '',
+					options: { path: '/', httpOnly: true, maxAge: 0 }
+				},
 				{
 					name: 'sb-testproject-auth-token',
 					value: 'rotated-session',
 					options: { path: '/', httpOnly: true, sameSite: 'lax' }
-				},
-				{
-					name: 'sb-testproject-auth-token',
-					value: '',
-					options: { path: '/', httpOnly: true, maxAge: 0 }
 				}
 			],
 			{ secure: true }
@@ -153,11 +153,10 @@ describe('BE-02 auth.getUser transition', () => {
 			setCookie.length > 0
 				? setCookie.join('\n')
 				: (response.headers.get('set-cookie') ?? '');
-		expect(header).toContain('sb-testproject-auth-token=');
 		expect(header).toContain('rotated-session');
 		expect(header).toContain('HttpOnly');
 		expect(header).toContain('Secure');
-		expect(header).not.toContain('Max-Age=0');
+		expect(header).toContain('Max-Age=0');
 		expect(
 			serializeSetCookieHeader({
 				name: 'a',
@@ -182,7 +181,7 @@ describe('BE-02 auth.getUser transition', () => {
 		expect(secureHeader).toContain('Secure');
 	});
 
-	it('M-1: authUnavailableResponse drops value="" and maxAge=0 clears', () => {
+	it('Low-1: delete-only pending cookies are dropped on 503', () => {
 		const response = authUnavailableResponse([
 			{
 				name: 'sb-testproject-auth-token',

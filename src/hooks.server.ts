@@ -48,7 +48,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	if (resolution.kind === 'unavailable') {
 		console.error(`[auth] Auth unavailable (${resolution.reason}); returning 503`);
 		// Do not use error(503): SvelteKit does not guarantee Set-Cookie on thrown HttpErrors from hooks.
-		// Attach only persistable cookies (skip Auth _removeSession clears) — criterion 3 option B.
+		// Option B + Low-1: attach valued rotation cookies; keep deletes only when valued ones exist.
 		return authUnavailableResponse(pendingCookies, {
 			secure: event.url.protocol === 'https:'
 		});
