@@ -2,7 +2,16 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from '$lib/types/database.types';
 import { getSupabasePublicConfig, getSupabaseServiceRoleKey } from './config';
 
-export function createSupabaseAdminClient() {
+export type AdminClientOptions = {
+	/** Extra PostgREST headers (e.g. x-mowa-bot-id for DB guards). */
+	headers?: Record<string, string>;
+};
+
+/**
+ * Service-role Supabase client. Import only from `src/lib/server/repo/**`
+ * or `src/lib/server/mcp/auth.ts` (ESLint no-restricted-imports / ADR-001).
+ */
+export function createSupabaseAdminClient(options: AdminClientOptions = {}) {
 	const { url } = getSupabasePublicConfig();
 	const serviceRoleKey = getSupabaseServiceRoleKey();
 
@@ -14,6 +23,7 @@ export function createSupabaseAdminClient() {
 		auth: {
 			autoRefreshToken: false,
 			persistSession: false
-		}
+		},
+		global: options.headers ? { headers: options.headers } : undefined
 	});
 }
