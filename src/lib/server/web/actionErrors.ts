@@ -1,6 +1,9 @@
 import { fail } from '@sveltejs/kit';
 import { mapDbErrorToRuleIds } from '$lib/server/domain/validation/mapDbError';
 
+/** DB 오류 원문 대신 내보내는 일반 문구(원문은 서버 로그). */
+export const ACTION_FAILED_MESSAGE = '요청을 처리하지 못했어요.';
+
 export type ActionErrorBody = {
 	ok: false;
 	message: string;
@@ -15,11 +18,14 @@ export function failFromDbError(
 	extra: Partial<ActionErrorBody> = {}
 ) {
 	const ruleIds = mapDbErrorToRuleIds(err);
+	console.error('[action] db error', {
+		code: err.code ?? undefined,
+		message: err.message ?? undefined
+	});
 	return fail(httpStatus, {
 		ok: false as const,
-		message: err.message ?? 'request failed',
+		message: ACTION_FAILED_MESSAGE,
 		ruleIds,
-		code: err.code ?? undefined,
 		...extra
 	});
 }

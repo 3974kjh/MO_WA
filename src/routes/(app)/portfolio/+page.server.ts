@@ -16,6 +16,7 @@ import {
 	handleRestore
 } from '$lib/server/web/proposalActions';
 import { requireUser } from '$lib/server/web/requireUser';
+import { publicListError } from '$lib/server/web/listError';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
 	const user = requireUser(locals.user);
@@ -31,11 +32,11 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	return {
 		title: '포트폴리오',
 		queue: queue.data,
-		queueError: queue.error?.message ?? null,
+		queueError: publicListError('portfolio.queue', queue.error),
 		positions: positions.data,
-		positionsError: positions.error?.message ?? null,
+		positionsError: publicListError('portfolio.positions', positions.error),
 		attentionNeeded: attention.data,
-		attentionError: attention.error?.message ?? null
+		attentionError: publicListError('portfolio.attention', attention.error)
 	};
 };
 
