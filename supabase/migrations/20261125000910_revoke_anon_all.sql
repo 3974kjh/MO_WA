@@ -18,13 +18,33 @@ begin
 end
 $$;
 
--- Global (schema-less): cluster-wide PUBLIC EXECUTE must be revoked FOR ROLE <creator>
+-- Global (schema-less): cluster-wide PUBLIC EXECUTE must be revoked FOR ROLE <creator>.
+-- Keep FOR ROLE postgres; also apply for current_user when migrations run as MOWA_DB_USER ≠ postgres.
 alter default privileges for role postgres revoke execute on functions from public;
 do $$
 begin
-  if exists (select 1 from pg_roles where rolname = 'supabase_admin') then
+  if current_user is distinct from 'postgres' then
+    execute format(
+      'alter default privileges for role %I revoke execute on functions from public',
+      current_user
+    );
+  end if;
+exception
+  when insufficient_privilege then
+    raise notice 'skip ALTER DEFAULT PRIVILEGES FOR ROLE %: insufficient_privilege', current_user;
+end
+$$;
+
+-- supabase_admin: only when current_user is a MEMBER (hosted postgres is not superuser).
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'supabase_admin')
+     and pg_has_role(current_user, 'supabase_admin', 'MEMBER') then
     execute 'alter default privileges for role supabase_admin revoke execute on functions from public';
   end if;
+exception
+  when insufficient_privilege then
+    raise notice 'skip ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin: insufficient_privilege';
 end
 $$;
 

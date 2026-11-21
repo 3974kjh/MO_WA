@@ -599,6 +599,20 @@ await err('TRUNCATE display_sequences denied to service_role', () => run('servic
 await db.query(`
   create or replace function public.mowa_probe_priv_fn()
   returns int language sql immutable as $f$ select 1 $f$`);
+await ok('supabase_admin default-priv DO does not throw when not a member', () =>
+	db.query(`
+    do $sa$
+    begin
+      if exists (select 1 from pg_roles where rolname = 'supabase_admin')
+         and pg_has_role(current_user, 'supabase_admin', 'MEMBER') then
+        execute 'alter default privileges for role supabase_admin revoke execute on functions from public';
+      end if;
+    exception
+      when insufficient_privilege then
+        raise notice 'skip ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin: insufficient_privilege';
+    end
+    $sa$`)
+);
 eq(
 	'new function is not executable by anon (global PUBLIC EXECUTE revoked)',
 	(

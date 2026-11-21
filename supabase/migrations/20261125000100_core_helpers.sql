@@ -16,13 +16,34 @@ create extension if not exists "pg_trgm" with schema extensions;
 grant usage on schema extensions to anon, authenticated, service_role;
 grant execute on all functions in schema extensions to anon, authenticated, service_role;
 
--- Global (schema-less): strip cluster-wide PUBLIC EXECUTE for roles that create functions
+-- Global (schema-less): strip cluster-wide PUBLIC EXECUTE for roles that create functions.
+-- Keep FOR ROLE postgres; also apply for current_user when migrations run as MOWA_DB_USER ≠ postgres.
 alter default privileges for role postgres revoke execute on functions from public;
 do $$
 begin
-  if exists (select 1 from pg_roles where rolname = 'supabase_admin') then
+  if current_user is distinct from 'postgres' then
+    execute format(
+      'alter default privileges for role %I revoke execute on functions from public',
+      current_user
+    );
+  end if;
+exception
+  when insufficient_privilege then
+    raise notice 'skip ALTER DEFAULT PRIVILEGES FOR ROLE %: insufficient_privilege', current_user;
+end
+$$;
+
+-- supabase_admin: only when current_user is a MEMBER (hosted postgres is not superuser).
+-- Role existence alone is not enough — ALTER DEFAULT PRIVILEGES FOR ROLE requires membership or superuser.
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'supabase_admin')
+     and pg_has_role(current_user, 'supabase_admin', 'MEMBER') then
     execute 'alter default privileges for role supabase_admin revoke execute on functions from public';
   end if;
+exception
+  when insufficient_privilege then
+    raise notice 'skip ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin: insufficient_privilege';
 end
 $$;
 
