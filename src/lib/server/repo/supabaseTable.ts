@@ -1,10 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '$lib/types/database.types';
 
 /**
- * Untyped table accessor until BE-01 lands generated Database types for M1 tables.
- * Design schema is the contract (`$lib/types/mowa.contract`).
+ * Repo table accessor. Generated `Database` types cover M1 tables; `fromRepo`
+ * still accepts string names and forces owner_id. Design contract:
+ * `$lib/types/mowa.contract`.
  */
-export function fromTable(db: SupabaseClient, table: string) {
-	// BE-01 will replace this with typed Database tables.
-	return (db as SupabaseClient).from(table as never);
+export function fromTable(db: SupabaseClient<Database>, table: string) {
+	return db.from(table as keyof Database['public']['Tables']);
 }

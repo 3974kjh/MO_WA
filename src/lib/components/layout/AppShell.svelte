@@ -307,6 +307,9 @@
 			line-height: 14px;
 			font-weight: 600;
 			border-radius: var(--radius-sm);
+			min-width: 0;
+			white-space: nowrap;
+			overflow: hidden;
 		}
 	}
 	@media print {

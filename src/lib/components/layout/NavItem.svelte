@@ -127,6 +127,16 @@
 		color: var(--color-accent);
 		font-weight: 700;
 	}
+	/* 200% 확대에서도 라벨이 글자 중간에서 끊기지 않게 한 줄 + 말줄임 */
+	.tab {
+		min-width: 0;
+	}
+	.tab .t {
+		max-width: 100%;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
 	.tab .badge-slot {
 		position: absolute;
 		margin: 0;
