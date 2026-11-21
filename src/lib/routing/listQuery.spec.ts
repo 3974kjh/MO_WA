@@ -8,6 +8,7 @@ import {
 	parseBriefingQuery,
 	parseDetailMode,
 	parseJournalQuery,
+	stripInvalidTagSearch,
 	withDetailMode
 } from './listQuery';
 
@@ -129,5 +130,17 @@ describe('monthRange', () => {
 		expect(monthRange('2026-11')).toEqual({ from: '2026-11-01', to: '2026-12-01' });
 		expect(monthRange('2026-12')).toEqual({ from: '2026-12-01', to: '2027-01-01' });
 		expect(monthRange('bad')).toBeNull();
+	});
+});
+
+describe('FE-10 stripInvalidTagSearch', () => {
+	it('tag 없음·허용된 tag는 null', () => {
+		expect(stripInvalidTagSearch(sp(''))).toBeNull();
+		expect(stripInvalidTagSearch(sp('q=a'))).toBeNull();
+		expect(stripInvalidTagSearch(sp('tag=CPI&q=a'))).toBeNull();
+	});
+	it('허용 밖 tag만 제거하고 나머지는 유지', () => {
+		expect(stripInvalidTagSearch(sp('tag=a%2Cb&q=x&page=2'))).toBe('?q=x&page=2');
+		expect(stripInvalidTagSearch(sp('tag=%3Cscript%3E'))).toBe('');
 	});
 });

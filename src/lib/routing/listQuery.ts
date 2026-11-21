@@ -80,6 +80,27 @@ export function parseBriefingQuery(sp: URLSearchParams): BriefingQuery {
 	};
 }
 
+/**
+ * 허용 밖 `tag` 파라미터만 뺀 search('' 또는 '?…')를 돌려준다. 바꿀 것이 없으면 null.
+ * 파싱 결과만으로는 "원래 없음"과 "버려짐"을 구분할 수 없어 원본 params를 본다.
+ * 허용 여부는 parseBriefingQuery와 같은 기준(cleanText 후 isValidTag)이고, q·month·page 등 나머지는 순서 그대로 남긴다.
+ */
+export function stripInvalidTagSearch(sp: URLSearchParams): string | null {
+	if (!sp.has('tag')) return null;
+	const next = new URLSearchParams();
+	let dropped = false;
+	for (const [k, v] of sp) {
+		if (k === 'tag' && !isValidTag(cleanText(v, TAG_MAX))) {
+			dropped = true;
+			continue;
+		}
+		next.append(k, v);
+	}
+	if (!dropped) return null;
+	const s = next.toString();
+	return s ? `?${s}` : '';
+}
+
 export function parseJournalQuery(sp: URLSearchParams): JournalQuery {
 	const ticker = (sp.get('ticker') ?? '').trim();
 	return {
