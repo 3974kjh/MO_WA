@@ -1,27 +1,25 @@
 import type { Actions, PageServerLoad } from './$types';
-import { parseJournalQuery } from '$lib/routing/listQuery';
-import { parsePageParams } from '$lib/server/domain/web/pagination';
-import { forUser, listJournalPage } from '$lib/server/repo';
 import { handleArchive, handleRestore } from '$lib/server/web/proposalActions';
-import { publicListError } from '$lib/server/web/listError';
+import { handleJournalCreate, handleJournalUpdate } from '$lib/server/web/journalActions';
+import { loadJournal } from '$lib/server/web/journalPage';
 import { requireUser } from '$lib/server/web/requireUser';
 
+/** FE-06 매매일지 목록 `/journal?type=&ticker=&view=&q=&page=`. 상세는 같은 화면의 shallow routing(`/journal/[id]`). */
 export const load: PageServerLoad = async ({ locals, url }) => {
 	const user = requireUser(locals.user);
-	const repo = forUser(locals.supabase, user.id);
-	const params = parsePageParams(url, { defaultSize: 30 });
-	const query = parseJournalQuery(url.searchParams);
-	const { data, error } = await listJournalPage(repo, params, query);
-	return {
-		title: '매매일지',
-		query,
-		journal: data,
-		// DB 오류 원문은 화면·페이지 데이터로 보내지 않는다(FE-10 Low-2).
-		error: publicListError('journal', error)
-	};
+	return loadJournal({ supabase: locals.supabase, user }, url);
 };
 
 export const actions: Actions = {
+	// FE-06: 사용자 작성·수정(쓰기 경로 — 사전 리뷰 대상). 상세 경로(/journal/[id])의 폼도 이 액션으로 보낸다.
+	create: async ({ request, locals }) => {
+		const user = requireUser(locals.user);
+		return handleJournalCreate(locals.supabase, user.id, await request.formData());
+	},
+	update: async ({ request, locals }) => {
+		const user = requireUser(locals.user);
+		return handleJournalUpdate(locals.supabase, user.id, await request.formData());
+	},
 	archive: async ({ request, locals }) => {
 		const user = requireUser(locals.user);
 		const form = await request.formData();

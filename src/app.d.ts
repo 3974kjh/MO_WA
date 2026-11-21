@@ -21,7 +21,12 @@ declare global {
 		interface PageData {
 			user: PublicUser | null;
 		}
-		// interface PageState {}
+		/** FE-06 매매일지 상세 shallow routing: 열린 일지 id, 명시적으로 닫았으면 null */
+		interface PageState {
+			journalId?: string | null;
+			/** 목록에서 pushState로 연 상세(닫기 = history.back) */
+			journalFromList?: boolean;
+		}
 		interface Platform {
 			env: Env;
 			cf: CfProperties;

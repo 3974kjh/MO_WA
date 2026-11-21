@@ -11,7 +11,13 @@ const repoMock = vi.hoisted(() => ({
 	listJournalPage: vi.fn(async () => ({
 		data: { items: [], page: 1, pageSize: 30, total: 0, totalPages: 0 },
 		error: null
-	}))
+	})),
+	// FE-06: 칩 건수·종목·리포트·봇 이름 읽기
+	listJournalKinds: vi.fn(async () => ({ data: [], error: null })),
+	listJournalInstruments: vi.fn(async () => ({ data: [], error: null })),
+	listJournalReportOptions: vi.fn(async () => ({ data: [], error: null })),
+	listJournalBotNames: vi.fn(async () => ({ data: new Map(), error: null })),
+	getJournalEntryForWeb: vi.fn(async () => ({ data: null, error: null }))
 }));
 vi.mock('$lib/server/repo', () => repoMock);
 
