@@ -20,16 +20,18 @@ export const actions: Actions = {
 		const user = requireUser(locals.user);
 		return handleJournalUpdate(locals.supabase, user.id, await request.formData());
 	},
+	// 보관·복원은 이 라우트에서 항상 journal_entries로 고정한다. 클라이언트가 보낸 table 값은 무시한다
+	// (ARCHIVE_TABLES에 다른 테이블도 있어 조작된 폼이 다른 테이블을 보관하지 못하게).
 	archive: async ({ request, locals }) => {
 		const user = requireUser(locals.user);
 		const form = await request.formData();
-		if (!form.get('table')) form.set('table', 'journal_entries');
+		form.set('table', 'journal_entries');
 		return handleArchive(locals.supabase, user.id, form);
 	},
 	restore: async ({ request, locals }) => {
 		const user = requireUser(locals.user);
 		const form = await request.formData();
-		if (!form.get('table')) form.set('table', 'journal_entries');
+		form.set('table', 'journal_entries');
 		return handleRestore(locals.supabase, user.id, form);
 	}
 };
