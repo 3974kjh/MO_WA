@@ -1,9 +1,10 @@
 <script lang="ts">
-	// FE-04 브리핑 상세: 메타·요약/상세 모드(?mode=)·목록 링크. 본문(ReportView)은 렌더 캐시 연결 뒤 붙인다.
+	// FE-04 브리핑 상세: 메타·요약/상세 모드(?mode=)·목록 링크. 상세 모드 본문(ReportView)은 검사를 통과한 저장 렌더 캐시만.
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import type { PageData } from './$types';
+	import ReportView from '$lib/components/report/ReportView.svelte';
 	import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
 	import Tag from '$lib/components/ui/Tag.svelte';
 	import { formatKstShort } from '$lib/format/datetime';
@@ -74,7 +75,20 @@
 		<p class="pending text-sm">요약이 아직 없어요.</p>
 	{/if}
 	{#if data.mode === 'detail'}
-		<p class="pending text-sm" data-testid="detail-pending">상세 근거 본문은 준비 중이에요.</p>
+		{#if data.body}
+			{#if data.body.toc.length}
+				<nav class="toc text-sm" aria-label="목차">
+					<ol>
+						{#each data.body.toc as t (t.id)}
+							<li class="l{t.level}"><a href="#{t.id}">{t.text}</a></li>
+						{/each}
+					</ol>
+				</nav>
+			{/if}
+			<ReportView report={data.body} mode="detail" />
+		{:else}
+			<p class="pending text-sm" data-testid="detail-pending">상세 근거 본문은 준비 중이에요.</p>
+		{/if}
 	{/if}
 
 	{#if b.sources.length}
@@ -137,6 +151,19 @@
 		list-style: disc;
 	}
 	.pending {
+		color: var(--color-muted);
+	}
+	.toc {
+		border-left: 2px solid var(--color-line);
+		padding-left: 12px;
+	}
+	.toc li {
+		padding: 2px 0;
+	}
+	.toc .l3 {
+		padding-left: 12px;
+	}
+	.toc a {
 		color: var(--color-muted);
 	}
 	.sources {

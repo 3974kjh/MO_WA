@@ -446,7 +446,7 @@ export type BriefingSource = { label: string; publisher: string; accessed_at: st
 
 /**
  * FE-04 상세 메타(daily_brief, slug `daily`, 날짜 하나). **본문(body_md)·렌더 결과(body_blocks·toc)는 받지 않는다.**
- * 운영 상세는 렌더 캐시 쓰기 권한(BE-07)이 준비될 때까지 본문을 렌더하지 않는다(무료 Workers CPU 한도).
+ * 운영 상세는 본문을 렌더하지 않는다(무료 Workers CPU 한도). 상세 본문은 getReportRenderColumns()로 저장된 캐시만 읽는다.
  */
 export type BriefingDetailMeta = {
 	id: string;
@@ -489,6 +489,27 @@ export async function getDailyBriefingMeta(
 		data: { ...row, tags: row.tags ?? [], sources: (src ?? []) as BriefingSource[] },
 		error: null
 	};
+}
+
+/**
+ * FE-04 상세 본문: 저장된 렌더 캐시 컬럼만 읽는다(body_md는 받지 않음). 쓰기는 service_role RPC
+ * `mowa_set_report_render_cache`만 한다(BE-07). 값 검사·키 비교는 호출부(cacheRead.readStoredRender)가 한다.
+ */
+export type ReportRenderColumns = { version: number; body_blocks: unknown; toc: unknown };
+
+export async function getReportRenderColumns(
+	repo: RepoClient,
+	reportId: string
+): Promise<{ data: ReportRenderColumns | null; error: Error | null }> {
+	const ownerId = requireOwnerId(repo);
+	let q = fromRepo(repo, 'reports')
+		.select('version, body_blocks, toc')
+		.eq('id', reportId)
+		.is('archived_at', null);
+	q = withOwnerFilter(q, ownerId);
+	const { data, error } = await q.maybeSingle();
+	if (error) return { data: null, error: error as Error };
+	return { data: (data as ReportRenderColumns | null) ?? null, error: null };
 }
 
 export async function listJournalPage(
