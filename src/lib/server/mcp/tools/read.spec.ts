@@ -31,7 +31,6 @@ vi.mock('$lib/server/repo', () => {
 		listJournalEntries: list('listJournalEntries', 'journal_entries'),
 		listDecisions: list('listDecisions', 'decisions'),
 		listPositionProposals: list('listPositionProposals', 'position_proposals'),
-		listPrincipleProposals: list('listPrincipleProposals', 'principle_proposals'),
 		listEvents: async (
 			repo: FakeRepo,
 			opts: { from?: string; to?: string; includeArchived?: boolean } = {}
@@ -79,8 +78,7 @@ const READ_TOOL_NAMES = [
 	'list_proposals',
 	'list_journal_entries',
 	'list_decisions',
-	'list_events',
-	'list_principle_proposals'
+	'list_events'
 ];
 
 const R_LIVE = '10000000-0000-4000-8000-000000000001';

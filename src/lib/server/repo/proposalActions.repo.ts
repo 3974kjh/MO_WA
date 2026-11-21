@@ -93,20 +93,47 @@ export async function acknowledgeProposalRpc(
 	return mapRpc(result);
 }
 
+/** BE-17: approve_principle_proposal — user session only; bots rejected in SQL + here. */
+export async function approvePrincipleProposalRpc(
+	repo: RepoClient,
+	args: { id: string; finalBodyMd?: string | null; summary?: string | null; note?: string | null }
+): Promise<RpcResult> {
+	if (repo.actor.kind !== 'user') {
+		return { data: null, error: new Error('[R-PERM-05] approve requires a user session') };
+	}
+	const result = await rpcFromRepo(repo, 'approve_principle_proposal', {
+		p_id: args.id,
+		p_final_body_md: args.finalBodyMd ?? null,
+		p_summary: args.summary ?? null,
+		p_note: args.note ?? null
+	});
+	return mapRpc(result);
+}
+
+export type PrincipleDecideAction = 'reject' | 'hold' | 'unhold' | 'cancel' | 'ack';
+
+/** BE-17: decide_principle_proposal — user session only (reject|hold|unhold|cancel|ack). */
+export async function decidePrincipleProposalRpc(
+	repo: RepoClient,
+	args: { id: string; action: PrincipleDecideAction; note?: string | null }
+): Promise<RpcResult> {
+	if (repo.actor.kind !== 'user') {
+		return { data: null, error: new Error('[R-PERM-05] decide requires a user session') };
+	}
+	const result = await rpcFromRepo(repo, 'decide_principle_proposal', {
+		p_id: args.id,
+		p_action: args.action,
+		p_note: args.note ?? null
+	});
+	return mapRpc(result);
+}
+
 /** BE-19: decide_principle_proposal('ack'). */
 export async function acknowledgePrincipleProposalRpc(
 	repo: RepoClient,
 	args: { id: string }
 ): Promise<RpcResult> {
-	if (repo.actor.kind !== 'user') {
-		return { data: null, error: new Error('[R-PERM-05] acknowledge requires a user session') };
-	}
-	const result = await rpcFromRepo(repo, 'decide_principle_proposal', {
-		p_id: args.id,
-		p_action: 'ack',
-		p_note: null
-	});
-	return mapRpc(result);
+	return decidePrincipleProposalRpc(repo, { id: args.id, action: 'ack' });
 }
 
 /** BE-19: apply_user_correction — create+approve+apply+audit in one TX (R-VAL-P11). */

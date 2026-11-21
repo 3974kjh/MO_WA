@@ -55,6 +55,19 @@ export async function createPositionProposal(
 	return { data: null, error: error as Error };
 }
 
+export type PrincipleProposalCreateInput = {
+	principle_id: string;
+	proposed_body_md: string;
+	reason_md: string;
+	evidence: unknown;
+	clause_ref?: string | null;
+	client_ref?: string | null;
+};
+
+/**
+ * List principle proposals for owner.
+ * `display_id` is the server string (R-0001) — never recompute from uuid.
+ */
 export async function listPrincipleProposals(
 	repo: RepoClient
 ): Promise<{ data: PrincipleProposalRow[]; error: Error | null }> {
@@ -63,6 +76,89 @@ export async function listPrincipleProposals(
 	q = withOwnerFilter(q, ownerId);
 	const { data, error } = await q;
 	return { data: (data ?? []) as PrincipleProposalRow[], error: error as Error | null };
+}
+
+/**
+ * Insert principle proposal — display_no/display_id, base_version/hash, proposed_by*
+ * assigned by DB triggers. M-2: never pass proposed_by* (client values ignored/stripped).
+ */
+export async function createPrincipleProposal(
+	repo: RepoClient,
+	input: PrincipleProposalCreateInput
+): Promise<{ data: PrincipleProposalRow | null; error: Error | null }> {
+	const ownerId = requireOwnerId(repo);
+	const row: Record<string, unknown> = {
+		...stripClientIdentity(input as Record<string, unknown>, 'principle_proposals'),
+		owner_id: ownerId,
+		principle_id: input.principle_id,
+		proposed_body_md: input.proposed_body_md,
+		reason_md: input.reason_md,
+		evidence: input.evidence
+	};
+	if (input.clause_ref != null) row.clause_ref = input.clause_ref;
+	if (input.client_ref != null) row.client_ref = input.client_ref;
+
+	const { data, error } = await fromRepo(repo, 'principle_proposals')
+		.insert(row)
+		.select('*')
+		.single();
+	if (!error) {
+		return { data: (data as PrincipleProposalRow | null) ?? null, error: null };
+	}
+	const clientRef = typeof row.client_ref === 'string' ? row.client_ref : null;
+	if (clientRef && clientRefConflictFromInsertError(error)) {
+		return resolveClientRefConflict<PrincipleProposalRow>(
+			repo,
+			'principle_proposals',
+			clientRef,
+			row
+		);
+	}
+	return { data: null, error: error as Error };
+}
+
+export async function getPrincipleProposalByDisplayId(
+	repo: RepoClient,
+	displayId: string
+): Promise<{ data: PrincipleProposalRow | null; error: Error | null }> {
+	if (!isOwnerDisplayId(displayId) || !displayId.startsWith('R-')) {
+		return { data: null, error: new Error('display_id must be a server R-… string') };
+	}
+	const ownerId = requireOwnerId(repo);
+	let q = fromRepo(repo, 'principle_proposals').select('*').eq('display_id', displayId);
+	q = withOwnerFilter(q, ownerId);
+	const { data, error } = await q.maybeSingle();
+	return { data: (data as PrincipleProposalRow | null) ?? null, error: error as Error | null };
+}
+
+export async function getPrincipleProposalById(
+	repo: RepoClient,
+	id: string
+): Promise<{ data: PrincipleProposalRow | null; error: Error | null }> {
+	const ownerId = requireOwnerId(repo);
+	let q = fromRepo(repo, 'principle_proposals').select('*').eq('id', id);
+	q = withOwnerFilter(q, ownerId);
+	const { data, error } = await q.maybeSingle();
+	return { data: (data as PrincipleProposalRow | null) ?? null, error: error as Error | null };
+}
+
+/**
+ * Compare-and-set status transition for principle proposals
+ * (e.g. cancel: pending/on_hold → cancelled). Bot cancel is further gated by DB trigger.
+ */
+export async function updatePrincipleProposalStatus(
+	repo: RepoClient,
+	id: string,
+	transition: { from: readonly string[]; to: string }
+): Promise<{ data: PrincipleProposalRow | null; error: Error | null }> {
+	const ownerId = requireOwnerId(repo);
+	let q = fromRepo(repo, 'principle_proposals')
+		.update({ status: transition.to })
+		.eq('id', id)
+		.in('status', [...transition.from]);
+	q = withOwnerFilter(q, ownerId);
+	const { data, error } = await q.select('*').maybeSingle();
+	return { data: (data as PrincipleProposalRow | null) ?? null, error: error as Error | null };
 }
 
 /** Look up by server display_id string within owner scope. */

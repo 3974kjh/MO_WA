@@ -18,7 +18,6 @@ import {
 	listJournalEntries,
 	listPositionProposals,
 	listPositions,
-	listPrincipleProposals,
 	listReports,
 	type RepoClient
 } from '$lib/server/repo';
@@ -120,25 +119,6 @@ const PROPOSAL_FIELDS = [
 	'reason_md',
 	'calc_note',
 	'evidence',
-	'base_version',
-	'proposed_by_type',
-	'expires_at',
-	'held_at',
-	'decided_at',
-	'decision_note',
-	'created_at',
-	'updated_at'
-] as const;
-
-const PRINCIPLE_PROPOSAL_FIELDS = [
-	'id',
-	'display_id',
-	'display_no',
-	'principle_id',
-	'clause_ref',
-	'status',
-	'reason_md',
-	'proposed_body_md',
 	'base_version',
 	'proposed_by_type',
 	'expires_at',
@@ -564,24 +544,6 @@ export const listProposalsHandler: ToolHandler = async ({ args, repo: maybeRepo 
 	return { data: listResult('proposals', items, filtered.length) };
 };
 
-const listPrincipleProposalsShape = {
-	status: z
-		.enum([...PROPOSAL_STATUSES, 'active', 'all'])
-		.default('active')
-		.describe("상태 필터. 'active'=pending+on_hold (기본), 'all'=전체"),
-	limit: limitField
-} satisfies Shape;
-
-export const listPrincipleProposalsHandler: ToolHandler = async ({ args, repo: maybeRepo }) => {
-	const input = parseArgs(listPrincipleProposalsShape, args);
-	const repo = requireRepo(maybeRepo);
-	const filtered = rowsOf(unwrapDb(await listPrincipleProposals(repo)))
-		.filter((p) => matchesProposalStatus(p, input.status))
-		.sort(compareDesc('created_at'));
-	const items = filtered.slice(0, input.limit).map((p) => pick(p, PRINCIPLE_PROPOSAL_FIELDS));
-	return { data: listResult('principle_proposals', items, filtered.length) };
-};
-
 const listJournalShape = {
 	kind: z.enum(['buy', 'sell', 'thought', 'plan', 'review']).optional(),
 	state: z.enum(['pending', 'done', 'hold', 'closed']).optional(),
@@ -752,13 +714,6 @@ export const READ_TOOL_DEFS: readonly ReadToolDef[] = [
 		description: '일정/이벤트 목록(날짜 오름차순). from/to 모두 없으면 오늘(KST)부터.',
 		shape: listEventsShape,
 		handler: listEventsHandler
-	},
-	{
-		name: 'list_principle_proposals',
-		title: 'List principle proposals',
-		description: '원칙 변경 제안 목록. 기본은 pending+on_hold.',
-		shape: listPrincipleProposalsShape,
-		handler: listPrincipleProposalsHandler
 	}
 ];
 
