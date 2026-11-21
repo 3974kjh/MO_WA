@@ -13,6 +13,7 @@ import {
 	getReportById,
 	getReportByNaturalKey,
 	replaceReportSources,
+	setReportRenderCache,
 	updateReport,
 	type ReportSourceInput,
 	type RepoClient
@@ -33,10 +34,10 @@ import { McpToolError } from '../errors';
 import { assertReportKindScope, filterToolsByScopes } from '../scopes';
 import type { McpContext, McpRuleIssue } from '../types';
 import {
-	buildCachedRender,
-	cachedRenderToColumns,
+	buildWriteTimeCachedRender,
+	cachedRenderToDbColumns,
 	clearedRenderColumns,
-	stripClientRenderCache
+	stripRenderFields
 } from './cached-render';
 import { throwMappedDbError } from './db-error';
 import {
@@ -454,7 +455,8 @@ function conflictOnOwnership(slug: string, existing: ReportRow): McpToolError {
 
 export async function upsertReportHandler(input: ToolHandlerInput): Promise<ToolHandlerOutcome> {
 	const { ctx } = input;
-	const args = stripClientRenderCache(input.args) as Obj;
+	// BE-07: client/bot body_blocks·toc·bodyBlocks are discarded before any validate/save.
+	const args = stripRenderFields(input.args) as Obj;
 	const v = validateUpsert(ctx, args);
 	const repo = requireRepo(input.repo);
 
@@ -474,19 +476,16 @@ export async function upsertReportHandler(input: ToolHandlerInput): Promise<Tool
 		]);
 	}
 
-	const render = buildCachedRender(v.row.body_md as string);
-	const renderColumns = render ? cachedRenderToColumns(render) : clearedRenderColumns();
-
+	// Persist body_md first WITHOUT render columns (column GRANTs + stripRenderFields).
 	let saved: ReportRow;
 	let created: boolean;
 	if (existing) {
-		const patch = { ...v.row, ...renderColumns };
-		const updated = unwrap(await updateReport(repo, existing.id, patch as Partial<ReportRow>));
+		const updated = unwrap(await updateReport(repo, existing.id, v.row as Partial<ReportRow>));
 		if (!updated) throw new Error('updateReport returned no row');
 		saved = updated;
 		created = false;
 	} else {
-		const insert: Obj = { ...v.row, ...renderColumns };
+		const insert: Obj = { ...v.row };
 		if (isObject(args.source_ref)) insert.source_ref = args.source_ref;
 		const row = unwrap(await createReport(repo, insert as never));
 		if (!row) throw new Error('createReport returned no row');
@@ -496,6 +495,16 @@ export async function upsertReportHandler(input: ToolHandlerInput): Promise<Tool
 
 	const sourceResult = await replaceReportSources(repo, saved.id, v.sources);
 	if (sourceResult.error) throwMappedDbError(sourceResult.error);
+
+	// Write-time render via SECURITY DEFINER RPC only. Fallback → clear cache, keep body_md.
+	const cache = buildWriteTimeCachedRender({
+		id: saved.id,
+		version: saved.version,
+		body_md: v.row.body_md as string
+	});
+	const renderColumns = cache ? cachedRenderToDbColumns(cache) : clearedRenderColumns();
+	const cacheResult = await setReportRenderCache(repo, saved.id, renderColumns);
+	if (cacheResult.error) throwMappedDbError(cacheResult.error);
 
 	return {
 		data: {

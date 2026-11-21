@@ -1,9 +1,10 @@
 import type { ReportRow } from '$lib/types/mowa.contract';
 import { archiveRow, restoreRow } from './archive';
 import { serverCreateStamps, stripClientIdentity, type RepoClient } from './client';
-import { fromRepo } from './db';
+import { fromRepo, rpcFromRepo } from './db';
 import { requireOwnerId, withOwnerFilter } from './owner';
 import { pickPatchable, REPORT_PATCHABLE } from './patch';
+import { stripRenderFields } from '$lib/server/markdown/cache';
 
 export type ReportCreateInput = Partial<ReportRow> &
 	Pick<ReportRow, 'kind' | 'slug' | 'title' | 'report_date' | 'body_md' | 'domain'>;
@@ -85,32 +86,55 @@ export async function replaceReportSources(
 	return { error: (error as Error | null) ?? null };
 }
 
-/** Create report — server fills owner_id + source_bot_id (R-PERM-03). No runRules here (M-5). */
+/** Create report — server fills owner_id + source_bot_id (R-PERM-03). No runRules here (M-5).
+ * body_blocks/toc are always stripped (BE-07); use setReportRenderCache after insert. */
 export async function createReport(
 	repo: RepoClient,
 	input: ReportCreateInput
 ): Promise<{ data: ReportRow | null; error: Error | null }> {
 	const stamps = serverCreateStamps(repo.actor);
+	const stripped = stripRenderFields(
+		stripClientIdentity(input as Record<string, unknown>, 'reports') as Record<string, unknown>
+	);
 	const row = {
-		...stripClientIdentity(input as Record<string, unknown>, 'reports'),
+		...stripped,
 		...stamps
 	};
 	const { data, error } = await fromRepo(repo, 'reports').insert(row).select('*').single();
 	return { data: (data as ReportRow | null) ?? null, error: error as Error | null };
 }
 
-/** Update only report patchable fields (M-3). */
+/** Update only report patchable fields (M-3). body_blocks/toc never pass through. */
 export async function updateReport(
 	repo: RepoClient,
 	id: string,
 	patch: Partial<ReportRow>
 ): Promise<{ data: ReportRow | null; error: Error | null }> {
 	const ownerId = requireOwnerId(repo);
-	const safe = pickPatchable(patch as Record<string, unknown>, REPORT_PATCHABLE);
+	const safe = pickPatchable(stripRenderFields(patch as Record<string, unknown>), REPORT_PATCHABLE);
 	let q = fromRepo(repo, 'reports').update(safe).eq('id', id);
 	q = withOwnerFilter(q, ownerId);
 	const { data, error } = await q.select('*').single();
 	return { data: (data as ReportRow | null) ?? null, error: error as Error | null };
+}
+
+/**
+ * Write-time render cache via SECURITY DEFINER RPC (column GRANTs revoked on reports).
+ * Only the server render path should call this — never trust client/bot args.
+ */
+export async function setReportRenderCache(
+	repo: RepoClient,
+	reportId: string,
+	columns: { body_blocks: unknown; toc: unknown }
+): Promise<{ error: Error | null }> {
+	const ownerId = requireOwnerId(repo);
+	const { error } = await rpcFromRepo(repo, 'mowa_set_report_render_cache', {
+		p_report_id: reportId,
+		p_owner_id: ownerId,
+		p_body_blocks: columns.body_blocks,
+		p_toc: columns.toc
+	});
+	return { error: (error as Error | null) ?? null };
 }
 
 export function archiveReport(repo: RepoClient, id: string) {

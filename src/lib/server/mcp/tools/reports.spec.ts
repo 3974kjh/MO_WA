@@ -11,6 +11,7 @@ const db = vi.hoisted(() => ({
 	sources: [] as Array<{ reportId: string; sources: Row[] }>,
 	created: [] as Row[],
 	updated: [] as Array<{ id: string; patch: Row }>,
+	renderCaches: [] as Array<{ id: string; body_blocks: unknown; toc: unknown }>,
 	archivedIds: [] as string[],
 	replaceError: null as Error | null
 }));
@@ -48,6 +49,19 @@ vi.mock('$lib/server/repo', () => {
 			const changed = row.body_md !== patch.body_md || row.title !== patch.title;
 			Object.assign(row, patch, { version: (row.version as number) + (changed ? 1 : 0) });
 			return ok(row);
+		},
+		setReportRenderCache: async (
+			_r: unknown,
+			id: string,
+			columns: { body_blocks: unknown; toc: unknown }
+		) => {
+			db.renderCaches.push({ id, ...columns });
+			const row = db.reports.find((r) => r.id === id);
+			if (row) {
+				row.body_blocks = columns.body_blocks;
+				row.toc = columns.toc;
+			}
+			return { error: null };
 		},
 		replaceReportSources: async (_r: unknown, reportId: string, sources: Row[]) => {
 			if (db.replaceError) return { error: db.replaceError };
@@ -154,6 +168,7 @@ beforeEach(() => {
 	db.sources = [];
 	db.created = [];
 	db.updated = [];
+	db.renderCaches = [];
 	db.archivedIds = [];
 	db.replaceError = null;
 	renderReport.mockClear();
@@ -441,8 +456,8 @@ describe('upsert_report — validation', () => {
 	});
 });
 
-describe('upsert_report — render cache', () => {
-	it('ignores client body_blocks/toc/bodyBlocks and writes the server fe15-r2 cache', async () => {
+describe('upsert_report — render cache (fe15-r3 + column RPC)', () => {
+	it('ignores client body_blocks/toc/bodyBlocks; create/update omit them; RPC writes fe15-r3', async () => {
 		const h = await harness();
 		dataOf(
 			await h.call(
@@ -455,27 +470,35 @@ describe('upsert_report — render cache', () => {
 			)
 		);
 		const input = db.created[0];
-		const blocks = input.body_blocks as { a: string; rendererVersion: string };
-		expect(blocks.rendererVersion).toBe('fe15-r2');
-		expect(blocks.a).not.toContain('evil');
-		expect(blocks.a).toContain('본문입니다');
+		expect(input.body_blocks).toBeUndefined();
+		expect(input.toc).toBeUndefined();
 		expect(input).not.toHaveProperty('bodyBlocks');
-		expect((input.toc as Array<{ text: string }>).map((t) => t.text)).toEqual(['시장']);
+		expect(db.renderCaches).toHaveLength(1);
+		const cache = db.renderCaches[0];
+		const blocks = cache.body_blocks as {
+			key: string;
+			bodyBlocks: { a: string; hasSplit: boolean };
+		};
+		expect(blocks.key).toContain('fe15-r3');
+		expect(blocks.bodyBlocks.a).not.toContain('evil');
+		expect(blocks.bodyBlocks.a).toContain('본문입니다');
+		expect((cache.toc as Array<{ text: string }>).map((t) => t.text)).toEqual(['시장']);
 	});
 
-	it('update refreshes the cache with the new body', async () => {
+	it('update refreshes the cache via RPC with the new body', async () => {
 		const h = await harness();
 		await h.call('upsert_report', dailyArgs());
 		await h.call(
 			'upsert_report',
 			dailyArgs({ body_md: '## 새 제목\n\n새 본문\n\n투자 권유 아님.' })
 		);
-		const patch = db.updated[0].patch;
-		expect((patch.toc as Array<{ text: string }>).map((t) => t.text)).toEqual(['새 제목']);
-		expect((patch.body_blocks as { rendererVersion: string }).rendererVersion).toBe('fe15-r2');
+		expect(db.updated[0].patch.body_blocks).toBeUndefined();
+		const cache = db.renderCaches[1];
+		expect((cache.toc as Array<{ text: string }>).map((t) => t.text)).toEqual(['새 제목']);
+		expect((cache.body_blocks as { key: string }).key).toContain('fe15-r3');
 	});
 
-	it('render failure still saves body_md but clears (omits) the cache', async () => {
+	it('render failure still saves body_md but clears the cache via RPC', async () => {
 		renderReport.mockImplementationOnce(() => {
 			throw new Error('boom');
 		});
@@ -484,8 +507,26 @@ describe('upsert_report — render cache', () => {
 		expect(out.created).toBe(true);
 		const input = db.created[0];
 		expect(input.body_md).toContain('본문입니다');
-		expect(input.body_blocks).toBeNull();
-		expect(input.toc).toEqual([]);
+		expect(input.body_blocks).toBeUndefined();
+		expect(db.renderCaches[0]).toEqual({
+			id: expect.any(String),
+			body_blocks: null,
+			toc: []
+		});
+	});
+
+	it('fallback too-large is not cached (cleared via RPC)', async () => {
+		renderReport.mockImplementationOnce(() => ({
+			a: '…' as never,
+			b: '' as never,
+			hasSplit: false,
+			toc: [],
+			fallback: 'too-large' as const
+		}));
+		const h = await harness();
+		dataOf(await h.call('upsert_report', dailyArgs()));
+		expect(db.renderCaches[0].body_blocks).toBeNull();
+		expect(db.renderCaches[0].toc).toEqual([]);
 	});
 });
 

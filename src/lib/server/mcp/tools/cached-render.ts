@@ -1,69 +1,73 @@
 /**
- * Write-time render cache contract (BE-07). Matches FE hardening `fe15-r2`:
- * `reports.body_blocks` holds the sanitized A/B HTML + renderer version, `reports.toc`
- * holds the TOC array. Readers must ignore (and re-render) when rendererVersion differs.
+ * BE-07 write-time render cache — aligns with FE-15 hardening (`fe15-r3`).
+ *
+ * Uses the shared FE module (`$lib/server/markdown/cache.ts`):
+ * - RENDERER_VERSION / stripRenderFields / CachedRender / reportCacheKey
+ * - fallback (`too-large` | `render-error`) is never cached
+ * - memory store is NOT used in production; DB columns are written only via
+ *   `mowa_set_report_render_cache` (column GRANTs revoked from bots/authenticated)
  */
+import {
+	RENDERER_VERSION,
+	reportCacheKey,
+	stripRenderFields,
+	type CachedRender
+} from '$lib/server/markdown/cache';
 import { renderReport } from '$lib/server/markdown/render';
-import type { TocItem } from '$lib/markdown/types';
 
-export const RENDERER_VERSION = 'fe15-r2' as const;
+export { RENDERER_VERSION, stripRenderFields, reportCacheKey };
+export type { CachedRender };
 
-export const MAX_RENDER_BODY_BYTES = 1_048_576;
+/** @deprecated use stripRenderFields — kept as alias for older call sites/tests */
+export const stripClientRenderCache = stripRenderFields;
 
-export type CachedBodyBlocks = {
-	a: string;
-	b: string;
-	hasSplit: boolean;
-	rendererVersion: typeof RENDERER_VERSION;
-};
-
-export type CachedRender = {
-	bodyBlocks: CachedBodyBlocks;
-	toc: TocItem[];
-	rendererVersion: typeof RENDERER_VERSION;
-};
-
-/** Render markdown for the DB cache. Null (do not cache) on oversize input or renderer failure. */
-export function buildCachedRender(bodyMd: string): CachedRender | null {
-	if (typeof bodyMd !== 'string') return null;
-	if (new TextEncoder().encode(bodyMd).byteLength > MAX_RENDER_BODY_BYTES) return null;
+/**
+ * Render body_md for DB cache after the report row exists (id + version known).
+ * Returns null when the renderer falls back (too-large / render-error) or throws —
+ * caller must omit/clear cache columns and still keep the validated body_md save.
+ */
+export function buildWriteTimeCachedRender(report: {
+	id: string;
+	version: number | string;
+	body_md: string;
+}): CachedRender | null {
+	if (typeof report.body_md !== 'string') return null;
 	try {
-		const rendered = renderReport(bodyMd);
+		const rendered = renderReport(report.body_md);
+		if (rendered.fallback) return null;
+		const key = reportCacheKey({ id: report.id, version: report.version });
 		return {
+			key,
 			bodyBlocks: {
 				a: rendered.a,
 				b: rendered.b,
-				hasSplit: rendered.hasSplit,
-				rendererVersion: RENDERER_VERSION
+				hasSplit: rendered.hasSplit
 			},
-			toc: rendered.toc,
-			rendererVersion: RENDERER_VERSION
+			toc: rendered.toc
 		};
 	} catch {
 		return null;
 	}
 }
 
-/** Columns to write for a cache hit: `{ body_blocks, toc }`. */
-export function cachedRenderToColumns(render: CachedRender): {
-	body_blocks: CachedBodyBlocks;
-	toc: TocItem[];
+/** Split CachedRender across reports.body_blocks + reports.toc columns. */
+export function cachedRenderToDbColumns(cache: CachedRender): {
+	body_blocks: {
+		key: string;
+		bodyBlocks: CachedRender['bodyBlocks'];
+	};
+	toc: CachedRender['toc'];
 } {
-	return { body_blocks: render.bodyBlocks, toc: render.toc };
+	return {
+		body_blocks: {
+			key: cache.key,
+			bodyBlocks: cache.bodyBlocks
+		},
+		toc: cache.toc
+	};
 }
 
-/** Columns that clear a stale cache (body changed but render failed / oversized). */
+/** Clear stale cache when body_md saved but render fell back / failed. */
 export function clearedRenderColumns(): { body_blocks: null; toc: [] } {
 	return { body_blocks: null, toc: [] };
-}
-
-const CLIENT_CACHE_KEYS = ['body_blocks', 'bodyBlocks', 'toc'] as const;
-
-/** Clients must never write the render cache — drop those keys from tool args. */
-export function stripClientRenderCache<T extends Record<string, unknown>>(
-	args: T
-): Omit<T, 'body_blocks' | 'bodyBlocks' | 'toc'> {
-	const out: Record<string, unknown> = { ...args };
-	for (const key of CLIENT_CACHE_KEYS) delete out[key];
-	return out as Omit<T, 'body_blocks' | 'bodyBlocks' | 'toc'>;
 }
