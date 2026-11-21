@@ -86,6 +86,32 @@ describe('settings load (BE-12)', () => {
 	});
 });
 
+describe('settings load (FE-09)', () => {
+	it('프로필별 기본 권한을 싣고, 평문 키·해시는 어디에도 없다', async () => {
+		const out = (await load({
+			locals: { user: { id: 'u1' }, supabase: {} }
+		} as never)) as { profileScopes: Record<string, string[]> };
+		expect(Object.keys(out.profileScopes)).toEqual(
+			expect.arrayContaining(['finance-manager', 'importer', 'custom'])
+		);
+		expect(out.profileScopes['finance-manager']).toContain('positions:propose');
+		expect(out.profileScopes['importer']).not.toContain('positions:propose');
+		expect(out).not.toHaveProperty('apiKey');
+		expect(JSON.stringify(out)).not.toMatch(/apiKey|mowa_[a-z0-9]{10}_/);
+	});
+
+	it('발급 액션은 no-store 헤더 설정 함수를 핸들러에 그대로 넘긴다', async () => {
+		handleIssueBotKey.mockResolvedValue({ ok: true, apiKey: 'dummy', botClient: {} });
+		const setHeaders = vi.fn();
+		await actions.issue!({
+			request: new Request('http://x/settings?/issue', { method: 'POST', body: new FormData() }),
+			locals: { user: { id: 'u1' }, supabase: {} },
+			setHeaders
+		} as never);
+		expect(handleIssueBotKey.mock.calls[0]![3]).toEqual({ setHeaders });
+	});
+});
+
 describe('settings actions (BE-12)', () => {
 	it('wires issue/revoke/setExpiry/setRateLimit', async () => {
 		handleIssueBotKey.mockResolvedValue({ ok: true, apiKey: 'redacted-in-assert', botClient: {} });

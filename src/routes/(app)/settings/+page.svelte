@@ -1,13 +1,81 @@
 <script lang="ts">
+	/**
+	 * FE-09 설정: 화면 모드(3단) · 봇 키 · 활동 기록 진입. 키·활동 기록은 시안 없음(G-13) →
+	 * 공통 컴포넌트 + design.md §5-2·§5-6.
+	 * - 키 원문은 발급 성공 응답(form.apiKey)에서만 1회 표시. load·URL·저장소에는 두지 않는다.
+	 * - 폐기는 확인 시트(Sheet)를 거친다. importer는 만료일 필수. 제안 권한은 finance-manager만.
+	 */
 	import { enhance } from '$app/forms';
+	import { resolve } from '$app/paths';
 	import type { ActionData, PageData } from './$types';
+	import Banner from '$lib/components/ui/Banner.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import Card from '$lib/components/ui/Card.svelte';
+	import EmptyState from '$lib/components/ui/EmptyState.svelte';
+	import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
+	import Sheet from '$lib/components/ui/Sheet.svelte';
+	import { toast } from '$lib/components/ui/toast.svelte';
+	import { formatKstShort } from '$lib/format/datetime';
+	import { THEME_LABEL, type ThemeMode } from '$lib/theme/theme';
+	import { themeState } from '$lib/theme/themeState.svelte';
+	import {
+		expiryRequired,
+		FINANCE_MANAGER_PROFILE,
+		profileLabel,
+		PROPOSE_SCOPES,
+		selectableScopes,
+		settingsErrorMessage
+	} from '$lib/settings/view';
 
 	let { data, form }: { data: PageData; form?: ActionData } = $props();
 
-	const issueOk = $derived(form && 'ok' in form && form.ok === true && 'apiKey' in form);
+	const auditHref = resolve('/settings/audit');
+
+	$effect(() => {
+		themeState.sync();
+	});
+	const themeOptions: { value: ThemeMode; label: string }[] = (
+		['system', 'light', 'dark'] as ThemeMode[]
+	).map((m) => ({ value: m, label: THEME_LABEL[m] }));
+
+	// ——— 결과 메시지 (원문 키는 form.apiKey에만) ———
+	const issued = $derived(
+		form && 'ok' in form && form.ok === true && 'apiKey' in form ? form : null
+	);
 	const actionOk = $derived(form && 'ok' in form && form.ok === true && !('apiKey' in form));
-	const actionFail = $derived(form && 'ok' in form && form.ok === false);
+	const failMessage = $derived(
+		form && 'ok' in form && form.ok === false
+			? settingsErrorMessage('message' in form ? form.message : undefined)
+			: null
+	);
+
+	let keyHidden = $state(false);
+	$effect(() => {
+		// 새 발급 응답이 오면 다시 보이게
+		if (issued) keyHidden = false;
+	});
+
+	async function copyKey() {
+		const key = issued?.apiKey;
+		if (!key) return;
+		try {
+			await navigator.clipboard.writeText(key);
+			toast.show('키를 복사했어요', { tone: 'ok' });
+		} catch {
+			toast.show('복사하지 못했어요. 직접 선택해 복사해 주세요.', { tone: 'err' });
+		}
+	}
+
+	// ——— 발급 폼 ———
+	let profile = $state('finance-manager');
+	const defaults = $derived(data.profileScopes[profile] ?? []);
+	const scopeChoices = $derived(selectableScopes(profile, defaults));
+	let picked = $derived<string[]>([...scopeChoices]);
+	const scopesValue = $derived(JSON.stringify(picked));
+
+	// ——— 폐기 확인 ———
+	type Bot = PageData['botClients'][number];
+	let revokeTarget = $state<Bot | null>(null);
 </script>
 
 <svelte:head><title>설정 · MO_WA</title></svelte:head>
@@ -15,44 +83,64 @@
 <section class="settings" data-testid="settings-page">
 	<header class="head">
 		<h1>설정</h1>
-		<p class="sub">
-			봇 연결 키(발급·폐기)와 활동 기록 요약. 전체 설정 UI는 이후 티켓에서 다룹니다.
-		</p>
 	</header>
 
 	{#if data.error}
-		<p class="err" role="alert">{data.error}</p>
+		<Banner tone="err">{data.error}</Banner>
 	{/if}
 
-	{#if issueOk && form && 'apiKey' in form && form.botClient}
-		<div class="once" role="status" data-testid="issued-api-key">
-			<p class="once-title">키를 한 번만 보여 줍니다. 지금 복사해 두세요.</p>
-			<code class="once-key">{form.apiKey}</code>
-			<p class="once-meta">prefix: {form.botClient.key_prefix} · id: {form.botClient.id}</p>
+	<Card>
+		<h2 class="h2">화면 모드</h2>
+		<p class="muted">상단바 버튼과 같은 설정이에요.</p>
+		<div data-testid="theme-setting">
+			<SegmentedControl
+				ariaLabel="화면 모드"
+				options={themeOptions}
+				value={themeState.mode}
+				onchange={(m) => themeState.set(m)}
+			/>
 		</div>
+	</Card>
+
+	{#if issued}
+		{#if !keyHidden}
+			<div class="once" role="status" data-testid="issued-api-key">
+				<p class="once-title">
+					키는 지금 한 번만 보여 드려요. 닫거나 새로고침하면 다시 볼 수 없어요.
+				</p>
+				<code class="once-key">{issued.apiKey}</code>
+				<p class="once-meta">{issued.botClient.name} · 식별 앞자리 {issued.botClient.key_prefix}</p>
+				<div class="once-acts">
+					<Button variant="primary" compact label="복사" onclick={copyKey} />
+					<Button
+						variant="secondary-pill"
+						compact
+						label="닫기"
+						onclick={() => (keyHidden = true)}
+					/>
+				</div>
+			</div>
+		{/if}
 	{:else if actionOk}
-		<p class="ok" role="status" data-testid="bot-action-ok">반영했습니다.</p>
-	{:else if actionFail && form && 'message' in form}
-		<p class="err" role="alert" data-testid="bot-action-error">{form.message}</p>
+		<p class="ok" role="status" data-testid="bot-action-ok">반영했어요.</p>
+	{:else if failMessage}
+		<Banner tone="err"><span data-testid="bot-action-error">{failMessage}</span></Banner>
 	{/if}
 
-	<section class="block" aria-labelledby="bots-heading">
-		<h2 id="bots-heading">봇 클라이언트</h2>
+	<Card>
+		<h2 class="h2" id="bots-heading">봇 키</h2>
 
-		<!-- use:enhance: progressive enhancement so refresh does not resubmit the issue POST -->
 		<form method="POST" action="?/issue" class="issue" data-testid="bot-issue-form" use:enhance>
 			<label>
 				이름
-				<input name="name" required maxlength="120" placeholder="preview-finance-manager" />
+				<input name="name" required maxlength="120" placeholder="예: 재무 봇" />
 			</label>
 			<label>
 				프로필
-				<select name="profile" required>
-					<option value="finance-manager">finance-manager</option>
-					<option value="equity-analyst">equity-analyst</option>
-					<option value="house-signal">house-signal</option>
-					<option value="importer">importer</option>
-					<option value="custom">custom</option>
+				<select name="profile" required bind:value={profile} data-testid="issue-profile">
+					{#each Object.keys(data.profileScopes) as p (p)}
+						<option value={p}>{profileLabel(p)}</option>
+					{/each}
 				</select>
 			</label>
 			<label>
@@ -60,89 +148,148 @@
 				<input name="description" maxlength="200" />
 			</label>
 			<label>
-				만료 (importer 필수)
-				<input name="expires_at" type="datetime-local" />
+				만료 {expiryRequired(profile) ? '(필수)' : '(선택)'}
+				<input
+					name="expires_at"
+					type="datetime-local"
+					required={expiryRequired(profile)}
+					data-testid="issue-expiry"
+				/>
 			</label>
 			<label>
 				분당 한도
 				<input name="rate_limit_per_min" type="number" min="1" max="600" value="60" />
 			</label>
-			<!-- Optional JSON scopes override for tests / power users; empty = profile defaults -->
-			<label>
-				스코프 덮어쓰기 (JSON 배열, 비우면 기본)
-				<input name="scopes" placeholder="비우면 프로필 기본값" autocomplete="off" />
-			</label>
-			<Button type="submit" variant="primary" label="키 발급" />
+			<fieldset class="scopes" data-testid="issue-scopes">
+				<legend>권한 범위</legend>
+				{#each scopeChoices as s (s)}
+					<label class="check">
+						<input
+							type="checkbox"
+							value={s}
+							checked={picked.includes(s)}
+							onchange={(e) => {
+								picked = e.currentTarget.checked ? [...picked, s] : picked.filter((x) => x !== s);
+							}}
+						/>
+						{s}
+					</label>
+				{/each}
+				{#if profile !== FINANCE_MANAGER_PROFILE}
+					<p class="muted" data-testid="propose-note">
+						제안 권한({PROPOSE_SCOPES.join(', ')})은 재무 관리 봇에서만 켤 수 있어요.
+					</p>
+				{/if}
+			</fieldset>
+			<input type="hidden" name="scopes" value={scopesValue} />
+			<Button type="submit" variant="primary" label="키 발급" disabled={picked.length === 0} />
 		</form>
 
-		<ul class="list" data-testid="bot-clients-list">
-			{#each data.botClients as bot (bot.id)}
-				<li class="row" data-bot-id={bot.id} data-revoked={bot.revoked_at ? '1' : '0'}>
-					<div class="meta">
-						<strong>{bot.name}</strong>
-						<span class="muted"
-							>{bot.profile} · prefix {bot.key_prefix} · {bot.rate_limit_per_min}/min</span
-						>
-						<span class="muted">scopes: {bot.scopes.join(', ')}</span>
-						{#if bot.expires_at}
-							<span class="muted">expires {bot.expires_at}</span>
-						{/if}
-						{#if bot.revoked_at}
-							<span class="revoked">폐기됨 {bot.revoked_at}</span>
-						{/if}
-					</div>
-					{#if !bot.revoked_at}
-						<div class="acts">
-							<form method="POST" action="?/revoke">
-								<input type="hidden" name="id" value={bot.id} />
-								<input type="hidden" name="reason" value="user_revoke" />
-								<Button type="submit" variant="secondary-pill" compact label="폐기" />
-							</form>
-							<form method="POST" action="?/setExpiry" class="inline">
-								<input type="hidden" name="id" value={bot.id} />
-								<input name="expires_at" type="datetime-local" aria-label="만료 시각" />
-								<Button type="submit" variant="ghost" compact label="만료 설정" />
-							</form>
-							<form method="POST" action="?/setRateLimit" class="inline">
-								<input type="hidden" name="id" value={bot.id} />
-								<input
-									name="rate_limit_per_min"
-									type="number"
-									min="1"
-									max="600"
-									value={bot.rate_limit_per_min}
-									aria-label="분당 한도"
-								/>
-								<Button type="submit" variant="ghost" compact label="한도" />
-							</form>
-						</div>
-					{/if}
-				</li>
-			{:else}
-				<li class="empty muted">발급된 봇 키가 없습니다.</li>
-			{/each}
-		</ul>
-	</section>
-
-	<section class="block" aria-labelledby="audit-heading">
-		<h2 id="audit-heading">활동 기록 규칙 ID</h2>
-		{#if Object.keys(data.ruleIdCounts).length === 0}
-			<p class="muted">집계할 기록이 없습니다.</p>
+		{#if data.botClients.length === 0}
+			<EmptyState icon="🔑" title="발급한 키가 없어요" desc="위에서 봇 키를 발급해 보세요." />
 		{:else}
-			<ul class="rules">
-				{#each Object.entries(data.ruleIdCounts) as [ruleId, count] (ruleId)}
-					<li><code>{ruleId}</code> · {count}</li>
+			<ul class="list" data-testid="bot-clients-list">
+				{#each data.botClients as bot (bot.id)}
+					<li class="row" data-bot-id={bot.id} data-revoked={bot.revoked_at ? '1' : '0'}>
+						<div class="meta">
+							<strong>{bot.name}</strong>
+							<span class="muted"
+								>{profileLabel(bot.profile)} · 앞자리 {bot.key_prefix} · 분당 {bot.rate_limit_per_min}회</span
+							>
+							<span class="muted">권한: {bot.scopes.join(', ')}</span>
+							<span class="muted" data-testid="last-used"
+								>마지막 사용 {bot.last_used_at ? formatKstShort(bot.last_used_at) : '없음'}</span
+							>
+							{#if bot.expires_at}
+								<span class="muted">만료 {formatKstShort(bot.expires_at)}</span>
+							{/if}
+							{#if bot.revoked_at}
+								<span class="revoked">폐기됨 {formatKstShort(bot.revoked_at)}</span>
+							{/if}
+						</div>
+						{#if !bot.revoked_at}
+							<div class="acts">
+								<form method="POST" action="?/setExpiry" class="inline" use:enhance>
+									<input type="hidden" name="id" value={bot.id} />
+									<input
+										name="expires_at"
+										type="datetime-local"
+										aria-label="만료 시각"
+										required={expiryRequired(bot.profile)}
+									/>
+									<Button type="submit" variant="ghost" compact label="만료 설정" />
+								</form>
+								<form method="POST" action="?/setRateLimit" class="inline" use:enhance>
+									<input type="hidden" name="id" value={bot.id} />
+									<input
+										name="rate_limit_per_min"
+										type="number"
+										min="1"
+										max="600"
+										value={bot.rate_limit_per_min}
+										aria-label="분당 한도"
+									/>
+									<Button type="submit" variant="ghost" compact label="한도 변경" />
+								</form>
+								<Button
+									variant="secondary-pill"
+									compact
+									label="폐기"
+									onclick={() => (revokeTarget = bot)}
+								/>
+							</div>
+						{/if}
+					</li>
 				{/each}
 			</ul>
 		{/if}
-	</section>
+	</Card>
+
+	<Card>
+		<h2 class="h2">활동 기록</h2>
+		<p class="muted">봇이 한 일과 경고를 확인해요.</p>
+		<a class="more" href={auditHref} data-testid="audit-link">활동 기록 보기</a>
+	</Card>
 </section>
+
+<!-- 폐기 확인: 시트의 확인 버튼이 이 폼을 제출한다 -->
+<form
+	id="revoke-form"
+	method="POST"
+	action="?/revoke"
+	use:enhance={() => {
+		return async ({ update }) => {
+			revokeTarget = null;
+			await update();
+		};
+	}}
+>
+	<input type="hidden" name="id" value={revokeTarget?.id ?? ''} />
+	<input type="hidden" name="reason" value="user_revoke" />
+</form>
+
+<Sheet
+	open={revokeTarget != null}
+	onclose={() => (revokeTarget = null)}
+	variant="center"
+	title="키를 폐기할까요?"
+>
+	{#if revokeTarget}
+		<p class="confirm" data-testid="revoke-confirm">
+			<b>{revokeTarget.name}</b> 키를 폐기하면 이 봇은 바로 접속할 수 없고, 되돌릴 수 없어요.
+		</p>
+	{/if}
+	{#snippet footer()}
+		<Button variant="secondary-pill" compact label="취소" onclick={() => (revokeTarget = null)} />
+		<Button type="submit" form="revoke-form" variant="primary" compact label="폐기" />
+	{/snippet}
+</Sheet>
 
 <style>
 	.settings {
 		display: flex;
 		flex-direction: column;
-		gap: 28px;
+		gap: 16px;
 		padding: 8px 0 40px;
 		max-width: 720px;
 	}
@@ -153,14 +300,8 @@
 		letter-spacing: -0.02em;
 		color: var(--color-ink);
 	}
-	.sub {
-		margin: 6px 0 0;
-		color: var(--color-muted);
-		font-size: 14px;
-		line-height: 1.4;
-	}
-	.block h2 {
-		margin: 0 0 12px;
+	.h2 {
+		margin: 0 0 8px;
 		font-size: 18px;
 		color: var(--color-ink);
 	}
@@ -182,7 +323,26 @@
 		font-weight: 600;
 		color: var(--color-ink);
 	}
-	input,
+	.check {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-weight: 400;
+	}
+	.scopes {
+		border: 1px solid var(--color-hairline);
+		border-radius: var(--radius-md);
+		padding: 10px 12px;
+		display: grid;
+		gap: 6px;
+		margin: 0;
+	}
+	.scopes legend {
+		font-size: 13px;
+		font-weight: 600;
+		padding: 0 4px;
+	}
+	input:not([type='checkbox']):not([type='hidden']),
 	select {
 		min-height: 40px;
 		padding: 8px 12px;
@@ -211,6 +371,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
+		word-break: break-all;
 	}
 	.acts {
 		display: flex;
@@ -219,18 +380,20 @@
 		align-items: end;
 	}
 	.muted {
+		margin: 0;
 		color: var(--color-muted);
 		font-size: 13px;
 	}
 	.revoked {
-		color: var(--color-danger, #b91c1c);
+		color: var(--color-muted);
 		font-size: 13px;
+		font-weight: 600;
 	}
 	.once {
 		padding: 14px;
 		border: 1px solid var(--color-hairline);
 		border-radius: var(--radius-md);
-		background: var(--color-surface-pearl, var(--color-canvas-parchment));
+		background: var(--color-canvas-parchment);
 	}
 	.once-title {
 		margin: 0 0 8px;
@@ -243,26 +406,31 @@
 		padding: 8px;
 		background: var(--color-canvas);
 		border-radius: var(--radius-sm);
+		user-select: all;
 	}
 	.once-meta {
-		margin: 8px 0 0;
+		margin: 8px 0;
 		font-size: 12px;
 		color: var(--color-muted);
 	}
-	.err {
-		color: var(--color-danger, #b91c1c);
-		margin: 0;
+	.once-acts {
+		display: flex;
+		gap: 8px;
 	}
 	.ok {
 		color: var(--color-ink);
 		margin: 0;
 	}
-	.rules {
-		margin: 0;
-		padding-left: 18px;
-		font-size: 13px;
+	.more {
+		display: inline-block;
+		margin-top: 8px;
+		color: var(--color-ink);
+		text-decoration: underline;
 	}
-	.empty {
-		padding: 8px 0;
+	.confirm {
+		margin: 0;
+		font-size: var(--text-sm);
+		color: var(--color-muted);
+		line-height: 1.6;
 	}
 </style>

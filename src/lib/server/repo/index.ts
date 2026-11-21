@@ -45,6 +45,7 @@ export * from './reports.repo';
 export * from './proposalActions.repo';
 export * from './market.repo';
 export * from './auditStats.repo';
+export * from './auditLog.repo';
 export * from './botClients.repo';
 export * from './webLoads.repo';
 export * from './journalWeb.repo';

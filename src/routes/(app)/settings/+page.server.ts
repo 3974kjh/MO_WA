@@ -6,6 +6,7 @@ import {
 	handleSetBotKeyExpiry,
 	handleSetBotKeyRateLimit
 } from '$lib/server/web/botKeyActions';
+import { BOT_PROFILES, defaultScopesForProfile } from '$lib/server/mcp/botProfiles';
 import { requireUser } from '$lib/server/web/requireUser';
 import { INFO_LOAD_ERROR, publicListError } from '$lib/server/web/listError';
 
@@ -17,6 +18,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 		title: '설정',
 		ruleIdCounts: ruleIds.data,
 		botClients: bots.data,
+		// 프로필별 기본 권한(읽기 전용 상수). 키 원문·해시는 load에 싣지 않는다.
+		profileScopes: Object.fromEntries(BOT_PROFILES.map((p) => [p, defaultScopesForProfile(p)])),
 		error:
 			publicListError('settings', ruleIds.error, INFO_LOAD_ERROR) ??
 			publicListError('settings.bots', bots.error, INFO_LOAD_ERROR)
