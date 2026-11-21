@@ -22,10 +22,25 @@ import { toString } from 'hast-util-to-string';
 import { SKIP, visit } from 'unist-util-visit';
 import type { Element, ElementContent, Root, RootContent, Text } from 'hast';
 import { reportSchema } from './schema';
+import { asSanitized } from './brand';
 
-import type { RenderedReport, ReportPart, TocItem } from '$lib/markdown/types';
+import type { RenderedReport, ReportPart, SanitizedHtml, TocItem } from '$lib/markdown/types';
 
-export type { RenderedReport, ReportPart, TocItem };
+export type { RenderedReport, ReportPart, SanitizedHtml, TocItem };
+
+/** 렌더 입력 상한(UTF-8 바이트). 넘으면 파서를 돌리지 않고 고정 문구를 돌려준다(Low-1). 40KB 브리핑의 5배 */
+export const MAX_REPORT_BYTES = 200 * 1024;
+/** 헤딩 slug 본문 길이 상한(코드 포인트, `h-` 접두·`-n` 접미 제외) */
+export const SLUG_MAX = 80;
+/** 렌더 실패 시 고정 문구(Low-6). 원문 본문은 절대 넣지 않는다 */
+export const RENDER_ERROR_MESSAGE = '리포트를 표시할 수 없습니다.';
+/** 입력이 상한을 넘을 때 고정 문구(Low-1) */
+export const TOO_LARGE_MESSAGE = '리포트가 너무 길어 표시할 수 없습니다.';
+/**
+ * 같은 출처 이미지로 허용하는 경로 첫 세그먼트(Low-3, 허용 목록). `/img`, `/img/…`, `/report-assets`, `/report-assets/…`만.
+ * 이미지 요청에는 쿠키가 따라가므로 API·인증 라우트 등 그 밖의 경로로 GET이 나가지 않게 한다(대소문자 구분, 디코딩·정규화 뒤 판정).
+ */
+export const IMAGE_PATH_ALLOW = ['img', 'report-assets'] as const;
 
 export interface RenderOptions {
 	/** 용어 풀이 사전: 용어 → 설명. 본문(제목·링크·코드 제외)에서 용어마다 처음 한 번만 표시한다 */
@@ -97,21 +112,34 @@ function createMd(): MarkdownIt {
 
 const md = createMd();
 
-/** 헤딩 slug: `h-` + 소문자, 글자·숫자·하이픈만, 공백은 하이픈. 같은 이름은 `-2`, `-3`… */
-export function slugify(text: string, used: Map<string, number>): string {
-	const base =
-		'h-' +
-		(text
+/** 화면에 안 보이는 방향·폭 제어 문자(bidi 위장 등). slug·목차 글자에서 지운다 */
+const INVISIBLE_RE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g;
+
+/**
+ * 헤딩 slug: `h-` + 소문자, 글자·숫자·하이픈만, 공백은 하이픈, 본문은 SLUG_MAX자까지.
+ * 이미 쓴 id면 `-2`, `-3`…을 붙이되 **붙인 결과도 쓰인 적 없을 때까지** 올린다(Low-2).
+ * 예: `a`, `a`, `a 2` → `h-a`, `h-a-2`, `h-a-2-2`. 같은 입력 순서면 항상 같은 결과.
+ */
+export function slugify(text: string, used: Set<string>): string {
+	const body = [
+		...text
 			.normalize('NFC')
+			.replace(INVISIBLE_RE, '')
 			.trim()
 			.toLowerCase()
 			.replace(/[^\p{L}\p{N}\s-]/gu, '')
 			.replace(/\s+/g, '-')
 			.replace(/-+/g, '-')
-			.replace(/^-|-$/g, '') || 'section');
-	const n = (used.get(base) ?? 0) + 1;
-	used.set(base, n);
-	return n === 1 ? base : `${base}-${n}`;
+			.replace(/^-|-$/g, '')
+	]
+		.slice(0, SLUG_MAX)
+		.join('')
+		.replace(/-$/, '');
+	const base = 'h-' + (body || 'section');
+	let id = base;
+	for (let n = 2; used.has(id); n++) id = `${base}-${n}`;
+	used.add(id);
+	return id;
 }
 
 function el(
@@ -136,29 +164,52 @@ function isElement(n: RootContent | ElementContent, tag?: string): n is Element 
 	return n.type === 'element' && (tag === undefined || n.tagName === tag);
 }
 
-function hostOf(url: string): string | null {
+/** 같은 출처 판정용 가짜 기준 주소. 상대 경로를 브라우저와 같은 WHATWG 규칙으로 풀어 본다 */
+const BASE = new URL('https://same-origin.invalid/');
+
+/**
+ * href/src를 브라우저처럼 해석한다(앞뒤 제어 문자·공백 제거, 중간 탭·개행 제거, `\` → `/`, `..`·`%2e` 정규화).
+ * 문자열 앞부분만 보고 판정하면 `/\t/evil`, `\\evil`, `\/evil`이 같은 출처로 보이므로(Low-5) 반드시 이 결과로 판정한다.
+ */
+function resolveUrl(raw: string): URL | null {
 	try {
-		return new URL(url).host.toLowerCase();
+		return new URL(raw, BASE);
 	} catch {
 		return null;
 	}
 }
 
-/** 링크: 외부(http/https, 우리 호스트 아님)는 새 창 + rel. href가 sanitize에서 빠졌으면 글자만 남긴다 */
+/** 공백·C0/C1 제어 문자·백슬래시가 있는지(브라우저가 지우거나 `/`로 바꾸는 글자) */
+function hasUnsafeUrlChar(s: string): boolean {
+	for (const ch of s) {
+		const c = ch.codePointAt(0) ?? 0;
+		if (c <= 0x20 || (c >= 0x7f && c <= 0x9f) || ch === '\\') return true;
+	}
+	return false;
+}
+
+function isSameOrigin(u: URL): boolean {
+	return u.origin === BASE.origin;
+}
+
+/** 링크: 외부(http/https, 우리 호스트 아님)는 새 창 + rel. href가 sanitize에서 빠졌거나 해석이 안 되면 글자만 남긴다 */
 function fixLinks(tree: Root, siteHosts: readonly string[]) {
 	visit(tree, 'element', (node, index, parent) => {
 		if (node.tagName !== 'a') return;
 		const href = typeof node.properties.href === 'string' ? node.properties.href : '';
-		if (!href) {
+		const u = href ? resolveUrl(href) : null;
+		const ok = u !== null && (isSameOrigin(u) || /^(https?|mailto):$/.test(u.protocol));
+		if (!ok) {
 			if (parent && index !== undefined) {
 				parent.children.splice(index, 1, ...node.children);
 				return [SKIP, index];
 			}
 			return;
 		}
-		if (/^https?:/i.test(href)) {
-			const host = hostOf(href);
-			if (!host || !siteHosts.includes(host)) {
+		delete node.properties.target;
+		delete node.properties.rel;
+		if (!isSameOrigin(u) && /^https?:$/.test(u.protocol)) {
+			if (!siteHosts.includes(u.host.toLowerCase())) {
 				node.properties.target = '_blank';
 				node.properties.rel = ['noopener', 'noreferrer', 'nofollow'];
 			}
@@ -166,14 +217,44 @@ function fixLinks(tree: Root, siteHosts: readonly string[]) {
 	});
 }
 
-/** 이미지: 같은 출처 상대 경로(`/…`) 또는 허용 호스트(https)만 남긴다. 나머지는 제거 */
+/**
+ * 같은 출처 이미지 경로 검사(Low-3·Low-5).
+ * - 원문에 공백·제어 문자·`\\`가 있으면 거부(브라우저가 지우거나 바꿔 해석이 달라질 수 있는 입력)
+ * - 퍼센트 디코딩 뒤 `.`·`..` 세그먼트가 있으면 거부(`/x/../api`, `/%2e%2e/api`)
+ * - 해석된 경로의 첫 세그먼트가 IMAGE_PATH_ALLOW에 정확히 일치할 때만 허용(`/imgx`, `/IMG`, `/img;x`는 거부)
+ */
+function sameOriginImageOk(src: string): boolean {
+	if (!src.startsWith('/') || src.startsWith('//')) return false;
+	if (hasUnsafeUrlChar(src)) return false;
+	let decoded: string;
+	try {
+		decoded = decodeURIComponent(src.split(/[?#]/)[0]);
+	} catch {
+		return false;
+	}
+	if (hasUnsafeUrlChar(decoded)) return false;
+	if (decoded.split('/').some((seg) => seg === '.' || seg === '..')) return false;
+	const u = resolveUrl(src);
+	if (!u || !isSameOrigin(u)) return false;
+	let first: string;
+	try {
+		first = decodeURIComponent(u.pathname.split('/')[1] ?? '');
+	} catch {
+		return false;
+	}
+	return (IMAGE_PATH_ALLOW as readonly string[]).includes(first);
+}
+
+/** 이미지: 같은 출처 허용 경로(IMAGE_PATH_ALLOW) 또는 허용 호스트(https)만 남긴다. 나머지는 제거 */
 function fixImages(tree: Root, imageHosts: readonly string[]) {
 	visit(tree, 'element', (node, index, parent) => {
 		if (node.tagName !== 'img') return;
 		const src = typeof node.properties.src === 'string' ? node.properties.src : '';
-		const sameOrigin = src.startsWith('/') && !src.startsWith('//') && !src.startsWith('/\\');
-		const host = /^https:/i.test(src) ? hostOf(src) : null;
-		const ok = sameOrigin || (host !== null && imageHosts.includes(host));
+		let ok = sameOriginImageOk(src);
+		if (!ok && /^https:/i.test(src) && !hasUnsafeUrlChar(src)) {
+			const u = resolveUrl(src);
+			ok = u !== null && u.protocol === 'https:' && imageHosts.includes(u.host.toLowerCase());
+		}
 		if (!ok) {
 			if (parent && index !== undefined) {
 				parent.children.splice(index, 1);
@@ -185,6 +266,27 @@ function fixImages(tree: Root, imageHosts: readonly string[]) {
 		node.properties.decoding = 'async';
 		node.properties.referrerPolicy = 'no-referrer';
 	});
+}
+
+/** sanitize가 허용 밖 class를 모두 걸러 빈 목록이 되면 `class=""`가 남지 않게 지운다 */
+function dropEmptyClass(tree: Root) {
+	visit(tree, 'element', (node) => {
+		const cls = node.properties.className;
+		if (Array.isArray(cls) && cls.length === 0) delete node.properties.className;
+	});
+}
+
+/** sanitize 뒤 공통 정책(링크·이미지·빈 class) */
+function applyPolicies(tree: Root, opts: RenderOptions) {
+	fixLinks(
+		tree,
+		(opts.siteHosts ?? []).map((h) => h.toLowerCase())
+	);
+	fixImages(
+		tree,
+		(opts.imageHosts ?? []).map((h) => h.toLowerCase())
+	);
+	dropEmptyClass(tree);
 }
 
 /** 표를 가로 스크롤 래퍼로 감싼다 */
@@ -250,62 +352,82 @@ function applyGlossary(tree: Root, glossary: Readonly<Record<string, string>>) {
 }
 
 /**
- * 2차 방어선만 따로: 임의 HTML 조각 → 허용 목록 sanitize + 링크·이미지 정책 → HTML.
+ * 2차 방어선: 임의 HTML 조각 → 허용 목록 sanitize + 링크·이미지 정책 → HTML.
  * renderReport는 markdown-it(html:false)를 거치므로 raw HTML이 여기까지 오지 않지만,
- * 1차(markdown-it)가 바뀌거나 우회돼도 이 단계만으로 막히는지 테스트하려고 내보낸다.
+ * 1차(markdown-it)가 바뀌거나 우회돼도 이 단계만으로 막혀야 한다(Low-5: 테스트용이 아니라 실제 방어선).
  */
-export function sanitizeFragment(html: string, opts: RenderOptions = {}): string {
+export function sanitizeFragment(html: string, opts: RenderOptions = {}): SanitizedHtml {
 	const tree = sanitize(fromHtml(html ?? '', { fragment: true }), reportSchema) as Root;
-	fixLinks(
-		tree,
-		(opts.siteHosts ?? []).map((h) => h.toLowerCase())
-	);
-	fixImages(
-		tree,
-		(opts.imageHosts ?? []).map((h) => h.toLowerCase())
-	);
-	return toHtml(tree);
+	applyPolicies(tree, opts);
+	return asSanitized(toHtml(tree));
+}
+
+/** 입력이 MAX_REPORT_BYTES를 넘는지. UTF-16 길이 ≤ UTF-8 바이트이므로 긴 입력은 인코딩 없이 바로 거른다 */
+export function isTooLarge(source: string): boolean {
+	if (source.length > MAX_REPORT_BYTES) return true;
+	return new TextEncoder().encode(source).length > MAX_REPORT_BYTES;
+}
+
+function fallback(message: string, reason: 'too-large' | 'render-error'): RenderedReport {
+	return {
+		a: asSanitized(`<p>${message}</p>`),
+		b: asSanitized(''),
+		hasSplit: false,
+		toc: [],
+		fallback: reason
+	};
 }
 
 /**
  * 마크다운 → 안전한 HTML(A/B 분리) + 목차.
  * body_md는 봇·이전 데이터가 쓴 신뢰하지 않는 입력이다. 결과만 `{@html}`에 넣는다.
+ * 상한 초과는 파서를 돌리지 않고, 예외는 고정 문구 + 빈 목차로 대체한다(원문·예외 메시지는 기록하지 않음).
  */
 export function renderReport(source: string, opts: RenderOptions = {}): RenderedReport {
-	const html = md.render(source ?? '');
+	const src = typeof source === 'string' ? source : '';
+	if (isTooLarge(src)) return fallback(TOO_LARGE_MESSAGE, 'too-large');
+	try {
+		return renderUnchecked(src, opts);
+	} catch (e) {
+		// 본문·예외 메시지(파서가 입력 일부를 담을 수 있음)는 남기지 않는다
+		console.error('[FE-15] renderReport failed', {
+			error: e instanceof Error ? e.name : typeof e,
+			length: src.length
+		});
+		return fallback(RENDER_ERROR_MESSAGE, 'render-error');
+	}
+}
+
+function renderUnchecked(source: string, opts: RenderOptions): RenderedReport {
+	const html = md.render(source);
 	const parsed = fromHtml(html, { fragment: true });
 	const tree = sanitize(parsed, reportSchema) as Root;
 
-	fixLinks(
-		tree,
-		(opts.siteHosts ?? []).map((h) => h.toLowerCase())
-	);
-	fixImages(
-		tree,
-		(opts.imageHosts ?? []).map((h) => h.toLowerCase())
-	);
+	applyPolicies(tree, opts);
 	wrapTables(tree);
 	if (opts.glossary) applyGlossary(tree, opts.glossary);
 
 	const parts = splitParts(tree);
-	const used = new Map<string, number>();
+	const used = new Set<string>();
 	const toc: TocItem[] = [];
 	for (const { part, nodes } of parts.sections) {
 		for (const n of nodes) {
 			if (!isElement(n)) continue;
 			if (n.tagName === 'h2' || n.tagName === 'h3' || n.tagName === 'h4') {
-				const text = toString(n).trim();
+				const text = toString(n).replace(INVISIBLE_RE, '').trim();
 				const id = slugify(text, used);
 				n.properties.id = id;
-				if (n.tagName !== 'h4') toc.push({ id, text, level: n.tagName === 'h2' ? 2 : 3, part });
+				// 빈 제목(전각 공백·제어 문자뿐인 `## …`)은 목차에 넣지 않는다(id는 붙여 둔다)
+				if (n.tagName !== 'h4' && text)
+					toc.push({ id, text, level: n.tagName === 'h2' ? 2 : 3, part });
 			}
 		}
 	}
 	const a = parts.sections.filter((s) => s.part === 'A').flatMap((s) => s.nodes);
 	const b = parts.sections.filter((s) => s.part === 'B').flatMap((s) => s.nodes);
 	return {
-		a: toHtml({ type: 'root', children: a }),
-		b: toHtml({ type: 'root', children: b }),
+		a: asSanitized(toHtml({ type: 'root', children: a })),
+		b: asSanitized(toHtml({ type: 'root', children: b })),
 		hasSplit: parts.hasSplit,
 		toc
 	};
