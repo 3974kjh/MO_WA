@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	/** 승인 큐 상태 8종 (DS §7-6, G-1). 배지 글자·기호는 색과 함께 항상 표시한다. */
+	/** 변경 요청 상태 8종 (DS §7-6, G-1). 배지 글자·기호는 색과 함께 항상 표시한다. */
 	export type ProposalBadgeStatus =
 		| 'pending'
 		| 'on_hold'
@@ -11,14 +11,14 @@
 		| 'expired';
 
 	export const STATUS_BADGE: Record<ProposalBadgeStatus, { label: string; icon: string }> = {
-		pending: { label: '승인 대기', icon: '●' },
+		pending: { label: '확인 대기', icon: '●' },
 		on_hold: { label: '보류', icon: '⏸' },
-		approved: { label: '승인됨', icon: '✓' },
+		approved: { label: '반영됨', icon: '✓' },
 		rejected: { label: '거절', icon: '✕' },
-		superseded: { label: '대체됨', icon: '⇄' },
-		cancelled: { label: '취소됨', icon: '⊘' },
-		conflict: { label: '충돌', icon: '⚠' },
-		expired: { label: '만료', icon: '⏱' }
+		superseded: { label: '새 요청으로 바뀜', icon: '⇄' },
+		cancelled: { label: '봇이 취소', icon: '⊘' },
+		conflict: { label: '반영 안 됨(기록 달라짐)', icon: '⚠' },
+		expired: { label: '기한 지남', icon: '⏱' }
 	};
 </script>
 

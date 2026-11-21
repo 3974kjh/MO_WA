@@ -14,8 +14,8 @@
 		<div class="label">{exactValue.label}</div>
 		<div class="value num">{exactValue.exact}</div>
 		<p class="note">
-			화면에서는 큰 금액을 ‘만’ 단위로 줄여 보여 줘요. 주가·평단·손익분기와 승인 내용은 줄이지 않고
-			전체 값으로 표시해요.
+			화면에서는 큰 금액을 ‘만’ 단위로 줄여 보여 줘요. 주가·평균 단가·손익분기 가격과 반영 내용은
+			줄이지 않고 전체 값으로 표시해요.
 		</p>
 	</div>
 	{#snippet footer()}

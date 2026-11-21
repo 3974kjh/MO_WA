@@ -12,13 +12,13 @@ export interface FixtureProposal {
 }
 
 export const fixtureProposals: FixtureProposal[] = [
-	{ id: 'P-0412', ticker: 'GOOGL', title: '알파벳 A 수량·평단 반영 제안', status: 'pending' },
+	{ id: 'P-0412', ticker: 'GOOGL', title: '알파벳 A 수량·평균 단가 반영 제안', status: 'pending' },
 	{
 		id: 'P-0411',
 		ticker: 'NAVER',
 		title: 'NAVER 5주 트랜치 추가 반영 제안 (예시)',
 		status: 'pending'
 	},
-	{ id: 'P-0409', ticker: 'KT', title: 'KT 평단 정정 제안 (예시)', status: 'on_hold' },
+	{ id: 'P-0409', ticker: 'KT', title: 'KT 평균 단가 기록 수정 (예시)', status: 'on_hold' },
 	{ id: 'P-0398', ticker: 'UST_30Y', title: '미국 30년 국채 전량 매도 반영', status: 'approved' }
 ];

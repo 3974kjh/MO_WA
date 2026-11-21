@@ -44,7 +44,7 @@
 				{#snippet value()}<Money value={-2_271_309} />{/snippet}
 			</MetricTile>
 		</div>
-		<Card title="승인 대기">
+		<Card title="확인 대기">
 			{#snippet aside()}<Badge tone="warn">{pendingCount}건</Badge>{/snippet}
 			<ul class="q">
 				{#each fixtureProposals as p (p.id)}
