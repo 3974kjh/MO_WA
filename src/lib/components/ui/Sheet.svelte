@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
 	 * 시트·모달 (FE-02, DS §7-11, H §3)
-	 * - <640: bottom(최대 86vh, 그랩 핸들) 또는 full(전체 화면 + '← 목록으로')
+	 * - <640: bottom(최대 var(--sheet-max-h), 그랩 핸들) 또는 full(전체 화면 + '← 목록으로')
 	 * - ≥640: center 520px 모달 (variant=center는 모든 폭에서 중앙)
 	 * - 포커스 트랩, 스크림 클릭·Esc·닫기 버튼으로 닫힘, 열릴 때 포커스 이동·닫힐 때 트리거로 복귀
 	 */
@@ -115,7 +115,7 @@
 		left: 0;
 		right: 0;
 		bottom: 0;
-		max-height: 86vh;
+		max-height: var(--sheet-max-h);
 		overflow: auto;
 		overscroll-behavior: contain;
 		background: var(--color-surface);
@@ -128,7 +128,7 @@
 		transition:
 			transform 0.25s var(--ease-out),
 			visibility 0s 0.25s;
-		padding: 8px 16px calc(20px + var(--safe-bottom));
+		padding: 8px 16px calc(20px + var(--inset-b));
 		outline: none;
 	}
 	.sheet.open {
@@ -184,7 +184,7 @@
 		left: 50%;
 		right: auto;
 		width: min(520px, calc(100vw - 32px));
-		max-height: 86vh;
+		max-height: var(--sheet-max-h);
 		border-radius: var(--radius-lg);
 		transform: translate(-50%, -46%);
 		opacity: 0;
@@ -207,7 +207,7 @@
 			left: 50%;
 			right: auto;
 			width: 520px;
-			max-height: 86vh;
+			max-height: var(--sheet-max-h);
 			border-radius: var(--radius-lg);
 			transform: translate(-50%, -46%);
 			opacity: 0;

@@ -56,7 +56,7 @@
 		color: var(--color-muted);
 		font-size: var(--text-base);
 		font-weight: 500;
-		min-height: 40px;
+		min-height: var(--size-touch);
 		position: relative;
 		text-decoration: none;
 	}

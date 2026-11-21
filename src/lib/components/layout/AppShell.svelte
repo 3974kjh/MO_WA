@@ -198,7 +198,7 @@
 		gap: 10px;
 		width: 100%;
 		padding: 9px 10px;
-		min-height: 40px;
+		min-height: var(--size-touch);
 		border: 0;
 		border-radius: var(--radius-sm);
 		background: transparent;
@@ -221,7 +221,7 @@
 	}
 	.main-col {
 		margin-left: var(--size-sidebar);
-		min-height: 100vh;
+		min-height: 100dvh;
 		display: flex;
 		flex-direction: column;
 	}
@@ -276,7 +276,7 @@
 		}
 		.main-col {
 			margin-left: 0;
-			padding-bottom: calc(var(--size-tabbar) + 8px + var(--safe-bottom));
+			padding-bottom: calc(var(--size-tabbar) + 8px + var(--inset-b));
 		}
 		.page {
 			padding: 16px 16px 40px;
@@ -291,7 +291,7 @@
 			z-index: 50;
 			background: var(--color-surface);
 			border-top: 1px solid var(--color-line);
-			padding: 0 4px var(--safe-bottom);
+			padding: 0 4px var(--inset-b);
 		}
 		.more-btn {
 			display: flex;
