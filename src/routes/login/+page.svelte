@@ -17,7 +17,7 @@
 <main class="grid min-h-dvh place-items-center bg-canvas px-lg py-section text-text">
 	<section class="grid w-full max-w-[440px] gap-lg rounded-lg border border-line bg-surface p-xl">
 		<header class="grid justify-items-center gap-sm text-center">
-			<MoWaLogo size={52} />
+			<MoWaLogo size={52} showWordmark={false} />
 			<div class="grid gap-xxs">
 				<h1 class="font-display text-[40px] leading-[1.1] font-semibold tracking-[-0.28px]">
 					MO_WA
