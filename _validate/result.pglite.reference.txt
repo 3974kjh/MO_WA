@@ -237,7 +237,11 @@ draft ok  20261125000910_revoke_anon_all.sql
   ✓ TRUNCATE reports denied to service_role → permission denied for table reports
   ✓ TRUNCATE instruments denied to service_role → permission denied for table instruments
   ✓ TRUNCATE display_sequences denied to service_role → permission denied for table display_sequences
-  ✓ default privileges: no PUBLIC EXECUTE on new functions
+  ✓ new function is not executable by anon (global PUBLIC EXECUTE revoked)
+  ✓ new function remains executable by authenticated
+  ✓ new table: authenticated lacks TRUNCATE by default
+  ✓ new table: authenticated lacks DELETE by default
+  ✓ new table: authenticated still has SELECT by default (or via grants)
   ✓ service_role lacks TRUNCATE on owned-data tables
   ✓ anon cannot execute mowa_assert_bot_tenant → permission denied for function mowa_assert_bot_tenant
   ✓ pre-delete: revision + audit exist for Z
@@ -264,4 +268,4 @@ CONTEXT:  PL/pgSQL function inline_code_blo
   ✓ 검증 기록 후 drop 실행
   ✓ 레거시 테이블 제거·profiles 유지
 
-RESULT pass=225 fail=0
+RESULT pass=229 fail=0
