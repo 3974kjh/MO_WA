@@ -1,6 +1,8 @@
 <script lang="ts">
-	/** 목록 검색 입력 (FE-02): type=search, 입력 후 200ms 디바운스로 oninput 호출 (FE-10에서 URL ?q=와 연결) */
+	/** 목록 검색 입력 (FE-02): type=search, 입력 후 200ms 디바운스로 oninput 호출 (FE-10: 목록 페이지가 URL ?q=에 반영) */
 	import Search from '@lucide/svelte/icons/search';
+	import { untrack } from 'svelte';
+	import { debounce as debounceFn } from '$lib/routing/debounce';
 
 	let {
 		value = $bindable(''),
@@ -17,16 +19,18 @@
 		oninput?: (v: string) => void;
 	} = $props();
 
-	let timer: ReturnType<typeof setTimeout> | undefined;
+	// FE-10: 디바운스 로직은 $lib/routing/debounce 하나만 쓴다(단위 테스트 대상).
+	const emit = debounceFn(
+		(v: string) => oninput?.(v),
+		untrack(() => debounce)
+	);
 
 	function handle(e: Event & { currentTarget: HTMLInputElement }) {
 		value = e.currentTarget.value;
-		clearTimeout(timer);
-		const v = value;
-		timer = setTimeout(() => oninput?.(v), debounce);
+		emit(value);
 	}
 
-	$effect(() => () => clearTimeout(timer));
+	$effect(() => () => emit.cancel());
 </script>
 
 <label class="search-box">

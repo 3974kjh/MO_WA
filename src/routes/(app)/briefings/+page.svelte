@@ -1,8 +1,181 @@
 <script lang="ts">
-	// 자리 표시 — 화면 본문은 FE-04에서 구현한다(FE-01은 내비 대상 경로만 연다).
+	// FE-10: 목록 검색·URL 상태(?q=&tag=&month=). 카드 디자인·상세 링크·페이지 이동은 FE-04에서 채운다.
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
+	import { untrack } from 'svelte';
+	import type { PageData } from './$types';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
+	import ErrorState from '$lib/components/ui/ErrorState.svelte';
+	import FilterChip from '$lib/components/ui/FilterChip.svelte';
+	import SearchBox from '$lib/components/ui/SearchBox.svelte';
+	import {
+		briefingSearch,
+		cleanText,
+		SEARCH_DEBOUNCE_MS,
+		type BriefingQuery
+	} from '$lib/routing/listQuery';
+
+	let { data }: { data: PageData } = $props();
+
+	const HEADLINE_MISSING = 'headline 미입력';
+
+	// 입력 중인 글자(끝 공백 포함)는 지키고, 뒤로 가기 등으로 URL이 바뀌었을 때만 맞춘다.
+	let qInput = $state('');
+	$effect.pre(() => {
+		const q = data.query.q;
+		// qInput은 추적하지 않는다(입력할 때마다 되돌리지 않도록). URL의 q가 바뀔 때만 실행.
+		untrack(() => {
+			if (cleanText(qInput) !== q) qInput = q;
+		});
+	});
+
+	function navigate(next: Partial<BriefingQuery>, replaceState = false) {
+		const search = briefingSearch({ ...data.query, ...next });
+		if (search === page.url.search) return;
+		// 경로는 resolve()로 만들고 쿼리만 붙인다.
+		// eslint-disable-next-line svelte/no-navigation-without-resolve
+		goto(`${resolve('/briefings')}${search}`, { replaceState, keepFocus: true, noScroll: true });
+	}
+
+	let tags = $derived(
+		[...data.briefings.items.flatMap((b) => b.tags), data.query.tag].filter(
+			(t, i, all) => t !== '' && all.indexOf(t) === i
+		)
+	);
+	let filtered = $derived(Boolean(data.query.q || data.query.tag || data.query.month));
 </script>
 
 <svelte:head><title>브리핑 · MO_WA</title></svelte:head>
 
-<EmptyState icon="🛠" title="브리핑 화면을 준비하고 있어요" desc="곧 이 자리에서 볼 수 있습니다." />
+<div class="toolbar">
+	<div class="row">
+		<div class="grow">
+			<SearchBox
+				bind:value={qInput}
+				label="브리핑 검색"
+				placeholder="키워드 검색 (예: 사이드카)"
+				debounce={SEARCH_DEBOUNCE_MS}
+				oninput={(v) => navigate({ q: v }, true)}
+			/>
+		</div>
+		<label class="month">
+			<span class="sr-only">월</span>
+			<input
+				type="month"
+				value={data.query.month}
+				onchange={(e) => navigate({ month: e.currentTarget.value })}
+			/>
+		</label>
+	</div>
+	{#if tags.length}
+		<div class="chips" role="group" aria-label="태그 필터">
+			<FilterChip pressed={!data.query.tag} onclick={() => navigate({ tag: '' })}>전체</FilterChip>
+			{#each tags as t (t)}
+				<FilterChip pressed={data.query.tag === t} onclick={() => navigate({ tag: t })}
+					>{t}</FilterChip
+				>
+			{/each}
+		</div>
+	{/if}
+	<p class="count" aria-live="polite">{data.briefings.total}건</p>
+</div>
+
+{#if data.error}
+	<ErrorState desc="잠시 후 다시 시도해 주세요." />
+{:else if data.briefings.items.length === 0}
+	<EmptyState
+		title={filtered ? '조건에 맞는 브리핑이 없어요' : '아직 브리핑이 없어요'}
+		desc={filtered ? '검색어나 필터를 바꿔 보세요.' : undefined}
+	>
+		{#snippet action()}
+			{#if filtered}
+				<button type="button" class="btn" onclick={() => navigate({ q: '', tag: '', month: '' })}
+					>필터 초기화</button
+				>
+			{/if}
+		{/snippet}
+	</EmptyState>
+{:else}
+	<ul class="list" data-testid="briefing-list">
+		{#each data.briefings.items as b (b.id)}
+			<li>
+				<span class="date num">{b.report_date}</span>
+				<span class="headline" class:missing={!b.headline?.trim()}
+					>{b.headline?.trim() || HEADLINE_MISSING}</span
+				>
+			</li>
+		{/each}
+	</ul>
+{/if}
+
+<style>
+	.toolbar {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		margin-bottom: 16px;
+	}
+	.row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 12px;
+		align-items: center;
+	}
+	.grow {
+		flex: 1 1 220px;
+		min-width: 0;
+	}
+	.month input {
+		height: var(--size-touch);
+		padding: 0 10px;
+		border: 1px solid var(--color-line-strong);
+		border-radius: var(--radius-sm);
+		background: var(--color-surface);
+		color: var(--color-text);
+	}
+	.chips {
+		display: flex;
+		gap: 8px;
+		overflow-x: auto;
+	}
+	.count {
+		font-size: var(--text-sm);
+		color: var(--color-muted);
+	}
+	.list {
+		display: flex;
+		flex-direction: column;
+		border: 1px solid var(--color-line);
+		border-radius: var(--radius-sm);
+		background: var(--color-surface);
+	}
+	.list li {
+		display: flex;
+		gap: 12px;
+		padding: 12px 16px;
+		border-top: 1px solid var(--color-line);
+	}
+	.list li:first-child {
+		border-top: 0;
+	}
+	.date {
+		color: var(--color-muted);
+		flex: none;
+	}
+	.headline {
+		font-weight: 600;
+	}
+	.headline.missing {
+		color: var(--color-muted);
+		font-weight: 400;
+	}
+	.btn {
+		min-height: var(--size-touch);
+		padding: 0 14px;
+		border: 1px solid var(--color-line-strong);
+		border-radius: var(--radius-sm);
+		background: var(--color-surface);
+		color: var(--color-text);
+	}
+</style>
