@@ -2303,6 +2303,171 @@ eq(
 	true
 );
 
+console.log('\n[BE-20 expire_stale_proposals cron]');
+{
+	// Auth suite revokes FM; restore so bot inserts work for expire coverage.
+	await db.query(`update bot_clients set revoked_at = null where id = '${FM}'`);
+	// Separate targets so a later pending insert cannot supersede the on_hold rows.
+	const be20HoldInst = (
+		await user(
+			`insert into instruments(owner_id,ticker,name,market,asset_type)
+       values ('${U}','BXHLD','BE20 hold','NASDAQ','stock') returning id`
+		)
+	).rows[0].id;
+	const be20HoldTarget = (
+		await user(
+			`insert into positions(owner_id,instrument_id,status,currency,qty,source_ref)
+       values ('${U}','${be20HoldInst}','holding','USD',3,'{"be20":"hold"}') returning id`
+		)
+	).rows[0].id;
+	const be20PendInst = (
+		await user(
+			`insert into instruments(owner_id,ticker,name,market,asset_type)
+       values ('${U}','BXPND','BE20 pending','NASDAQ','stock') returning id`
+		)
+	).rows[0].id;
+	const be20PendTarget = (
+		await user(
+			`insert into positions(owner_id,instrument_id,status,currency,qty,source_ref)
+       values ('${U}','${be20PendInst}','holding','USD',4,'{"be20":"pending"}') returning id`
+		)
+	).rows[0].id;
+	const be20PrinHold = (
+		await user(
+			`insert into reports(owner_id,kind,domain,slug,title,report_date,body_md)
+       values ('${U}','principles','stock','be20-hold','BE-20 hold base','2026-08-01','# be20-hold-base')
+       returning id`
+		)
+	).rows[0].id;
+	const be20PrinPend = (
+		await user(
+			`insert into reports(owner_id,kind,domain,slug,title,report_date,body_md)
+       values ('${U}','principles','stock','be20-pend','BE-20 pend base','2026-08-02','# be20-pend-base')
+       returning id`
+		)
+	).rows[0].id;
+	const be20HoldPos = (
+		await fm(
+			`insert into position_proposals(owner_id,change_type,position_id,proposed_values,evidence)
+       values ('${U}','set_qty_avg','${be20HoldTarget}','{"qty":5}','[{"label":"be20-hold-pos"}]')
+       returning id`
+		)
+	).rows[0].id;
+	await user(`select hold_proposal('${be20HoldPos}', true)`);
+	const be20HoldPrin = (
+		await fm(
+			`insert into principle_proposals(owner_id,principle_id,proposed_body_md,reason_md,evidence)
+       values ('${U}','${be20PrinHold}','# be20-hold','hold reason','[{"url":"https://be20-hold"}]')
+       returning id`
+		)
+	).rows[0].id;
+	await user(`select decide_principle_proposal('${be20HoldPrin}','hold')`);
+	const be20Pos = (
+		await fm(
+			`insert into position_proposals(owner_id,change_type,position_id,proposed_values,evidence)
+       values ('${U}','set_qty_avg','${be20PendTarget}','{"qty":6}','[{"label":"be20-pending-pos"}]')
+       returning id`
+		)
+	).rows[0].id;
+	const be20Prin = (
+		await fm(
+			`insert into principle_proposals(owner_id,principle_id,proposed_body_md,reason_md,evidence)
+       values ('${U}','${be20PrinPend}','# be20-pending','be20 reason','[{"url":"https://be20-pending"}]')
+       returning id`
+		)
+	).rows[0].id;
+
+	await db.exec(
+		`update position_proposals set expires_at = now() - interval '1 hour' where id in ('${be20Pos}','${be20HoldPos}');
+     update principle_proposals set expires_at = now() - interval '1 hour' where id in ('${be20Prin}','${be20HoldPrin}');`
+	);
+	await db.query(`select public.expire_stale_proposals()`);
+
+	eq(
+		'BE-20 pending position → expired',
+		(
+			await db.query(
+				`select status, attention_started_at is not null as stamped
+           from position_proposals where id='${be20Pos}'`
+			)
+		).rows[0],
+		{ status: 'expired', stamped: true }
+	);
+	eq(
+		'BE-20 pending principle → expired',
+		(
+			await db.query(
+				`select status, attention_started_at is not null as stamped
+           from principle_proposals where id='${be20Prin}'`
+			)
+		).rows[0],
+		{ status: 'expired', stamped: true }
+	);
+	eq(
+		'BE-20 on_hold position kept despite past expires_at',
+		(await db.query(`select status from position_proposals where id='${be20HoldPos}'`)).rows[0]
+			.status,
+		'on_hold'
+	);
+	eq(
+		'BE-20 on_hold principle kept despite past expires_at',
+		(await db.query(`select status from principle_proposals where id='${be20HoldPrin}'`)).rows[0]
+			.status,
+		'on_hold'
+	);
+
+	await err(
+		'BE-20 anon cannot execute expire_stale_proposals',
+		() => run('anon', null, null, `select public.expire_stale_proposals()`),
+		/permission denied/
+	);
+	await err(
+		'BE-20 authenticated cannot execute expire_stale_proposals',
+		() => user(`select public.expire_stale_proposals()`),
+		/permission denied/
+	);
+	eq(
+		'BE-20 has_function_privilege anon EXECUTE = false',
+		(
+			await db.query(
+				`select has_function_privilege('anon', 'public.expire_stale_proposals()', 'EXECUTE') as ok`
+			)
+		).rows[0].ok,
+		false
+	);
+	eq(
+		'BE-20 has_function_privilege authenticated EXECUTE = false',
+		(
+			await db.query(
+				`select has_function_privilege('authenticated', 'public.expire_stale_proposals()', 'EXECUTE') as ok`
+			)
+		).rows[0].ok,
+		false
+	);
+
+	const cronExt = (
+		await db.query(`select exists(select 1 from pg_extension where extname = 'pg_cron') as ok`)
+	).rows[0].ok;
+	if (cronExt) {
+		eq(
+			'BE-20 cron.job expire-stale-proposals @ 0 * * * *',
+			(
+				await db.query(
+					`select jobname, schedule, command
+             from cron.job where jobname = 'expire-stale-proposals'`
+				)
+			).rows[0],
+			{
+				jobname: 'expire-stale-proposals',
+				schedule: '0 * * * *',
+				command: 'select public.expire_stale_proposals()'
+			}
+		);
+	} else {
+		console.log('  (skip BE-20 cron.job row — pg_cron extension not available locally)');
+	}
+}
+
 console.log('\n[GATED drop]');
 if (process.env.MOWA_ALLOW_GATED_TEST === '1') {
 	const gatedSql = readFileSync(gatedPath, 'utf8');
