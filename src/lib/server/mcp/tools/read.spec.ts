@@ -600,8 +600,15 @@ describe('registered via runAuditedToolCall', () => {
 		expect(rows).toHaveLength(0);
 	});
 
-	it('tools/list for a key without read exposes nothing', async () => {
+	it('tools/list for a key without read exposes no read tools (write scopes may list writes)', async () => {
 		const { body } = await rpc(['prices:write'], 'tools/list');
+		const names = (body.result.tools as Array<{ name: string }>).map((t) => t.name);
+		expect(names).not.toEqual(expect.arrayContaining([...READ_TOOL_NAMES]));
+		expect(names).toContain('record_price_snapshots');
+	});
+
+	it('tools/list for empty scopes exposes nothing', async () => {
+		const { body } = await rpc([], 'tools/list');
 		expect(body.result.tools).toEqual([]);
 	});
 
