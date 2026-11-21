@@ -230,8 +230,29 @@ describe('add_journal_entry', () => {
 		expect(out.warnings).toEqual([{ rule: 'R-PERM-02', message: '제안 필요' }]);
 		expect(db.created[0]).toMatchObject({ kind: 'buy', instrument_id: INSTR_ID, price: 70000 });
 		expect(db.created[0].ticker).toBeUndefined();
+		// FE-10 filters on tickers[] — instrument code is filled in even when omitted
+		expect(db.created[0].tickers).toEqual(['005930']);
 		expect(db.positionWrites).toEqual([]);
 		expect(h.sink.rows[0].warnings).toEqual([{ rule: 'R-PERM-02', message: '제안 필요' }]);
+	});
+
+	it('buy/sell fills instrument ticker into tickers[] without duplicating', async () => {
+		const h = await harness();
+		dataOf(await h.call('add_journal_entry', buyArgs({ tickers: ['005930', 'GOOGL'] })));
+		expect(db.created[0].tickers).toEqual(['005930', 'GOOGL']);
+		dataOf(
+			await h.call(
+				'add_journal_entry',
+				buyArgs({
+					kind: 'sell',
+					ticker: undefined,
+					instrument_id: INSTR_ID,
+					client_ref: 'sell-1',
+					tickers: undefined
+				})
+			)
+		);
+		expect(db.created[1].tickers).toEqual(['005930']);
 	});
 
 	it('sell success with instrument_id also warns R-PERM-02, no position writes', async () => {
@@ -243,6 +264,7 @@ describe('add_journal_entry', () => {
 			)
 		);
 		expect(out.warnings?.map((w) => w.rule)).toEqual(['R-PERM-02']);
+		expect(db.created[0].tickers).toEqual(['005930']);
 		expect(db.positionWrites).toEqual([]);
 	});
 

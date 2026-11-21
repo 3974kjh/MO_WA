@@ -278,6 +278,12 @@ async function resolveInstrument(
 	};
 }
 
+/** FE-10 filters on tickers[] only — include the instrument ticker for buy/sell (dedupe). */
+function ensureTickerInList(tickers: string[], code: string): string[] {
+	if (tickers.includes(code)) return tickers;
+	return [...tickers, code];
+}
+
 /** Every tickers[] code must exist in instruments (R-VAL-C04). */
 function checkTickers(c: IssueCollector, tickers: string[], known: ReadonlySet<string>): void {
 	if (tickers.length > MAX_TICKERS) {
@@ -405,9 +411,15 @@ export async function addJournalEntryHandler(input: ToolHandlerInput): Promise<T
 	const resolved = await resolveInstrument(repo, c, args, instruments, touched);
 	if (resolved.instrument) cols.instrument_id = resolved.instrument.id;
 
-	if (tickers) {
-		checkTickers(c, tickers, new Set(instruments.map((i) => i.ticker)));
-		cols.tickers = tickers;
+	let nextTickers = tickers ?? [];
+	// FE-10 ticker filter reads tickers[] only — ensure buy/sell instrument code is present.
+	const kind = (cols.kind ?? args.kind) as string;
+	if ((kind === 'buy' || kind === 'sell') && resolved.instrument) {
+		nextTickers = ensureTickerInList(nextTickers, resolved.instrument.ticker);
+	}
+	if (nextTickers.length > 0 || tickers) {
+		checkTickers(c, nextTickers, new Set(instruments.map((i) => i.ticker)));
+		cols.tickers = nextTickers;
 	}
 	runTagRule(c, tags, instruments, mode);
 
@@ -484,27 +496,44 @@ export async function updateJournalEntryHandler(
 	const tickers = touched.has('tickers') ? stringList(c, patch, 'tickers') : undefined;
 	const tags = touched.has('tags') ? stringList(c, patch, 'tags') : undefined;
 
-	const needsInstruments = touched.has('instrument_id') || touched.has('ticker') || tickers || tags;
+	const tradeTouched = [...touched].some((k) => TRADE_KEYS.has(k) || k === 'ticker');
+	const needsInstruments =
+		touched.has('instrument_id') || touched.has('ticker') || tickers || tags || tradeTouched;
 	const instruments = needsInstruments ? await loadInstruments(repo) : [];
 	const resolved = await resolveInstrument(repo, c, patch, instruments, touched);
 	if (resolved.instrument) cols.instrument_id = resolved.instrument.id;
 	else if (touched.has('instrument_id') && patch.instrument_id === null) cols.instrument_id = null;
 
-	if (tickers) {
-		checkTickers(c, tickers, new Set(instruments.map((i) => i.ticker)));
-		cols.tickers = tickers;
-	}
-	runTagRule(c, tags, instruments, mode);
-
-	const tradeTouched = [...touched].some((k) => TRADE_KEYS.has(k) || k === 'ticker');
 	const merged: Merged = {
-		kind: 'kind' in cols ? cols.kind : row.kind,
+		kind: 'kind' in cols ? (cols.kind as string) : row.kind,
 		instrument_id:
 			'instrument_id' in cols ? (cols.instrument_id as string | null) : row.instrument_id,
 		price: 'price' in cols ? (cols.price as number | null) : row.price,
 		qty: 'qty' in cols ? (cols.qty as number | null) : row.qty,
 		currency: 'currency' in cols ? (cols.currency as string | null) : row.currency
 	};
+
+	let nextTickers = tickers ?? (touched.has('tickers') ? [] : [...(row.tickers ?? [])]);
+	if (merged.kind === 'buy' || merged.kind === 'sell') {
+		const inst =
+			resolved.instrument ??
+			(merged.instrument_id
+				? (instruments.find((i) => i.id === merged.instrument_id) ?? null)
+				: null);
+		if (inst) {
+			nextTickers = ensureTickerInList(nextTickers, inst.ticker);
+			cols.tickers = nextTickers;
+		} else if (tickers) {
+			cols.tickers = nextTickers;
+		}
+	} else if (tickers) {
+		cols.tickers = nextTickers;
+	}
+	if (cols.tickers) {
+		checkTickers(c, cols.tickers as string[], new Set(instruments.map((i) => i.ticker)));
+	}
+	runTagRule(c, tags, instruments, mode);
+
 	if (tradeTouched) checkTradeShape(c, merged, mode);
 	c.throwIfErrors();
 
