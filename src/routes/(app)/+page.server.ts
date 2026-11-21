@@ -1,18 +1,36 @@
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
+import { parsePageParams } from '$lib/server/domain/web/pagination';
+import {
+	forUser,
+	getLatestIndicator,
+	listBriefingsWithKospi,
+	loadDashboardValuation
+} from '$lib/server/repo';
 
 /**
- * 홈(`/`) — (app) 셸 안의 최소 화면(HF-1 수준: 로고·로그인 이메일·로그아웃).
- * FE-03(I-8 대시보드)에서 본문을 채운다. 로그아웃은 전용 경로 `/logout`(LOGOUT_PATH)으로 보낸다.
+ * 홈(`/`) — (app) 셸 안. BE-11 dashboard valuation + kospi + recent briefings.
+ * 로그아웃은 전용 경로 `/logout`(LOGOUT_PATH) — 여기로 action을 옮기지 않는다.
  */
-export const load: PageServerLoad = async ({ locals, parent }) => {
+export const load: PageServerLoad = async ({ locals, parent, url }) => {
 	await parent();
 	if (!locals.user?.id) redirect(303, '/login');
+
+	const repo = forUser(locals.supabase, locals.user.id);
+	const [valuation, kospi, recentBriefings] = await Promise.all([
+		loadDashboardValuation(repo),
+		getLatestIndicator(repo, 'kospi'),
+		listBriefingsWithKospi(repo, parsePageParams(url, { defaultSize: 5 }))
+	]);
 
 	return {
 		user: {
 			id: locals.user.id,
 			email: locals.user.email ?? null
-		}
+		},
+		valuation: valuation.data,
+		valuationError: valuation.error?.message ?? null,
+		kospi: kospi.data,
+		recentBriefings: recentBriefings.data.items.slice(0, 5)
 	};
 };

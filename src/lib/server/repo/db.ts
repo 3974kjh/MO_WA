@@ -94,11 +94,12 @@ export function assertUpsertOnConflictIncludesOwner(options: UpsertOptions | und
 			'[R-SYS-01] upsert requires onConflict including owner_id (owner-scoped unique key)'
 		);
 	}
-	const cols = raw.split(/[\s,]+/).map((c) => c.trim()).filter(Boolean);
+	const cols = raw
+		.split(/[\s,]+/)
+		.map((c) => c.trim())
+		.filter(Boolean);
 	if (!cols.includes('owner_id')) {
-		throw new Error(
-			`[R-SYS-01] upsert onConflict must include owner_id (got "${raw}")`
-		);
+		throw new Error(`[R-SYS-01] upsert onConflict must include owner_id (got "${raw}")`);
 	}
 }
 
@@ -163,4 +164,18 @@ export function fromRepo(repo: RepoHandle, table: string): any {
 		throw new Error('[R-SYS-01] owner_id filter is required');
 	}
 	return withForcedOwner(base, ownerId);
+}
+
+/**
+ * Call a SECURITY DEFINER / authenticated RPC with the repo's bound client (BE-11/BE-19).
+ * Prefer this over exporting the raw Supabase client (M-4).
+ */
+export function rpcFromRepo(
+	repo: RepoHandle,
+	fn: string,
+	args?: Record<string, unknown>
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+): any {
+	const db = requireBoundDb(repo);
+	return db.rpc(fn as never, args as never);
 }

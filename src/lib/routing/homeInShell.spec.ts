@@ -1,13 +1,33 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import { isRedirect } from '@sveltejs/kit';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { sectionFromPath } from '$lib/components/layout/nav';
+
+vi.mock('$lib/server/repo', () => ({
+	forUser: vi.fn((_sb: unknown, ownerId: string) => ({
+		actor: { kind: 'user', ownerId, botClientId: null }
+	})),
+	loadDashboardValuation: vi.fn(async () => ({ data: { totalKrw: 0 }, error: null })),
+	getLatestIndicator: vi.fn(async () => ({
+		data: { key: 'kospi', value: 1, change_pct: 0, as_of: '2026-11-21' },
+		error: null
+	})),
+	listBriefingsWithKospi: vi.fn(async () => ({
+		data: { items: [], page: 1, pageSize: 5, total: 0, totalPages: 0 },
+		error: null
+	}))
+}));
+
 import { load as homeLoad } from '../../routes/(app)/+page.server';
 import { actions as logoutActions, load as logoutLoad } from '../../routes/logout/+page.server';
 
 const root = resolvePath(__dirname, '../../..');
 const read = (p: string) => readFileSync(resolvePath(root, p), 'utf8');
+
+beforeEach(() => {
+	vi.clearAllMocks();
+});
 
 /** redirect()가 던진 값을 잡아 {status, location}으로 돌려준다. */
 async function catchRedirect(fn: () => unknown) {
@@ -47,12 +67,30 @@ describe('홈(`/`)은 (app) 셸 안 (#12 Low 1, 사용자 결정 21:27)', () => 
 		);
 		expect(r).toEqual({ status: 303, location: '/login' });
 	});
-	it('로그인한 `/`는 id·email만 돌려준다', async () => {
+	it('로그인한 `/`는 user와 BE-11 dashboard load 필드를 돌려준다', async () => {
 		const data = await homeLoad({
-			locals: { user: { id: 'u1', email: 'a@b.c', app_metadata: {} } },
-			parent: async () => ({})
+			locals: {
+				user: { id: 'u1', email: 'a@b.c', app_metadata: {} },
+				supabase: {}
+			},
+			parent: async () => ({}),
+			url: new URL('https://example.test/')
 		} as never);
-		expect(data).toEqual({ user: { id: 'u1', email: 'a@b.c' } });
+		expect(data).toMatchObject({
+			user: { id: 'u1', email: 'a@b.c' },
+			valuation: { totalKrw: 0 },
+			valuationError: null,
+			kospi: { key: 'kospi' },
+			recentBriefings: []
+		});
+		expect(data).not.toHaveProperty('actions');
+	});
+
+	it('(app)/+page.server.ts has no logout action (use /logout)', () => {
+		const src = read('src/routes/(app)/+page.server.ts');
+		expect(src).not.toMatch(/export const actions/);
+		expect(src).not.toMatch(/\blogout\b\s*:/);
+		expect(src).not.toMatch(/signOut/);
 	});
 });
 
