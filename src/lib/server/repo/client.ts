@@ -117,14 +117,11 @@ export const SERVER_FILLED_PROPOSAL_ONLY = [
 
 const PROPOSAL_TABLES = new Set<StripTable>(['position_proposals', 'principle_proposals']);
 
-/** @deprecated Prefer SERVER_FILLED_COMMON + table-scoped helpers. */
-export const SERVER_FILLED_KEYS = [
-	...SERVER_FILLED_COMMON,
-	...SERVER_FILLED_PROPOSAL_ONLY
-] as const;
+/** Dangerous own-keys that must never be copied from client payloads. */
+const DANGEROUS_OWN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
-export function serverFilledKeysForTable(table?: StripTable | null): readonly string[] {
-	if (table && PROPOSAL_TABLES.has(table)) {
+export function serverFilledKeysForTable(table: StripTable): readonly string[] {
+	if (PROPOSAL_TABLES.has(table)) {
 		return [...SERVER_FILLED_COMMON, ...SERVER_FILLED_PROPOSAL_ONLY];
 	}
 	return [...SERVER_FILLED_COMMON];
@@ -141,17 +138,18 @@ function assignOwn(out: Record<string, unknown>, key: string, value: unknown): v
 
 /**
  * Strip client-supplied identity / system fields before insert/update.
- * Pass `table` so proposal-only keys (status, expires_at, …) are stripped only
- * for proposal tables — positions/reports keep domain `status`.
- * Result is a null-prototype object (Nit: `__proto__` cannot pollute).
+ * `table` is required so proposal-only keys (status, expires_at, …) cannot leak
+ * when a call site forgets to pass the table.
+ * Result is a null-prototype object; `__proto__` / `constructor` / `prototype` are dropped.
  */
 export function stripClientIdentity<T extends Record<string, unknown>>(
 	row: T,
-	table?: StripTable | null
+	table: StripTable
 ): Record<string, unknown> {
 	const block = new Set(serverFilledKeysForTable(table));
 	const out: Record<string, unknown> = Object.create(null);
 	for (const [key, value] of Object.entries(row)) {
+		if (DANGEROUS_OWN_KEYS.has(key)) continue;
 		if (key.startsWith('proposed_by')) continue;
 		if (block.has(key)) continue;
 		assignOwn(out, key, value);

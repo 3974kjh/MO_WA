@@ -33,7 +33,7 @@ export type ClientRefTable =
 	| 'position_proposals'
 	| 'principle_proposals';
 
-function isServerFilledKey(key: string, table?: StripTable | null): boolean {
+function isServerFilledKey(key: string, table: StripTable): boolean {
 	if (serverFilledKeysForTable(table).includes(key)) return true;
 	if (key.startsWith('proposed_by')) return true;
 	return false;
@@ -86,7 +86,7 @@ export function canonicalJson(value: unknown): string {
 export function clientRefContentMatches(
 	attempted: Record<string, unknown>,
 	existing: Record<string, unknown>,
-	table?: ClientRefTable | null
+	table: ClientRefTable
 ): boolean {
 	const cleaned = dropUndefinedKeys(attempted) as Record<string, unknown>;
 	const keys = Object.keys(cleaned).filter((k) => !isServerFilledKey(k, table));

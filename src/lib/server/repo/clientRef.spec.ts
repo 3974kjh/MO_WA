@@ -36,7 +36,7 @@ describe('R-PERM-11 client_ref content compare', () => {
 			proposed_by: 'b1',
 			proposed_values: { avg_price: 100, qty: 10 }
 		};
-		expect(clientRefContentMatches(attempted, existing)).toBe(true);
+		expect(clientRefContentMatches(attempted, existing, 'position_proposals')).toBe(true);
 	});
 
 	it('different top-level content does not match (CONFLICT)', () => {
@@ -52,7 +52,7 @@ describe('R-PERM-11 client_ref content compare', () => {
 			kind: 'buy',
 			status: 'pending'
 		};
-		expect(clientRefContentMatches(attempted, existing)).toBe(false);
+		expect(clientRefContentMatches(attempted, existing, 'journal_entries')).toBe(false);
 	});
 
 	it('nested-only difference (proposed_values.qty / report_id) does not match', () => {
@@ -70,21 +70,23 @@ describe('R-PERM-11 client_ref content compare', () => {
 			proposed_values: { qty: 10, avg_price: 100 },
 			evidence: [{ report_id: 'r-old' }]
 		};
-		expect(clientRefContentMatches(attempted, existing)).toBe(false);
+		expect(clientRefContentMatches(attempted, existing, 'position_proposals')).toBe(false);
 	});
 
 	it('undefined attempted values are dropped — memo:undefined vs memo:null is not CONFLICT', () => {
 		expect(
 			clientRefContentMatches(
 				{ client_ref: 'r', title: 'T', memo: undefined },
-				{ id: '1', client_ref: 'r', title: 'T', memo: null, status: 'pending' }
+				{ id: '1', client_ref: 'r', title: 'T', memo: null, status: 'pending' },
+				'journal_entries'
 			)
 		).toBe(true);
 
 		expect(
 			clientRefContentMatches(
 				{ client_ref: 'r', nested: { a: 1, b: undefined } },
-				{ id: '1', client_ref: 'r', nested: { a: 1 }, status: 'pending' }
+				{ id: '1', client_ref: 'r', nested: { a: 1 }, status: 'pending' },
+				'journal_entries'
 			)
 		).toBe(true);
 

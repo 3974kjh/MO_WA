@@ -38,7 +38,7 @@ describe('fromRepo owner_id forcing', () => {
 		expect(ownerEqs.every(([, v]) => v === 'owner-xyz')).toBe(true);
 	});
 
-	it('stamps owner_id on insert when missing or matching', () => {
+	it('stamps owner_id on insert when missing or matching; rejects mismatch', () => {
 		const inserted: unknown[] = [];
 		const fakeDb = {
 			from: () => ({
@@ -55,6 +55,11 @@ describe('fromRepo owner_id forcing', () => {
 
 		expect(inserted[0]).toEqual({ title: 't', owner_id: 'owner-xyz' });
 		expect(inserted[1]).toEqual({ title: 't2', owner_id: 'owner-xyz' });
+
+		expect(() =>
+			fromRepo(repo, 'reports').insert({ title: 'evil', owner_id: 'other-owner' })
+		).toThrow(/owner_id mismatch/i);
+		expect(inserted).toHaveLength(2);
 	});
 
 	it('upsert requires onConflict with owner_id; rejects client id and owner mismatch', () => {

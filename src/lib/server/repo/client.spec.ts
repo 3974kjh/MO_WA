@@ -122,17 +122,20 @@ describe('repo identity / M-4', () => {
 	});
 
 	it('strips all proposed_by* and proposer aliases (M-2)', () => {
-		const safe = stripClientIdentity({
-			title: 't',
-			proposed_by_type: 'user',
-			proposed_by: 'x',
-			proposed_by_user: 'u1',
-			proposed_by_user_id: 'u2',
-			proposed_by_bot_id: 'b1',
-			proposer_type: 'bot',
-			source_bot_id: 'spoof',
-			display_id: 'P-1'
-		});
+		const safe = stripClientIdentity(
+			{
+				title: 't',
+				proposed_by_type: 'user',
+				proposed_by: 'x',
+				proposed_by_user: 'u1',
+				proposed_by_user_id: 'u2',
+				proposed_by_bot_id: 'b1',
+				proposer_type: 'bot',
+				source_bot_id: 'spoof',
+				display_id: 'P-1'
+			},
+			'position_proposals'
+		);
 		expect(safe).toEqual({ title: 't' });
 		expect(Object.keys(safe).some((k) => k.startsWith('proposed_by'))).toBe(false);
 		expect('proposer_type' in safe).toBe(false);
@@ -170,15 +173,18 @@ describe('repo identity / M-4', () => {
 	});
 
 	it('strips system patch fields (M-3)', () => {
-		const safe = stripClientIdentity({
-			memo: 'ok',
-			id: 'uuid',
-			version: 9,
-			approval_version: 3,
-			archived_at: '2026-01-01',
-			created_at: '2026-01-01',
-			updated_at: '2026-01-01'
-		});
+		const safe = stripClientIdentity(
+			{
+				memo: 'ok',
+				id: 'uuid',
+				version: 9,
+				approval_version: 3,
+				archived_at: '2026-01-01',
+				created_at: '2026-01-01',
+				updated_at: '2026-01-01'
+			},
+			'positions'
+		);
 		expect(safe).toEqual({ memo: 'ok' });
 		for (const key of SYSTEM_PATCH_BLOCKLIST) {
 			expect(key in safe).toBe(false);

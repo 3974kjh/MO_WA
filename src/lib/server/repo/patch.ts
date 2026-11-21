@@ -82,6 +82,8 @@ export const INSTRUMENT_PATCHABLE = [
 	'is_watchlist'
 ] as const;
 
+const DANGEROUS_OWN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 function assignOwn(out: Record<string, unknown>, key: string, value: unknown): void {
 	Object.defineProperty(out, key, {
 		value,
@@ -94,7 +96,7 @@ function assignOwn(out: Record<string, unknown>, key: string, value: unknown): v
 /**
  * Keep only allowlisted fields; drop system blocklist + proposed_by*.
  * Does not strip domain `status` on positions/reports.
- * Result is a null-prototype object.
+ * Result is a null-prototype object; dangerous own-keys are dropped.
  */
 export function pickPatchable(
 	patch: Record<string, unknown>,
@@ -103,6 +105,7 @@ export function pickPatchable(
 	const out: Record<string, unknown> = Object.create(null);
 	const allowSet = new Set(allow);
 	for (const [key, value] of Object.entries(patch)) {
+		if (DANGEROUS_OWN_KEYS.has(key)) continue;
 		if (key.startsWith('proposed_by')) continue;
 		if ((SYSTEM_PATCH_BLOCKLIST as readonly string[]).includes(key)) continue;
 		if (!allowSet.has(key)) continue;
