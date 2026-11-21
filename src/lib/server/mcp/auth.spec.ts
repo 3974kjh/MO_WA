@@ -52,6 +52,35 @@ describe('authenticate (env mode)', async () => {
 			MCP_KEY_PEPPER: undefined
 		});
 		expect(r.ok ? 0 : r.status).toBe(500);
+		if (!r.ok) expect(r.reason).toBe('server_misconfigured');
+	});
+	it('MCP Nit 1: unset MCP_AUTH_MODE defaults to env', async () => {
+		const { MCP_AUTH_MODE: _omit, ...noMode } = env as typeof env & { MCP_AUTH_MODE?: string };
+		void _omit;
+		const r = await authenticate(req({ authorization: `Bearer ${key}` }), noMode);
+		expect(r.ok).toBe(true);
+		if (r.ok) expect(r.ctx.mode).toBe('env');
+	});
+	it('MCP Nit 1: MCP_AUTH_MODE=env uses env path', async () => {
+		const r = await authenticate(req({ authorization: `Bearer ${key}` }), {
+			...env,
+			MCP_AUTH_MODE: 'env'
+		});
+		expect(r.ok).toBe(true);
+		if (r.ok) expect(r.ctx.mode).toBe('env');
+	});
+	it('MCP Nit 1: unknown MCP_AUTH_MODE fails closed (500 server_misconfigured)', async () => {
+		for (const bad of ['DB', 'Env', 'database', 'prod', '', ' env']) {
+			const r = await authenticate(req({ authorization: `Bearer ${key}` }), {
+				...env,
+				MCP_AUTH_MODE: bad
+			});
+			expect(r.ok).toBe(false);
+			if (!r.ok) {
+				expect(r.status).toBe(500);
+				expect(r.reason).toBe('server_misconfigured');
+			}
+		}
 	});
 	it('does not read spoofed x-mowa-bot-id (env)', async () => {
 		const r = await authenticate(

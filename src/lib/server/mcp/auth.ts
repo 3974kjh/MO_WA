@@ -22,7 +22,8 @@ const KEY_RE = /^mowa_([a-z0-9]{10})_([A-Za-z0-9_-]{43})$/;
 
 export type AuthEnv = {
 	MCP_KEY_PEPPER?: string;
-	MCP_AUTH_MODE?: string; // 'env'(스파이크 1단계) | 'db'(2단계: mcp_authenticate RPC)
+	/** unset→'env'; exact 'env'|'db' only (MCP Nit 1). Other values → 500 server_misconfigured. */
+	MCP_AUTH_MODE?: string;
 	MCP_SPIKE_KEY_PREFIX?: string;
 	MCP_SPIKE_KEY_HASH?: string;
 };
@@ -86,7 +87,13 @@ export async function authenticate(request: Request, env: AuthEnv): Promise<Auth
 
 	const hash = await hmacSha256Hex(env.MCP_KEY_PEPPER, key.secret);
 
-	if ((env.MCP_AUTH_MODE ?? 'env') === 'env') {
+	// MCP Nit 1: unset → 'env'; only exact 'env' | 'db' (case-sensitive). Anything else fails closed.
+	const mode = env.MCP_AUTH_MODE ?? 'env';
+	if (mode !== 'env' && mode !== 'db') {
+		return { ok: false, status: 500, reason: 'server_misconfigured' };
+	}
+
+	if (mode === 'env') {
 		const okPrefix = key.prefix === (env.MCP_SPIKE_KEY_PREFIX ?? '');
 		const okHash = timingSafeEqualHex(hash, (env.MCP_SPIKE_KEY_HASH ?? '').toLowerCase());
 		if (!(okPrefix && okHash)) return { ok: false, status: 401, reason: 'invalid_key' };

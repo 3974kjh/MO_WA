@@ -2374,6 +2374,34 @@ export type Database = {
 					isSetofReturn: false;
 				};
 			};
+			issue_bot_client: {
+				Args: {
+					p_name: string;
+					p_profile: string;
+					p_key_prefix: string;
+					p_key_hash: string;
+					p_scopes?: string[];
+					p_description?: string | null;
+					p_rate_limit_per_min?: number;
+					p_expires_at?: string | null;
+				};
+				Returns: {
+					id: string;
+					owner_id: string;
+					name: string;
+					profile: string;
+					description: string | null;
+					key_prefix: string;
+					scopes: string[];
+					rate_limit_per_min: number;
+					expires_at: string | null;
+					revoked_at: string | null;
+					revoked_reason: string | null;
+					last_used_at: string | null;
+					created_at: string;
+					updated_at: string;
+				}[];
+			};
 			mcp_authenticate: {
 				Args: { p_hash: string; p_ip?: unknown; p_prefix: string };
 				Returns: {

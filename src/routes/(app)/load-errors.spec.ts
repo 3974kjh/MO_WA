@@ -22,7 +22,8 @@ vi.mock('$lib/server/repo', () => ({
 	countPendingProposals: vi.fn(async () => ({ data: 0, error: RAW })),
 	listIndicatorSeries: vi.fn(async () => ({ data: [], error: RAW })),
 	listInstrumentLabels: vi.fn(async () => ({ data: [], error: RAW })),
-	countAuditRuleIds: vi.fn(async () => ({ data: [], error: RAW })),
+	countAuditRuleIds: vi.fn(async () => ({ data: {}, error: RAW })),
+	listBotClients: vi.fn(async () => ({ data: [], error: null })),
 	listArchivedRows: vi.fn(async () => ({
 		data: {
 			reports: [],
