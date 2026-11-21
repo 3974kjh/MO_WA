@@ -135,4 +135,72 @@ describe('홈 대시보드 렌더 (FE-03)', () => {
 		expect(links).toContain('/portfolio#queue');
 		expect(links).toContain('/briefings/2026-11-20');
 	});
+
+	it('감시 카드는 감시 가격이 있거나 관심만인 종목만 보인다(일반 보유는 제외)', async () => {
+		const pos = (over: Record<string, unknown>) => ({
+			instrument_id: 'i',
+			currency: 'KRW',
+			qty: 1,
+			avg_price: 100,
+			trigger_price: null,
+			trigger_direction: null,
+			watch_only: false,
+			price: 102,
+			price_as_of: '2026-11-20',
+			value_krw: 102,
+			status: 'holding',
+			...over
+		});
+		const { container } = render(Page, {
+			data: {
+				...empty,
+				positions: [
+					pos({ id: 'a', name: '일반보유', ticker: 'ORD' }),
+					pos({
+						id: 'b',
+						name: '가격있음',
+						ticker: 'TRG',
+						trigger_price: 100,
+						trigger_direction: 'below'
+					}),
+					pos({ id: 'c', name: '관심전용', ticker: 'WCH', watch_only: true, status: 'watching' })
+				]
+			} as never
+		});
+		const card = container.querySelector('[data-testid="home-triggers"]')!;
+		const t = text(card);
+		expect(t).not.toContain('일반보유');
+		expect(t).toContain('가격있음');
+		expect(t).toContain('관심전용');
+		expect(t.match(/관심만/g)?.length).toBe(1);
+		expect(card.querySelectorAll('li').length).toBe(2);
+	});
+
+	it('감시 대상이 하나도 없으면(일반 보유뿐) 감시 카드는 빈 상태', async () => {
+		const { container } = render(Page, {
+			data: {
+				...empty,
+				positions: [
+					{
+						id: 'a',
+						instrument_id: 'i',
+						name: '일반보유',
+						ticker: 'ORD',
+						status: 'holding',
+						currency: 'KRW',
+						qty: 1,
+						avg_price: 100,
+						trigger_price: null,
+						trigger_direction: null,
+						watch_only: false,
+						price: 102,
+						price_as_of: '2026-11-20',
+						value_krw: 102
+					}
+				]
+			} as never
+		});
+		expect(container.querySelector('[data-testid="home-triggers"]')).toBeNull();
+		expect(text(container)).toContain('감시 중인 종목이 없어요');
+	});
 });

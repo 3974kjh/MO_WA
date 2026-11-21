@@ -59,6 +59,7 @@
 	let weights = $derived(weightItems(data.positions));
 	let triggers = $derived(
 		data.positions
+			.filter((p) => p.trigger_price != null || p.watch_only)
 			.map((p) => ({
 				p,
 				t: triggerState({
