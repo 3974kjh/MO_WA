@@ -13,6 +13,7 @@ const empty = {
 	tickersError: null,
 	queue: { items: [], total: 0, pendingCount: 0 },
 	queueError: null,
+	queueNote: null,
 	kospiSeries: [],
 	kospiSeriesError: null,
 	recentBriefings: [],
@@ -73,13 +74,16 @@ describe('홈 대시보드 렌더 (FE-03)', () => {
 				queue: {
 					items: [
 						{
+							kind: 'position',
 							id: 'q1',
 							status: 'pending',
 							change_type: 'set_qty_avg',
 							name: '테스트종목',
 							ticker: 'TST',
+							clause_ref: null,
 							currency: 'KRW',
-							changes: [{ field: 'qty', from: 1, to: 2 }]
+							changes: [{ field: 'qty', from: 1, to: 2 }],
+							created_at: '2026-11-20T00:00:00Z'
 						}
 					],
 					total: 1,
@@ -202,5 +206,108 @@ describe('홈 대시보드 렌더 (FE-03)', () => {
 		});
 		expect(container.querySelector('[data-testid="home-triggers"]')).toBeNull();
 		expect(text(container)).toContain('감시 중인 종목이 없어요');
+	});
+});
+
+describe('홈 확인 대기: 투자 원칙 개정 요청 + 일부 실패 (FE-07 후속)', () => {
+	const posItem = {
+		kind: 'position',
+		id: 'q1',
+		status: 'pending',
+		change_type: 'set_qty_avg',
+		name: '테스트종목',
+		ticker: 'TST',
+		clause_ref: null,
+		currency: 'KRW',
+		changes: [],
+		created_at: '2026-11-19T00:00:00Z'
+	};
+	const prinItem = (over: Record<string, unknown> = {}) => ({
+		kind: 'principle',
+		id: 'r1',
+		status: 'on_hold',
+		change_type: 'principle',
+		name: null,
+		ticker: null,
+		clause_ref: '2-1',
+		currency: 'KRW',
+		changes: [],
+		created_at: '2026-11-20T00:00:00Z',
+		...over
+	});
+	const pill = (c: Element) => c.querySelector('[aria-label^="확인 대기"]');
+
+	it('원칙 요청은 조항·"투자 원칙 개정"·상태 배지로, 포지션과 한 목록에', async () => {
+		const { container } = render(Page, {
+			data: {
+				...empty,
+				queue: {
+					items: [prinItem(), prinItem({ id: 'r2', clause_ref: null, status: 'pending' }), posItem],
+					total: 3,
+					pendingCount: 2
+				}
+			} as never
+		});
+		const list = container.querySelector('[data-testid="home-queue"]')!;
+		const rows = [...list.querySelectorAll('li')];
+		expect(rows.map((r) => r.getAttribute('data-kind'))).toEqual([
+			'principle',
+			'principle',
+			'position'
+		]);
+		expect(text(rows[0])).toContain('2-1');
+		expect(text(rows[0])).toContain('투자 원칙 개정');
+		expect(text(rows[0])).toContain('보류');
+		expect(text(rows[1].querySelector('b')!)).toBe('투자 원칙');
+		expect(text(rows[1])).toContain('대기');
+		expect(text(list)).not.toContain('principle');
+		expect(text(list)).not.toContain('이름 없는 종목');
+		expect(pill(container)?.getAttribute('aria-label')).toBe('확인 대기 2건');
+		expect(container.querySelector('[data-testid="home-queue-note"]')).toBeNull();
+	});
+
+	it('원칙만 못 읽으면 포지션 항목 + 안내(카드 오류 아님)', async () => {
+		const note = '투자 원칙 개정 요청을 불러오지 못했어요. 목록과 건수가 실제보다 적을 수 있어요.';
+		const { container } = render(Page, {
+			data: {
+				...empty,
+				queue: { items: [posItem], total: 1, pendingCount: null },
+				queueNote: note
+			} as never
+		});
+		expect(text(container.querySelector('[data-testid="home-queue"]')!)).toContain('테스트종목');
+		expect(text(container.querySelector('[data-testid="home-queue-note"]')!)).toBe(note);
+		expect(text(container)).not.toContain('데이터를 불러오지 못했어요');
+		expect(pill(container)).toBeNull();
+	});
+
+	it('한쪽 실패 + 읽힌 항목 0건이면 "없어요" 대신 안내만', async () => {
+		const { container } = render(Page, {
+			data: { ...empty, queueNote: '보유 기록 변경 요청을 불러오지 못했어요.' } as never
+		});
+		expect(container.querySelector('[data-testid="home-queue-note"]')).not.toBeNull();
+		expect(container.querySelector('[data-testid="home-queue"]')).toBeNull();
+		expect(text(container)).not.toContain('확인할 요청이 없어요');
+	});
+
+	it('둘 다 실패면 카드 오류 상태만', async () => {
+		const { container } = render(Page, {
+			data: {
+				...empty,
+				queue: { items: [], total: 0, pendingCount: null },
+				queueError: '정보를 불러오지 못했어요.'
+			} as never
+		});
+		expect(text(container)).toContain('데이터를 불러오지 못했어요');
+		expect(container.querySelector('[data-testid="home-queue"]')).toBeNull();
+		expect(container.querySelector('[data-testid="home-queue-note"]')).toBeNull();
+		expect(pill(container)).toBeNull();
+	});
+
+	it('둘 다 0건이면 빈 상태, 건수 pill 없음', async () => {
+		const { container } = render(Page, { data: empty as never });
+		expect(text(container)).toContain('확인할 요청이 없어요');
+		expect(pill(container)).toBeNull();
+		expect(container.querySelector('[data-testid="home-queue-note"]')).toBeNull();
 	});
 });

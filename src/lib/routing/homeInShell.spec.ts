@@ -34,6 +34,12 @@ const repoMock = vi.hoisted(() => ({
 			error: null
 		})
 	),
+	listPrincipleQueue: vi.fn(
+		async (): Promise<{ data: unknown; error: unknown }> => ({
+			data: { items: [], page: 1, pageSize: 5, total: 0, totalPages: 0 },
+			error: null
+		})
+	),
 	countPendingProposals: vi.fn(async () => ({ data: 0, error: null })),
 	listIndicatorSeries: vi.fn(
 		async (): Promise<{ data: unknown[]; error: unknown }> => ({
@@ -168,6 +174,7 @@ describe('홈(`/`)은 (app) 셸 안 (#12 Low 1, 사용자 결정 21:27)', () => 
 			tickersError: null,
 			queue: { items: [], total: 0, pendingCount: 0 },
 			queueError: null,
+			queueNote: null,
 			kospiSeries: [],
 			kospiSeriesError: null,
 			recentBriefings: [],
@@ -182,6 +189,12 @@ describe('홈(`/`)은 (app) 셸 안 (#12 Low 1, 사용자 결정 21:27)', () => 
 			limit: 5
 		});
 		expect(repoMock.listQueueProposals).toHaveBeenCalledWith(expect.anything(), {
+			page: 1,
+			pageSize: 5,
+			offset: 0,
+			limit: 5
+		});
+		expect(repoMock.listPrincipleQueue).toHaveBeenCalledWith(expect.anything(), {
 			page: 1,
 			pageSize: 5,
 			offset: 0,
@@ -236,7 +249,8 @@ describe('홈(`/`)은 (app) 셸 안 (#12 Low 1, 사용자 결정 21:27)', () => 
 						position_id: 'pos1',
 						instrument_id: null,
 						proposed_values: { qty: 3, avg_price: 11 },
-						current_values: { qty: 2, avg_price: 10 }
+						current_values: { qty: 2, avg_price: 10 },
+						created_at: '2026-11-21T00:00:00Z'
 					},
 					{
 						id: 'q2',
@@ -245,7 +259,8 @@ describe('홈(`/`)은 (app) 셸 안 (#12 Low 1, 사용자 결정 21:27)', () => 
 						position_id: null,
 						instrument_id: 'ins2',
 						proposed_values: { qty: 1, avg_price: 5000, currency: 'KRW' },
-						current_values: null
+						current_values: null,
+						created_at: '2026-11-20T00:00:00Z'
 					}
 				],
 				page: 1,
@@ -307,11 +322,14 @@ describe('홈(`/`)은 (app) 셸 안 (#12 Low 1, 사용자 결정 21:27)', () => 
 		expect(data.queue).toEqual({
 			items: [
 				{
+					kind: 'position',
 					id: 'q1',
 					status: 'pending',
 					change_type: 'set_qty_avg',
 					name: '종목 하나',
 					ticker: 'AAA',
+					clause_ref: null,
+					created_at: '2026-11-21T00:00:00Z',
 					currency: 'USD',
 					changes: [
 						{ field: 'qty', from: 2, to: 3 },
@@ -319,11 +337,14 @@ describe('홈(`/`)은 (app) 셸 안 (#12 Low 1, 사용자 결정 21:27)', () => 
 					]
 				},
 				{
+					kind: 'position',
 					id: 'q2',
 					status: 'on_hold',
 					change_type: 'open_holding',
 					name: '종목 둘',
 					ticker: 'BBB',
+					clause_ref: null,
+					created_at: '2026-11-20T00:00:00Z',
 					currency: 'KRW',
 					changes: [
 						{ field: 'qty', from: null, to: 1 },
@@ -342,6 +363,11 @@ describe('홈(`/`)은 (app) 셸 안 (#12 Low 1, 사용자 결정 21:27)', () => 
 		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
 		repoMock.listPositionCards.mockResolvedValueOnce({ data: [], error: RAW });
 		repoMock.listQueueProposals.mockResolvedValueOnce({
+			data: { items: [], page: 1, pageSize: 5, total: 0, totalPages: 0 },
+			error: RAW
+		});
+		// 포지션·원칙 요청을 둘 다 못 읽을 때만 카드 전체 오류(한쪽만이면 queueNote — page.server.spec).
+		repoMock.listPrincipleQueue.mockResolvedValueOnce({
 			data: { items: [], page: 1, pageSize: 5, total: 0, totalPages: 0 },
 			error: RAW
 		});

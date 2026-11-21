@@ -2,13 +2,17 @@ import { describe, expect, it } from 'vitest';
 import {
 	changeTypeLabel,
 	holdingSummary,
+	isHomeQueueStatus,
+	mergeHomeQueue,
 	positionLabel,
+	principleLabel,
 	queueChanges,
 	queueCurrency,
 	returnPct,
 	shortDate,
 	weightItems,
-	type HomePosition
+	type HomePosition,
+	type HomeQueueItem
 } from './home';
 
 const pos = (o: Partial<HomePosition>): HomePosition => ({
@@ -111,5 +115,45 @@ describe('기타', () => {
 		expect(returnPct({ price: 1, avg_price: 0 })).toBeNull();
 		expect(shortDate('2026-11-05')).toBe('11/5');
 		expect(shortDate('')).toBeNull();
+	});
+});
+
+describe('홈 확인 대기: 포지션 + 원칙 병합 (FE-07 후속)', () => {
+	const item = (kind: HomeQueueItem['kind'], id: string, created_at: string): HomeQueueItem => ({
+		kind,
+		id,
+		status: 'pending',
+		change_type: kind === 'principle' ? 'principle' : 'close',
+		name: null,
+		ticker: null,
+		clause_ref: null,
+		currency: 'KRW',
+		changes: [],
+		created_at
+	});
+
+	it('mergeHomeQueue: 최신순으로 합치고 limit건만', () => {
+		const out = mergeHomeQueue(
+			[
+				item('position', 'a', '2026-11-01T00:00:00Z'),
+				item('position', 'b', '2026-11-03T00:00:00Z')
+			],
+			[item('principle', 'a', '2026-11-02T00:00:00Z')],
+			2
+		);
+		expect(out.map((i) => `${i.kind}:${i.id}`)).toEqual(['position:b', 'principle:a']);
+	});
+
+	it('isHomeQueueStatus: pending·on_hold만', () => {
+		expect(['pending', 'on_hold', 'approved', 'expired'].filter(isHomeQueueStatus)).toEqual([
+			'pending',
+			'on_hold'
+		]);
+	});
+
+	it('원칙 항목 이름·유형 표시명', () => {
+		expect(principleLabel({ clause_ref: ' 2-1 ' })).toBe('2-1');
+		expect(principleLabel({ clause_ref: null })).toBe('투자 원칙');
+		expect(changeTypeLabel('principle')).toBe('투자 원칙 개정');
 	});
 });

@@ -13,13 +13,17 @@ import {
 	listIndicatorSeries,
 	listInstrumentLabels,
 	listPositionCards,
+	listPrincipleQueue,
 	listQueueProposals,
 	loadDashboardValuation,
 	type InstrumentLabel
 } from '$lib/server/repo';
 import { INFO_LOAD_ERROR, publicListError } from '$lib/server/web/listError';
 import {
+	HOME_QUEUE_PARTIAL_NOTE,
 	HOME_TICKERS,
+	isHomeQueueStatus,
+	mergeHomeQueue,
 	queueChanges,
 	queueCurrency,
 	type HomeIndicator,
@@ -33,6 +37,9 @@ import {
  * L-8: `?page` / `?pageSize`를 받지 않는다(브리핑 1쪽 5건, 확인 대기 1쪽 5건 고정).
  * 오류 원문은 서버 로그에만 남기고 화면에는 일반 문구만 보낸다(publicListError).
  * 값이 없으면 빈 배열/null — 화면은 빈 상태를 보이고 시안 샘플 수치로 채우지 않는다.
+ * 확인 대기: 포지션(P-)·투자 원칙 개정(R-) 요청 pending + on_hold를 최신순으로 합쳐 5건.
+ *   건수 pill은 countPendingProposals(pending만). 한쪽만 못 읽으면 카드 전체를 오류로 바꾸지 않고
+ *   읽힌 항목과 짧은 안내(queueNote)를 보인다. 둘 다 못 읽을 때만 queueError.
  * 로그아웃은 전용 경로 `/logout`(LOGOUT_PATH) — 여기로 action을 옮기지 않는다.
  */
 export const load: PageServerLoad = async ({ locals, parent }) => {
@@ -40,14 +47,16 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 	if (!locals.user?.id) redirect(303, '/login');
 
 	const repo = forUser(locals.supabase, locals.user.id);
-	const [positionsRes, indicatorRes, recentBriefings, queue, pending, series] = await Promise.all([
-		listPositionCards(repo),
-		Promise.all(HOME_TICKERS.map((t) => getLatestIndicator(repo, t.key))),
-		listBriefingsWithKospi(repo, HOME_BRIEFINGS_PAGE),
-		listQueueProposals(repo, HOME_QUEUE_PAGE),
-		countPendingProposals(repo),
-		listIndicatorSeries(repo, 'kospi', HOME_SERIES_DAYS)
-	]);
+	const [positionsRes, indicatorRes, recentBriefings, queue, principleQueue, pending, series] =
+		await Promise.all([
+			listPositionCards(repo),
+			Promise.all(HOME_TICKERS.map((t) => getLatestIndicator(repo, t.key))),
+			listBriefingsWithKospi(repo, HOME_BRIEFINGS_PAGE),
+			listQueueProposals(repo, HOME_QUEUE_PAGE),
+			listPrincipleQueue(repo, HOME_QUEUE_PAGE),
+			countPendingProposals(repo),
+			listIndicatorSeries(repo, 'kospi', HOME_SERIES_DAYS)
+		]);
 
 	const positionCards = positionsRes.error ? [] : (positionsRes.data ?? []);
 	const queueCards = queue.error ? [] : (queue.data?.items ?? []);
@@ -89,22 +98,62 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 	});
 	const positionCurrency = new Map(positionCards.map((p) => [p.id, p.currency]));
 
-	const queueItems: HomeQueueItem[] = queueCards
-		.filter((c) => c.status === 'pending' || c.status === 'on_hold')
+	const positionQueueItems: HomeQueueItem[] = queueCards
+		.filter((c) => isHomeQueueStatus(c.status))
 		.map((c) => {
 			const instrumentId = queueInstrument(c);
 			const l = instrumentId ? labelById.get(instrumentId) : undefined;
 			const fallback = (c.position_id && positionCurrency.get(c.position_id)) || 'KRW';
 			return {
+				kind: 'position',
 				id: c.id,
 				status: c.status as HomeQueueItem['status'],
 				change_type: c.change_type,
 				name: l?.name ?? null,
 				ticker: l?.ticker ?? null,
+				clause_ref: null,
 				currency: queueCurrency(c.proposed_values, c.current_values, fallback),
-				changes: queueChanges(c.proposed_values, c.current_values)
+				changes: queueChanges(c.proposed_values, c.current_values),
+				created_at: c.created_at
 			};
 		});
+	const principleCards = principleQueue.error ? [] : (principleQueue.data?.items ?? []);
+	const principleQueueItems: HomeQueueItem[] = principleCards
+		.filter((c) => isHomeQueueStatus(c.status))
+		.map((c) => ({
+			kind: 'principle',
+			id: c.id,
+			status: c.status as HomeQueueItem['status'],
+			change_type: 'principle',
+			name: null,
+			ticker: null,
+			clause_ref: c.clause_ref?.trim() || null,
+			currency: 'KRW',
+			changes: [],
+			created_at: c.created_at
+		}));
+	const queueItems = mergeHomeQueue(positionQueueItems, principleQueueItems, HOME_QUEUE_PAGE.limit);
+	const queueTotal =
+		(queue.error ? 0 : (queue.data?.total ?? positionQueueItems.length)) +
+		(principleQueue.error ? 0 : (principleQueue.data?.total ?? principleQueueItems.length));
+	// 오류 원문은 서버 로그에만. 둘 다 실패면 카드 오류, 한쪽만이면 안내 한 줄(과소 표시임을 밝힌다).
+	const positionQueueError = publicListError('home.queue', queue.error, INFO_LOAD_ERROR);
+	const principleQueueError = publicListError(
+		'home.queue.principles',
+		principleQueue.error,
+		INFO_LOAD_ERROR
+	);
+	const pendingError = publicListError('home.queue.pending', pending.error, INFO_LOAD_ERROR);
+	const queueError = positionQueueError && principleQueueError ? INFO_LOAD_ERROR : null;
+	const queueNote = queueError
+		? null
+		: principleQueueError
+			? HOME_QUEUE_PARTIAL_NOTE.principle
+			: positionQueueError
+				? HOME_QUEUE_PARTIAL_NOTE.position
+				: pendingError
+					? HOME_QUEUE_PARTIAL_NOTE.count
+					: null;
 
 	const tickers = {} as Record<HomeTickerKey, HomeIndicator | null>;
 	let tickerFailed = false;
@@ -134,10 +183,11 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 		tickersError: tickerFailed ? INFO_LOAD_ERROR : null,
 		queue: {
 			items: queueItems,
-			total: queue.error ? 0 : (queue.data?.total ?? queueItems.length),
+			total: queueTotal,
 			pendingCount: pending.error ? null : pending.data
 		},
-		queueError: publicListError('home.queue', queue.error ?? pending.error, INFO_LOAD_ERROR),
+		queueError,
+		queueNote,
 		kospiSeries: series.error ? [] : series.data,
 		kospiSeriesError: publicListError('home.kospiSeries', series.error, INFO_LOAD_ERROR),
 		recentBriefings: recentBriefings.error ? [] : (recentBriefings.data?.items ?? []).slice(0, 5),

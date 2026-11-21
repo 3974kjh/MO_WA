@@ -45,20 +45,57 @@ export type HomePosition = {
 export type HomeQueueChange = { field: 'qty' | 'avg_price'; from: number | null; to: number };
 
 export type HomeQueueItem = {
+	/** position_proposals(포지션) 또는 principle_proposals(투자 원칙 개정) */
+	kind: 'position' | 'principle';
 	id: string;
 	status: 'pending' | 'on_hold';
 	change_type: string;
 	name: string | null;
 	ticker: string | null;
+	/** 원칙 개정 요청의 조항(없으면 null). 포지션은 항상 null. */
+	clause_ref: string | null;
 	currency: 'KRW' | 'USD';
 	changes: HomeQueueChange[];
+	created_at: string;
 };
+
+/** 홈 '확인 대기'에 싣는 상태(포지션·원칙 모두 같은 기준). */
+export function isHomeQueueStatus(s: string): s is HomeQueueItem['status'] {
+	return s === 'pending' || s === 'on_hold';
+}
+
+/** 포지션·원칙 요청을 최신순 한 목록으로 합쳐 앞에서 limit건만 남긴다. */
+export function mergeHomeQueue(
+	positions: readonly HomeQueueItem[],
+	principles: readonly HomeQueueItem[],
+	limit: number
+): HomeQueueItem[] {
+	return [...positions, ...principles]
+		.toSorted((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+		.slice(0, limit);
+}
+
+/**
+ * 홈 '확인 대기' 일부만 읽혔을 때 카드 안에 보이는 짧은 안내(전체 오류 상태로 바꾸지 않는다).
+ * 못 읽은 쪽은 목록·'외 N건'에서 빠지므로 실제보다 적을 수 있다고 밝힌다.
+ */
+export const HOME_QUEUE_PARTIAL_NOTE = {
+	principle: '투자 원칙 개정 요청을 불러오지 못했어요. 목록과 건수가 실제보다 적을 수 있어요.',
+	position: '보유 기록 변경 요청을 불러오지 못했어요. 목록과 건수가 실제보다 적을 수 있어요.',
+	count: '대기 건수를 불러오지 못했어요.'
+} as const;
+
+/** 원칙 개정 요청 항목 제목: 조항이 있으면 조항, 없으면 '투자 원칙'. */
+export function principleLabel(q: { clause_ref: string | null }): string {
+	return q.clause_ref?.trim() || '투자 원칙';
+}
 
 /** change_type 표시명(용어집 §14). 코드는 화면에 쓰지 않는다. */
 export const CHANGE_TYPE_LABEL: Record<string, string> = {
 	open_holding: '신규 매수',
 	set_qty_avg: '수량·평균 단가 변경',
-	close: '보유 종료'
+	close: '보유 종료',
+	principle: '투자 원칙 개정'
 };
 
 export function changeTypeLabel(t: string): string {

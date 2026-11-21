@@ -28,6 +28,7 @@
 		holdingSummary,
 		HOME_TICKERS,
 		positionLabel,
+		principleLabel,
 		returnPct,
 		shortDate,
 		weightItems,
@@ -123,27 +124,32 @@
 		<p class="hint">봇이 보낸 변경 요청은 <b>내가 반영해야</b> 보유 기록에 적용돼요.</p>
 		{#if data.queueError}
 			<ErrorState desc="잠시 후 다시 시도해 주세요." />
-		{:else if data.queue.items.length === 0}
+		{:else if data.queue.items.length === 0 && !data.queueNote}
 			<EmptyState icon="✓" title="확인할 요청이 없어요" />
 		{:else}
-			<ul class="list" data-testid="home-queue">
-				{#each data.queue.items as q (q.id)}
-					<li>
-						<a class="q-item" href="{resolve('/portfolio')}#queue">
-							<span class="grow">
-								<b>{positionLabel(q)}</b>
-								<span class="sub">{changeTypeLabel(q.change_type)}</span>
-								{#if q.changes.length}
-									<span class="sub num"
-										>{q.changes.map((c) => changeText(c, q.currency)).join(' · ')}</span
-									>
-								{/if}
-							</span>
-							<StatusBadge status={q.status} />
-						</a>
-					</li>
-				{/each}
-			</ul>
+			{#if data.queueNote}
+				<p class="queue-note" role="status" data-testid="home-queue-note">{data.queueNote}</p>
+			{/if}
+			{#if data.queue.items.length}
+				<ul class="list" data-testid="home-queue">
+					{#each data.queue.items as q (`${q.kind}:${q.id}`)}
+						<li data-kind={q.kind}>
+							<a class="q-item" href="{resolve('/portfolio')}#queue">
+								<span class="grow">
+									<b>{q.kind === 'principle' ? principleLabel(q) : positionLabel(q)}</b>
+									<span class="sub">{changeTypeLabel(q.change_type)}</span>
+									{#if q.changes.length}
+										<span class="sub num"
+											>{q.changes.map((c) => changeText(c, q.currency)).join(' · ')}</span
+										>
+									{/if}
+								</span>
+								<StatusBadge status={q.status} />
+							</a>
+						</li>
+					{/each}
+				</ul>
+			{/if}
 			{#if data.queue.total > data.queue.items.length}
 				<p class="more-note">외 {data.queue.total - data.queue.items.length}건</p>
 			{/if}
@@ -521,6 +527,11 @@
 		font-size: var(--text-sm);
 		color: var(--color-muted);
 		overflow-wrap: anywhere;
+	}
+	.queue-note {
+		margin-top: 8px;
+		font-size: var(--text-sm);
+		color: var(--color-muted);
 	}
 	.more-note {
 		margin-top: 6px;
