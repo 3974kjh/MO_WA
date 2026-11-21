@@ -7,6 +7,7 @@ import { defineConfig } from 'eslint/config';
 import globals from 'globals';
 import ts from 'typescript-eslint';
 import svelteConfig from './svelte.config.js';
+import mowa from './eslint-rules/no-dark-variant.js';
 
 const gitignorePath = path.resolve(import.meta.dirname, '.gitignore');
 
@@ -258,5 +259,11 @@ export default defineConfig(
 			'no-restricted-imports': 'off',
 			'no-restricted-syntax': 'off'
 		}
+	},
+	{
+		// G-14: Tailwind `dark:` 변형 금지(토큰만 사용). CSS 파일은 scripts/check-no-dark-variant.mjs가 검사한다.
+		files: ['src/**/*.{svelte,ts,js}'],
+		plugins: { mowa },
+		rules: { 'mowa/no-dark-variant': 'error' }
 	}
 );

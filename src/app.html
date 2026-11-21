@@ -1,9 +1,42 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
 	<head>
 		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+		<meta name="color-scheme" content="light dark" />
 		<meta name="text-scale" content="scale" />
+		<!--
+			FE-13 theme-init (design/shared/theme-init.js와 같은 로직): CSS보다 먼저 동기 실행해 첫 페인트 깜빡임을 막는다.
+			저장값(localStorage 'mowa-theme') 또는 ?theme=light|dark 가 있으면 <html data-theme>를 건다. 없으면 OS 설정(tokens.css media query).
+		-->
+		<script>
+			(function () {
+				try {
+					var q = new URLSearchParams(location.search).get('theme');
+					var t = q || localStorage.getItem('mowa-theme');
+					if (t === 'dark' || t === 'light') {
+						document.documentElement.setAttribute('data-theme', t);
+						if (q) localStorage.setItem('mowa-theme', q);
+					}
+				} catch (e) {}
+			})();
+		</script>
+		<!-- Pretendard Variable 동적 서브셋 self-host (SIL OFL 1.1, /fonts/pretendard/OFL.txt). 91=라틴·숫자, 90=고빈도 한글 -->
+		<link
+			rel="preload"
+			as="font"
+			type="font/woff2"
+			crossorigin
+			href="/fonts/pretendard/woff2-dynamic-subset/PretendardVariable.subset.91.woff2"
+		/>
+		<link
+			rel="preload"
+			as="font"
+			type="font/woff2"
+			crossorigin
+			href="/fonts/pretendard/woff2-dynamic-subset/PretendardVariable.subset.90.woff2"
+		/>
+		<link rel="stylesheet" href="/fonts/pretendard/pretendard.css" />
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

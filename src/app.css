@@ -1,0 +1,175 @@
+/*
+ * MO_WA 전역 스타일 (FE-13)
+ * - 디자인 토큰: ./tokens.css (design/tokens.css 확정본 v1.2를 그대로 복사, 수정 금지)
+ * - 테마: data-theme 속성이 없으면 OS 설정(prefers-color-scheme)을 따른다. 토큰만 쓰고 `dark:` 유틸리티는 쓰지 않는다(G-14, lint로 검사).
+ * - 폰트: Pretendard Variable 동적 서브셋 self-host(/fonts/pretendard/pretendard.css, app.html에서 로드)
+ */
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+@import './tokens.css' theme(static); /* 컴포넌트 <style>의 var(--color-*)도 쓰므로 모든 토큰 변수를 항상 출력 */
+
+/* iOS safe-area (viewport-fit=cover와 함께 사용) */
+:root {
+	--safe-top: env(safe-area-inset-top, 0px);
+	--safe-bottom: env(safe-area-inset-bottom, 0px);
+	--safe-left: env(safe-area-inset-left, 0px);
+	--safe-right: env(safe-area-inset-right, 0px);
+	/* 하단 inset 삼중 최댓값: 홈 바 없는 기기에서도 8px 이상 (DS §4-1) */
+	--inset-b: max(var(--app-inset-b, 0px), env(safe-area-inset-bottom, 0px), 8px);
+}
+
+html {
+	scroll-padding-top: 68px;
+	scroll-padding-bottom: calc(52px + var(--inset-b) + 24px);
+}
+
+@layer base {
+	*,
+	*::before,
+	*::after {
+		box-sizing: border-box;
+	}
+	body {
+		margin: 0;
+		min-height: 100dvh;
+		background: var(--color-canvas);
+		color: var(--color-text);
+		font-family: var(--font-sans);
+		font-size: var(--text-base);
+		line-height: var(--text-base--line-height);
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+		/* 한글 줄바꿈 (H §1-4) */
+		word-break: keep-all;
+		overflow-wrap: anywhere;
+	}
+	h1,
+	h2,
+	h3,
+	h4 {
+		margin: 0;
+		font-weight: 700;
+		letter-spacing: -0.01em;
+	}
+	p {
+		margin: 0;
+	}
+	button,
+	input,
+	select,
+	textarea {
+		font: inherit;
+		color: inherit;
+	}
+	button {
+		cursor: pointer;
+	}
+	button:disabled {
+		cursor: not-allowed;
+	}
+	a {
+		color: var(--color-accent);
+		text-decoration: none;
+	}
+	a:hover {
+		text-decoration: underline;
+	}
+	/* 모바일 입력 font-size 16px: iOS 확대 방지 (H §5, 시안 15px → 구현 16px) */
+	@media (max-width: 639px) {
+		input,
+		select,
+		textarea {
+			font-size: max(16px, 1em);
+		}
+	}
+}
+
+/* 금액·숫자 공통: 단위 표기와 축약값 단서(점선 밑줄) — DS §3-1 */
+@layer components {
+	.u {
+		font-size: 0.72em;
+		font-weight: 600;
+		color: var(--color-muted);
+		margin-left: 2px;
+	}
+	.tip {
+		cursor: help;
+		text-decoration: underline dotted var(--color-subtle);
+		text-underline-offset: 3px;
+	}
+}
+
+/*
+ * ── 레거시(자산 대시보드) 호환 토큰 ──
+ * 기존 화면(/ 자산 대시보드, /login)이 쓰는 Apple 계열 이름만 남긴다. 새 토큰과 이름이 겹치는 값(canvas, radius-*)은 새 토큰이 이긴다.
+ * 레거시 화면을 교체(design.md §2 삭제 대상)할 때 이 블록을 지운다. 새 코드에서 쓰지 말 것.
+ */
+@theme {
+	--color-primary: #0066cc;
+	--color-primary-focus: #0071e3;
+	--color-primary-on-dark: #2997ff;
+	--color-on-primary: #ffffff;
+	--color-canvas-parchment: #f5f5f7;
+	--color-surface-pearl: #fafafc;
+	--color-surface-tile-1: #272729;
+	--color-surface-tile-2: #2a2a2c;
+	--color-surface-tile-3: #252527;
+	--color-surface-black: #000000;
+	--color-surface-chip-translucent: #d2d2d7;
+	--color-ink: #1d1d1f;
+	--color-body: #1d1d1f;
+	--color-body-on-dark: #ffffff;
+	--color-body-muted: #cccccc;
+	--color-ink-muted-80: #333333;
+	--color-ink-muted-48: #7a7a7a;
+	--color-on-dark: #ffffff;
+	--color-hairline: #e0e0e0;
+	--color-divider-soft: #f0f0f0;
+	--radius-pill: 9999px;
+	--spacing-xxs: 4px;
+	--spacing-xs: 8px;
+	--spacing-sm: 12px;
+	--spacing-md: 17px;
+	--spacing-lg: 24px;
+	--spacing-xl: 32px;
+	--spacing-xxl: 48px;
+	--spacing-section: 80px;
+	--shadow-product: 3px 5px 30px 0 rgba(0, 0, 0, 0.22);
+	--font-display: 'SF Pro Display', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+	--font-text: 'SF Pro Text', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+:root {
+	--field-padding-inline: 20px;
+	--field-select-padding-inline-end: 36px;
+	--field-select-trailing-icon-inset: 20px;
+	--field-trailing-icon-size: 16px;
+}
+.product-shadow {
+	box-shadow: var(--shadow-product);
+}
+.field-control--plain {
+	padding-inline: var(--field-padding-inline);
+}
+.field-control--select {
+	padding-inline: var(--field-padding-inline) var(--field-select-padding-inline-end);
+}
+.field-trailing-icon {
+	position: absolute;
+	inset-block: 0;
+	right: var(--field-select-trailing-icon-inset);
+	display: flex;
+	width: var(--field-trailing-icon-size);
+	height: var(--field-trailing-icon-size);
+	margin-block: auto;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 1px;
+	pointer-events: none;
+	color: var(--color-ink-muted-48);
+}
+input[type='date'].field-control--plain::-webkit-calendar-picker-indicator,
+input[type='datetime-local'].field-control--plain::-webkit-calendar-picker-indicator {
+	cursor: pointer;
+	opacity: 0.55;
+}
