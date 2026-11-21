@@ -1,8 +1,9 @@
-import type { Handle } from '@sveltejs/kit';
+import { error, type Handle } from '@sveltejs/kit';
 import { createSupabaseServerClient } from '$lib/supabase/server';
 import { getSupabasePublicConfig } from '$lib/supabase/config';
 import {
 	cache,
+	clearSupabaseAuthCookies,
 	isMcpApiPath,
 	resolveAuthenticatedUser
 } from '$lib/server/auth';
@@ -11,10 +12,17 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// MCP uses Bearer keys; skip cookie Auth round-trips (BE-02 / M-3).
 	if (isMcpApiPath(event.url.pathname)) {
 		event.locals.user = null;
+		// OPTIONS may be unauthenticated; POST must not bypass Bearer auth.
+		if (event.request.method === 'OPTIONS') {
+			return resolve(event);
+		}
 		if (!event.request.headers.get('authorization')) {
 			return new Response(JSON.stringify({ error: 'Unauthorized' }), {
 				status: 401,
-				headers: { 'content-type': 'application/json' }
+				headers: {
+					'content-type': 'application/json',
+					'WWW-Authenticate': 'Bearer realm="mo-wa-mcp"'
+				}
 			});
 		}
 		return resolve(event);
@@ -35,7 +43,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	if (resolution.kind === 'unavailable') {
 		console.error(`[auth] Auth unavailable (${resolution.reason}); returning 503`);
-		return new Response('Service Unavailable', { status: 503 });
+		// Use error() so SvelteKit can still flush Set-Cookie from this request (H-1).
+		error(503, 'Auth service unavailable');
+	}
+
+	if (resolution.kind === 'anonymous' && resolution.clearCookies) {
+		clearSupabaseAuthCookies(event.cookies);
 	}
 
 	event.locals.user = resolution.user;

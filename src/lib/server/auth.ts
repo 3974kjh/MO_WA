@@ -1,11 +1,12 @@
 import type { SupabaseClient, User, UserResponse } from '@supabase/supabase-js';
+import type { Cookies } from '@sveltejs/kit';
 import type { Database } from '$lib/types/database.types';
 
 export type PublicUser = { id: string; email: string | null };
 
 export type AuthUserResolution =
 	| { kind: 'authenticated'; user: User }
-	| { kind: 'anonymous'; user: null }
+	| { kind: 'anonymous'; user: null; clearCookies: boolean }
 	| { kind: 'unavailable'; user: null; reason: string };
 
 /**
@@ -25,34 +26,38 @@ export function cache<T>(fn: () => T): () => T {
 	};
 }
 
+function isAuthUnreachable(error: { status?: number; name?: string }): boolean {
+	if (error.name === 'AuthRetryableFetchError') return true;
+	const status = error.status;
+	return status === 0 || (typeof status === 'number' && status >= 500);
+}
+
 /**
- * Map getUser() results for authorization (L-2).
- * Only 401/403 (and missing-session) become anonymous. Auth 5xx / network → unavailable (503).
+ * Map getUser() results for authorization (H-1).
+ * 503/unavailable only when Auth could not be reached (status 0, 5xx, AuthRetryableFetchError).
+ * All other errors (including 4xx such as refresh_token_not_found) are anonymous.
  */
 export function resolveAuthenticatedUser(result: UserResponse): AuthUserResolution {
 	if (!result.error) {
 		if (result.data.user) return { kind: 'authenticated', user: result.data.user };
-		return { kind: 'anonymous', user: null };
+		return { kind: 'anonymous', user: null, clearCookies: false };
 	}
 
-	const { error } = result;
-	const status = error.status;
-	const name = error.name;
-
-	// No cookie / no session is unauthenticated, not an upstream outage.
-	if (name === 'AuthSessionMissingError') {
-		return { kind: 'anonymous', user: null };
-	}
-
-	if (status === 401 || status === 403) {
-		return { kind: 'anonymous', user: null };
-	}
-
-	if (name === 'AuthRetryableFetchError' || (typeof status === 'number' && status >= 500)) {
+	if (isAuthUnreachable(result.error)) {
 		return { kind: 'unavailable', user: null, reason: 'auth_upstream' };
 	}
 
-	return { kind: 'unavailable', user: null, reason: 'auth_unexpected' };
+	// AuthSessionMissingError (400), refresh_token_not_found (400), 401/403, other 4xx → anonymous.
+	return { kind: 'anonymous', user: null, clearCookies: true };
+}
+
+/** Clear Supabase SSR auth cookie chunks so stale/invalid sessions cannot stick. */
+export function clearSupabaseAuthCookies(cookies: Cookies) {
+	for (const { name } of cookies.getAll()) {
+		if (name.startsWith('sb-') && name.includes('-auth-token')) {
+			cookies.delete(name, { path: '/' });
+		}
+	}
 }
 
 /** Narrow MCP path match so `/api/mcpfoo` keeps cookie auth (M-3). */

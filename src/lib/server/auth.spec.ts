@@ -1,8 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AuthError, type User, type UserResponse } from '@supabase/supabase-js';
+import {
+	AuthError,
+	AuthSessionMissingError,
+	type User,
+	type UserResponse
+} from '@supabase/supabase-js';
 import {
 	authGuardRedirect,
 	cache,
+	clearSupabaseAuthCookies,
 	isMcpApiPath,
 	resolveAuthenticatedUser,
 	toPublicUser
@@ -21,13 +27,17 @@ describe('BE-02 auth.getUser transition', () => {
 		expect(fn).toHaveBeenCalledTimes(1);
 	});
 
-	it('401 forged cookie resolves as anonymous', () => {
+	it('401 forged cookie resolves as anonymous and requests cookie clear', () => {
 		const forged: UserResponse = {
 			data: { user: null },
 			error: new AuthError('invalid JWT: unable to parse or verify signature', 401)
 		};
 
-		expect(resolveAuthenticatedUser(forged)).toEqual({ kind: 'anonymous', user: null });
+		expect(resolveAuthenticatedUser(forged)).toEqual({
+			kind: 'anonymous',
+			user: null,
+			clearCookies: true
+		});
 	});
 
 	it('403 resolves as anonymous', () => {
@@ -36,6 +46,28 @@ describe('BE-02 auth.getUser transition', () => {
 			error: new AuthError('forbidden', 403)
 		};
 		expect(resolveAuthenticatedUser(forbidden).kind).toBe('anonymous');
+	});
+
+	it('H-1: 400 refresh_token_not_found is anonymous (login + clear), not 503', () => {
+		const stale: UserResponse = {
+			data: { user: null },
+			error: new AuthError('Invalid Refresh Token: Refresh Token Not Found', 400, 'refresh_token_not_found')
+		};
+		const result = resolveAuthenticatedUser(stale);
+		expect(result).toEqual({ kind: 'anonymous', user: null, clearCookies: true });
+		expect(authGuardRedirect(result.user, '/')).toBe('/login');
+	});
+
+	it('H-1: AuthSessionMissingError (status 400) is anonymous / login page', () => {
+		const missing: UserResponse = {
+			data: { user: null },
+			error: new AuthSessionMissingError()
+		};
+		expect(missing.error?.status).toBe(400);
+		const result = resolveAuthenticatedUser(missing);
+		expect(result.kind).toBe('anonymous');
+		expect(result.user).toBeNull();
+		expect(authGuardRedirect(result.user, '/')).toBe('/login');
 	});
 
 	it('Auth 5xx does not log the user out (unavailable → 503 path)', () => {
@@ -48,11 +80,35 @@ describe('BE-02 auth.getUser transition', () => {
 		expect(result.user).toBeNull();
 	});
 
+	it('status 0 is unavailable (Auth unreachable)', () => {
+		const result = resolveAuthenticatedUser({
+			data: { user: null },
+			error: new AuthError('network', 0)
+		});
+		expect(result.kind).toBe('unavailable');
+	});
+
 	it('network AuthRetryableFetchError is unavailable, not anonymous', () => {
 		const err = new AuthError('fetch failed', 0);
 		err.name = 'AuthRetryableFetchError';
 		const result = resolveAuthenticatedUser({ data: { user: null }, error: err });
 		expect(result.kind).toBe('unavailable');
+	});
+
+	it('clearSupabaseAuthCookies deletes sb-*-auth-token cookies', () => {
+		const deleted: string[] = [];
+		const cookies = {
+			getAll: () => [
+				{ name: 'sb-testproject-auth-token', value: 'x' },
+				{ name: 'sb-testproject-auth-token.0', value: 'y' },
+				{ name: 'other', value: 'z' }
+			],
+			delete: (name: string) => {
+				deleted.push(name);
+			}
+		};
+		clearSupabaseAuthCookies(cookies as never);
+		expect(deleted).toEqual(['sb-testproject-auth-token', 'sb-testproject-auth-token.0']);
 	});
 
 	it('verified getUser result exposes the user', () => {
