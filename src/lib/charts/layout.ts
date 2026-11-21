@@ -13,6 +13,10 @@ export const BAR_DEFAULT_HEIGHT = 200;
 export const DONUT_MAX_SLICES = 8;
 export const DONUT_MIN_PCT = 6;
 export const DONUT_OTHER_LABEL = '기타';
+/** 원래 이름이 '기타'인 개별 항목을 묶음 '기타'와 구분하는 표시 이름 */
+export const DONUT_OWN_OTHER_LABEL = '기타 (개별)';
+/** 숫자가 아닌 값(NaN·Infinity)의 표시 */
+export const NON_FINITE = '—';
 /** 카테고리 색은 chart-1~8만 쓴다(상승/하락 색 금지). */
 export const CHART_COLOR_COUNT = 8;
 
@@ -106,6 +110,7 @@ export function barTickIndices(n: number, mobile: boolean): number[] {
 
 /** 부호 붙은 숫자: `+1.4` / `−2.1` / `0.0` (유니코드 마이너스) */
 export function signedNumber(v: number, digits: number): string {
+	if (!Number.isFinite(v)) return NON_FINITE;
 	const body = Math.abs(v).toLocaleString('ko-KR', {
 		minimumFractionDigits: digits,
 		maximumFractionDigits: digits
@@ -115,6 +120,7 @@ export function signedNumber(v: number, digits: number): string {
 }
 
 export function plainNumber(v: number, digits: number): string {
+	if (!Number.isFinite(v)) return NON_FINITE;
 	const body = Math.abs(v).toLocaleString('ko-KR', {
 		minimumFractionDigits: digits,
 		maximumFractionDigits: digits
@@ -158,8 +164,9 @@ export function groupDonut(items: readonly DonutInput[]): DonutSlice[] {
 		keep = keep.slice(0, maxKeep);
 	}
 
+	const hasGroup = other.length > 0;
 	const slices: Omit<DonutSlice, 'color'>[] = keep.map((it) => ({
-		label: it.label,
+		label: hasGroup && it.label === DONUT_OTHER_LABEL ? DONUT_OWN_OTHER_LABEL : it.label,
 		value: it.value,
 		pct: pctOf(it.value)
 	}));

@@ -83,13 +83,13 @@
 
   /* 차트 팔레트(카테고리, 색약 고려: 명도 차 + 패턴/라벨 병행). 상승/하락 색과 겹치지 않게 틸·앰버·인디고·회청 중심 */
   --color-chart-1: #0B6E67;
-  --color-chart-2: #D98A00;
+  --color-chart-2: #C27B00;
   --color-chart-3: #5663C7;
   --color-chart-4: #8A6BB5;
   --color-chart-5: #2E9CA6;
   --color-chart-6: #B8593B;
   --color-chart-7: #7C8696;
-  --color-chart-8: #A9B8C9;
+  --color-chart-8: #758DA9;
   --color-chart-grid: #E3E6EC;
   --color-chart-axis: #5D6676;
 
@@ -141,7 +141,7 @@
   --color-chart-5: #5FC3CC;
   --color-chart-6: #E6896B;
   --color-chart-7: #8E97A8;
-  --color-chart-8: #566275;
+  --color-chart-8: #637187;
   --color-chart-grid: #262C39;
   --color-chart-axis: #8E97A8;
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 2px 8px rgb(0 0 0 / 0.3); --color-card-line: rgb(255 255 255 / 0.07);
@@ -160,7 +160,7 @@
     --color-warn: #F2B544; --color-warn-soft: #36290E; --color-warn-fill: #F2B544; --color-on-warn: #1B1100;
     --color-info: #A3AEF5; --color-info-soft: #1F2442; --color-ok: #7FD18A; --color-ok-soft: #14301A; --color-focus: #72D6CC;
     --color-chart-1: #4FC4B8; --color-chart-2: #F2B544; --color-chart-3: #8F9CF2; --color-chart-4: #B79AE0;
-    --color-chart-5: #5FC3CC; --color-chart-6: #E6896B; --color-chart-7: #8E97A8; --color-chart-8: #566275;
+    --color-chart-5: #5FC3CC; --color-chart-6: #E6896B; --color-chart-7: #8E97A8; --color-chart-8: #637187;
     --color-chart-grid: #262C39; --color-chart-axis: #8E97A8;
     --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 2px 8px rgb(0 0 0 / 0.3); --color-card-line: rgb(255 255 255 / 0.07);
     --shadow-pop: 0 8px 28px rgb(0 0 0 / 0.55); --shadow-sheet: 0 -8px 32px rgb(0 0 0 / 0.6); --color-scrim: rgb(0 0 0 / 0.64);
