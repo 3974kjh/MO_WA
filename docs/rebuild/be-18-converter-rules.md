@@ -135,10 +135,21 @@ Target fields on latest `equity_analysis` `reports.meta`:
 |---|---|---|
 | `reason` | `selection_reason` | |
 | `reason_source` | `reason_source` | |
-| `alignment` | `alignment` | Must be one of `aligned` \| `partial` \| `conflict` \| `unchecked`. Map known labels; unknown → hold |
+| `alignment` | `alignment` | Must be one of `aligned` \| `partial` \| `conflict` \| `unchecked`. Map **only** the Korean labels below; any other label → hold |
 | `align_reason` | `align_reason` | |
 | `lenses` | `lenses{social, corporate, policy}` | |
 | `plan_status`, `fields`, `history`, `draft` | — | Q-33 / buy_plan meta — **out of BE-18 write path** |
+
+Korean `alignment` labels (design interpretation; map only these):
+
+| Source label | → enum |
+|---|---|
+| 일치 | `aligned` |
+| 부분일치 | `partial` |
+| 불일치 | `conflict` |
+| 판단보류 | `unchecked` |
+
+Measured export (`stock_report_context.json`, `as_of` **2026-11-08**, 12 items — not latest prices): keys are already tickers `035420`, `030200`, `GOOGL`, `QBTS`, `SGOV`, `108490`, `005380`, `066570`, `000660`, `207940`, `068270`, `102110`. File labels observed: 부분일치×5, 판단보류×7 (일치/불일치×0). See dry-run §4.
 
 Gate:
 
@@ -147,7 +158,7 @@ IF equity_analysis exists for ticker → apply mapped meta (migration mode)
 ELSE → hold context for that ticker (do not invent equity_analysis)
 ```
 
-Expected context item keys (rules §5-4): NAVER, KT, GOOGL, QBTS, SGOV, 로보티즈, 현대차, LG전자, SK하이닉스, 삼성바이오, 셀트리온, TIGER200 (**12**). Equity analysis Notion pages measured: **9** (rules §5-0) — mismatch implies some contexts stay on hold until D5 exists or is confirmed excluded.
+D5 attach cannot be confirmed from `stock_report_context.json` + `investor-journal.json` alone — dry-run defers all 12 context attaches until an equity_analysis inventory is available (rules §5-0 Notion baseline still lists 9 equity_analysis pages).
 
 ---
 
