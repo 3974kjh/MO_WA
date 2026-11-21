@@ -23,8 +23,8 @@
 
 <style>
 	.icon-btn {
-		width: 40px;
-		height: 40px;
+		width: var(--size-touch);
+		height: var(--size-touch);
 		flex: none;
 		border-radius: var(--radius-sm);
 		border: 1px solid var(--color-line);
