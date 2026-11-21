@@ -111,11 +111,14 @@ DO $mowa_pg$
 BEGIN
   IF current_user = 'postgres' THEN
     EXECUTE 'ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC';
-  ELSIF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'postgres')
-        AND pg_has_role(current_user, 'postgres', 'USAGE') THEN
-    EXECUTE 'ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC';
+  ELSIF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'postgres') THEN
+    IF pg_has_role(current_user, 'postgres', 'USAGE') THEN
+      EXECUTE 'ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC';
+    ELSE
+      RAISE NOTICE 'skip ALTER DEFAULT PRIVILEGES FOR ROLE postgres: current_user lacks USAGE';
+    END IF;
   ELSE
-    RAISE NOTICE 'skip ALTER DEFAULT PRIVILEGES FOR ROLE postgres: role missing or current_user lacks USAGE';
+    RAISE NOTICE 'skip ALTER DEFAULT PRIVILEGES FOR ROLE postgres: role missing';
   END IF;
 END
 $mowa_pg$;
@@ -132,14 +135,17 @@ EXCEPTION
     RAISE NOTICE 'skip ALTER DEFAULT PRIVILEGES FOR ROLE %: insufficient_privilege', current_user;
 END
 $mowa_cu$;
--- supabase_admin only when current_user has USAGE (PG17 needs inheritance/USAGE).
+-- supabase_admin only when current_user has USAGE (PG17 needs inheritance/USAGE). Nested IF.
 DO $mowa_sa$
 BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_admin')
-     AND pg_has_role(current_user, 'supabase_admin', 'USAGE') THEN
-    EXECUTE 'ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC';
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_admin') THEN
+    IF pg_has_role(current_user, 'supabase_admin', 'USAGE') THEN
+      EXECUTE 'ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC';
+    ELSE
+      RAISE NOTICE 'skip ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin: current_user lacks USAGE';
+    END IF;
   ELSE
-    RAISE NOTICE 'skip ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin: role missing or current_user lacks USAGE';
+    RAISE NOTICE 'skip ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin: role missing';
   END IF;
 EXCEPTION
   WHEN insufficient_privilege THEN

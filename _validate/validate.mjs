@@ -599,41 +599,55 @@ await err('TRUNCATE display_sequences denied to service_role', () => run('servic
 await db.query(`
   create or replace function public.mowa_probe_priv_fn()
   returns int language sql immutable as $f$ select 1 $f$`);
-await ok('supabase_admin default-priv DO from 000100 is safe when role exists but user lacks USAGE', async () => {
-	const coreSql = readFileSync(
-		join(root, 'supabase/migrations/20261125000100_core_helpers.sql'),
-		'utf8'
-	);
-	const extracted = coreSql.match(
-		/-- BEGIN mowa_supabase_admin_default_priv\n([\s\S]*?)\n-- END mowa_supabase_admin_default_priv/
-	);
-	if (!extracted) {
-		throw new Error('missing mowa_supabase_admin_default_priv markers in 000100');
+await ok('default-priv DOs from 000100+000910 are safe as non-postgres without USAGE', async () => {
+	const files = [
+		'20261125000100_core_helpers.sql',
+		'20261125000910_revoke_anon_all.sql'
+	];
+	const markers = [
+		'mowa_pg_default_priv',
+		'mowa_supabase_admin_default_priv'
+	];
+	const blocks = [];
+	for (const f of files) {
+		const sql = readFileSync(join(root, 'supabase/migrations', f), 'utf8');
+		for (const name of markers) {
+			const re = new RegExp(`-- BEGIN ${name}\\n([\\s\\S]*?)\\n-- END ${name}`);
+			const m = sql.match(re);
+			if (!m) throw new Error(`missing ${name} markers in ${f}`);
+			blocks.push({ file: f, name, sql: m[1].trim() });
+		}
 	}
-	const saBlock = extracted[1].trim();
 	const hadSa = (
 		await db.query(`select exists(select 1 from pg_roles where rolname = 'supabase_admin') as e`)
 	).rows[0].e;
 	const probe = 'mowa_priv_probe_nonmember';
+	const client = await pool.connect();
 	try {
 		if (!hadSa) {
-			await db.query(`create role supabase_admin nologin`);
+			await client.query(`create role supabase_admin nologin`);
 		}
-		await db.query(`drop role if exists ${probe}`);
-		await db.query(`create role ${probe} nologin`);
-		await db.query(`grant ${probe} to current_user`);
-		await db.query(`set role ${probe}`);
-		await db.query(saBlock);
-		await db.query(`reset role`);
+		await client.query(`drop role if exists ${probe}`);
+		await client.query(`create role ${probe} nologin`);
+		await client.query(`grant ${probe} to current_user`);
+		await client.query(`set role ${probe}`);
+		for (const b of blocks) {
+			await client.query(b.sql);
+		}
+		await client.query(`reset role`);
 	} finally {
 		try {
-			await db.query(`reset role`);
+			await client.query(`reset role`);
 		} catch {
 			/* ignore */
 		}
-		await db.query(`drop role if exists ${probe}`);
-		if (!hadSa) {
-			await db.query(`drop role if exists supabase_admin`);
+		try {
+			await client.query(`drop role if exists ${probe}`);
+			if (!hadSa) {
+				await client.query(`drop role if exists supabase_admin`);
+			}
+		} finally {
+			client.release();
 		}
 	}
 });

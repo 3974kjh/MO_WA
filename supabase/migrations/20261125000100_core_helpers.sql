@@ -18,19 +18,24 @@ grant execute on all functions in schema extensions to anon, authenticated, serv
 
 -- Global (schema-less): strip cluster-wide PUBLIC EXECUTE for roles that create functions.
 -- FOR ROLE postgres: hosted (current_user=postgres) must run unconditionally (never silently skip).
--- Non-postgres local users: only when postgres exists and current_user has USAGE (or is superuser via USAGE).
+-- Non-postgres local users: only when postgres exists and current_user has USAGE (nested IF — AND order is not guaranteed).
+-- BEGIN mowa_pg_default_priv
 do $mowa_pg$
 begin
   if current_user = 'postgres' then
     execute 'alter default privileges for role postgres revoke execute on functions from public';
-  elsif exists (select 1 from pg_roles where rolname = 'postgres')
-        and pg_has_role(current_user, 'postgres', 'USAGE') then
-    execute 'alter default privileges for role postgres revoke execute on functions from public';
+  elsif exists (select 1 from pg_roles where rolname = 'postgres') then
+    if pg_has_role(current_user, 'postgres', 'USAGE') then
+      execute 'alter default privileges for role postgres revoke execute on functions from public';
+    else
+      raise notice 'skip ALTER DEFAULT PRIVILEGES FOR ROLE postgres: current_user lacks USAGE';
+    end if;
   else
-    raise notice 'skip ALTER DEFAULT PRIVILEGES FOR ROLE postgres: role missing or current_user lacks USAGE';
+    raise notice 'skip ALTER DEFAULT PRIVILEGES FOR ROLE postgres: role missing';
   end if;
 end
 $mowa_pg$;
+-- END mowa_pg_default_priv
 
 -- Also apply for current_user when migrations run as MOWA_DB_USER ≠ postgres.
 do $mowa_cu$
@@ -49,14 +54,17 @@ $mowa_cu$;
 
 -- BEGIN mowa_supabase_admin_default_priv
 -- supabase_admin: only when current_user has USAGE (PG17 ALTER DEFAULT PRIVILEGES needs inheritance/USAGE).
--- Role existence alone is not enough. ELSE NOTICE when skipped; exception must not abort migration.
+-- Nested IF so pg_has_role is not evaluated when the role is missing. ELSE NOTICE when skipped.
 do $mowa_sa$
 begin
-  if exists (select 1 from pg_roles where rolname = 'supabase_admin')
-     and pg_has_role(current_user, 'supabase_admin', 'USAGE') then
-    execute 'alter default privileges for role supabase_admin revoke execute on functions from public';
+  if exists (select 1 from pg_roles where rolname = 'supabase_admin') then
+    if pg_has_role(current_user, 'supabase_admin', 'USAGE') then
+      execute 'alter default privileges for role supabase_admin revoke execute on functions from public';
+    else
+      raise notice 'skip ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin: current_user lacks USAGE';
+    end if;
   else
-    raise notice 'skip ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin: role missing or current_user lacks USAGE';
+    raise notice 'skip ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin: role missing';
   end if;
 exception
   when insufficient_privilege then
