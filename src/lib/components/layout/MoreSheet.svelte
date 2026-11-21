@@ -3,13 +3,14 @@
 	 * 모바일 더보기 시트 (FE-01, 시안 shots/more-sheet-m.png)
 	 * 이후 섹션(준비 중) · 관리 그룹(보관함·설정) · 화면 그룹(화면 모드·로그아웃) — 디자인 v1.1. Sheet 공통(포커스 트랩·Esc·닫힐 때 트리거로 복귀).
 	 */
+	import { resolve } from '$app/paths';
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Sheet from '$lib/components/ui/Sheet.svelte';
 	import ThemeIcon from '$lib/components/theme/ThemeIcon.svelte';
 	import { THEME_LABEL } from '$lib/theme/theme';
 	import { themeState } from '$lib/theme/themeState.svelte';
 	import NavItem from './NavItem.svelte';
-	import { ACCOUNT_NAV, LATER_NAV } from './nav';
+	import { ACCOUNT_NAV, LATER_NAV, LOGOUT_PATH } from './nav';
 
 	let { open, onclose }: { open: boolean; onclose: () => void } = $props();
 </script>
@@ -28,7 +29,7 @@
 			<ThemeIcon mode={themeState.mode} />
 			<span>화면 모드: {THEME_LABEL[themeState.mode]} (눌러서 변경)</span>
 		</button>
-		<form method="POST" action="/?/logout">
+		<form method="POST" action={resolve(LOGOUT_PATH)}>
 			<button type="submit" class="row">
 				<LogOut size={20} strokeWidth={1.8} aria-hidden="true" />
 				<span>로그아웃</span>
