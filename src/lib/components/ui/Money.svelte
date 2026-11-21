@@ -4,7 +4,7 @@
 	 * - kind=amount: 만 원 축약 + title/aria-label=정확한 값, tabindex=0, 점선 밑줄(.tip). <640은 탭하면 '정확한 금액' 하단 시트, ≥640은 클릭·포커스·Enter/Space로 정확값 팝오버(title은 보조).
 	 * - kind=unit(주가·평단·손익분기): 절대 축약하지 않는다.
 	 */
-	import { formatMoney, type Currency, type MoneyKind } from '$lib/format/money';
+	import { exactAriaLabel, formatMoney, type Currency, type MoneyKind } from '$lib/format/money';
 	import { EXACT_SHEET_MQ, exactPopover, exactValue } from './exactValue.svelte';
 
 	let {
@@ -51,6 +51,8 @@
 	function openExact(e: Event) {
 		const el = e.currentTarget as HTMLElement;
 		e.preventDefault();
+		// 클릭 행(DataTable onrowclick) 안의 금액: 행 핸들러가 같이 돌지 않게 전파를 막는다.
+		e.stopPropagation();
 		if (window.matchMedia(EXACT_SHEET_MQ).matches) {
 			exactValue.show(contextLabel(el), f.exact);
 		} else {
@@ -74,13 +76,14 @@
 		class="money num tip {toneClass} {className}"
 		role="button"
 		tabindex="0"
-		title={f.exact}
-		aria-label={f.exact}
+		aria-label={exactAriaLabel(f)}
 		onclick={openExact}
 		onfocus={focusExact}
 		onblur={blurExact}
 		onkeydown={(e) => {
 			if (e.key === 'Enter' || e.key === ' ') openExact(e);
+			else if (e.key === 'Tab' || e.key === 'Escape') return;
+			else e.stopPropagation();
 		}}
 		>{f.text}{#if f.unit}<small class="u">{f.unit}</small>{/if}</span
 	>

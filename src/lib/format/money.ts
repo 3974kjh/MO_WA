@@ -39,10 +39,24 @@ const nf2fixed = new Intl.NumberFormat('ko-KR', {
 const nfUpTo2 = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 });
 const nfUpTo1 = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 1 });
 
-function sign(v: number, plus?: boolean): string {
+/** 유한수가 아닌 값(NaN·±Infinity)의 표시. 저장 값은 건드리지 않고 화면 표시만 대체한다. */
+export const NON_FINITE_DISPLAY = '\u2014';
+
+function nonFinite(): FormattedMoney {
+	return { text: NON_FINITE_DISPLAY, unit: '', exact: NON_FINITE_DISPLAY, abbreviated: false };
+}
+
+/** 부호. 표시가 0으로 반올림되는 값(−0, −0.004 등)은 부호를 붙이지 않는다(`−$0.00`·`−0원` 방지). */
+function sign(v: number, plus?: boolean, decimals = 0): string {
+	if (Math.round(Math.abs(v) * 10 ** decimals) === 0) return '';
 	if (v < 0) return MINUS;
 	if (plus && v > 0) return '+';
 	return '';
+}
+
+/** 축약 금액 접근 이름: 화면에 보이는 글자를 앞에 두고 정확값을 덧붙인다(WCAG 2.5.3 Label in Name). */
+export function exactAriaLabel(f: FormattedMoney): string {
+	return `${f.text}${f.unit}, 정확한 값 ${f.exact}`;
 }
 
 /**
@@ -54,6 +68,7 @@ function sign(v: number, plus?: boolean): string {
  * | ≥1억 | N억 M만 원 (243,105,000 → 2억 4,311만 원, M=0이면 N억 원) |
  */
 export function formatWon(v: number, opts: MoneyOptions = {}): FormattedMoney {
+	if (!Number.isFinite(v)) return nonFinite();
 	const a = Math.abs(v);
 	const sg = sign(v, opts.plus);
 	const exact = `${sg}${nf0.format(a)}원`;
@@ -79,6 +94,7 @@ export function formatWon(v: number, opts: MoneyOptions = {}): FormattedMoney {
 
 /** 원화 단가: 항상 전체 값(축약 금지). 161,600원 */
 export function formatWonUnit(v: number, opts: MoneyOptions = {}): FormattedMoney {
+	if (!Number.isFinite(v)) return nonFinite();
 	const a = Math.abs(v);
 	const sg = sign(v, opts.plus);
 	const text = sg + nf0.format(a);
@@ -96,8 +112,9 @@ export function formatUsd(
 	v: number,
 	opts: MoneyOptions & { kind?: MoneyKind } = {}
 ): FormattedMoney {
+	if (!Number.isFinite(v)) return nonFinite();
 	const a = Math.abs(v);
-	const sg = sign(v, opts.plus);
+	const sg = sign(v, opts.plus, USD_UNIT_DISPLAY_DECIMALS);
 	const exact = `${sg}$${nf2fixed.format(a)}`;
 	if (opts.kind === 'unit') {
 		return { text: exact, unit: '', exact, abbreviated: false };
