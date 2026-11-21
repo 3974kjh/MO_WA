@@ -140,6 +140,45 @@ describe('홈 대시보드 렌더 (FE-03)', () => {
 		expect(links).toContain('/briefings/2026-11-20');
 	});
 
+	it('달러 비중 타일: 환율과 기준 시각(KST)을 함께, 기준 시각이 없으면 지어내지 않는다(R-VAL-P17)', async () => {
+		const held = {
+			id: 'p1',
+			instrument_id: 'i1',
+			name: '테스트종목',
+			ticker: 'TST',
+			status: 'holding',
+			currency: 'KRW',
+			qty: 2,
+			avg_price: 100,
+			trigger_price: null,
+			trigger_direction: null,
+			watch_only: false,
+			price: 102,
+			price_as_of: '2026-11-20',
+			value_krw: 204
+		};
+		const withFx = (usdkrw: number | null, usdkrwAsOf: string | null) =>
+			render(Page, {
+				data: {
+					...empty,
+					positions: [held],
+					valuation: { totalKrw: 204, usdkrw, usdkrwAsOf, positions: [] }
+				} as never
+			});
+
+		const a = withFx(1380.5, '2026-11-20T06:30:00Z');
+		expect(text(a.container)).toContain('환율 1,380.50원 · 11/20 15:30 KST 기준');
+		a.unmount();
+
+		const b = withFx(1380.5, null);
+		expect(text(b.container)).toContain('환율 1,380.50원 · 기준 시각 —');
+		expect(text(b.container)).not.toMatch(/1,380\.50원 · \d+\/\d+/);
+		b.unmount();
+
+		const c = withFx(null, null);
+		expect(text(c.container)).toContain('환율 기록 없음');
+	});
+
 	it('감시 카드는 감시 가격이 있거나 관심만인 종목만 보인다(일반 보유는 제외)', async () => {
 		const pos = (over: Record<string, unknown>) => ({
 			instrument_id: 'i',

@@ -40,6 +40,7 @@
 		distanceLabel,
 		triggerState
 	} from '$lib/dashboard/trigger';
+	import { formatKstShort } from '$lib/format/datetime';
 	import { formatMoney } from '$lib/format/money';
 	import { formatQty } from '$lib/format/number';
 	import {
@@ -101,6 +102,12 @@
 		return v.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 	}
 	const pct1 = (v: number) => `${v.toFixed(1)}%`;
+	/** R-VAL-P17: 환율은 기준 시각(usdkrw as_of, KST)과 함께. 기준 시각이 없으면 지어내지 않고 —. */
+	function fxFoot(rate: number | null | undefined, asOf: string | null | undefined): string {
+		if (rate == null) return '환율 기록 없음';
+		const when = asOf ? `${formatKstShort(asOf)} 기준` : '기준 시각 —';
+		return `환율 ${tickerValue('usdkrw', rate)} · ${when}`;
+	}
 </script>
 
 <svelte:head>
@@ -243,9 +250,7 @@
 				<MetricTile
 					label="달러 자산 비중"
 					value={summary.usdSharePct != null ? pct1(summary.usdSharePct) : '—'}
-					foot={data.valuation?.usdkrw != null
-						? `환율 ${tickerValue('usdkrw', data.valuation.usdkrw)}`
-						: '환율 기록 없음'}
+					foot={fxFoot(data.valuation?.usdkrw, data.valuation?.usdkrwAsOf)}
 				/>
 				<MetricTile
 					label="보유 종목"
