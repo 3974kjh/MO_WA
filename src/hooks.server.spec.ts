@@ -141,8 +141,9 @@ describe('hooks.server handle (BE-02 / M-1 / H-1)', () => {
 		expect(authGuardRedirect(null, '/')).toBe('/login');
 	});
 
-	it('skips cookie auth for /api/mcp and sets locals.user=null; 401 without Authorization', async () => {
+	it('POST /api/mcp without Authorization → 401 + WWW-Authenticate; skips cookie auth', async () => {
 		const event = makeEvent('/api/mcp');
+		event.request = new Request('http://localhost/api/mcp', { method: 'POST' });
 		const response = await handle({
 			event: event as never,
 			resolve: async () => new Response('should-not-run')
@@ -152,6 +153,19 @@ describe('hooks.server handle (BE-02 / M-1 / H-1)', () => {
 		expect(event.locals.user).toBeNull();
 		expect(response.status).toBe(401);
 		expect(response.headers.get('WWW-Authenticate')).toBe('Bearer realm="mo-wa-mcp"');
+	});
+
+	it('GET /api/mcp without Authorization reaches the route (405), skipping cookie auth', async () => {
+		const event = makeEvent('/api/mcp');
+		const response = await handle({
+			event: event as never,
+			resolve: async () => new Response(null, { status: 405, headers: { allow: 'POST' } })
+		} as never);
+
+		expect(createSupabaseServerClient).not.toHaveBeenCalled();
+		expect(event.locals.user).toBeNull();
+		expect(response.status).toBe(405);
+		expect(response.headers.get('allow')).toBe('POST');
 	});
 
 	it('allows OPTIONS /api/mcp without Authorization', async () => {
