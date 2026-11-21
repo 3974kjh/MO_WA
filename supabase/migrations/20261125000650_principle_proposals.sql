@@ -63,8 +63,12 @@ begin
       new.proposed_by_bot_id := public.mowa_current_bot();
       new.proposed_by_user_id := null;
       if new.proposed_by_bot_id is null then raise exception '[R-PERM-03] missing bot identity' using errcode = '42501'; end if;
+      -- M-4: revoked/expired/other-owner rejected
+      perform public.mowa_assert_bot_tenant(new.owner_id);
       if not exists (select 1 from public.bot_clients b where b.id = new.proposed_by_bot_id and b.owner_id = new.owner_id
-                       and b.profile = 'finance-manager' and 'principles:propose' = any(b.scopes)) then
+                       and b.profile = 'finance-manager' and 'principles:propose' = any(b.scopes)
+                       and b.revoked_at is null
+                       and (b.expires_at is null or b.expires_at > now())) then
         raise exception '[R-PERM-04] only finance-manager with principles:propose can propose (D8)' using errcode = '42501';
       end if;
     elsif auth.uid() is not null and coalesce(auth.role(), '') = 'authenticated' then
@@ -264,12 +268,23 @@ revoke all on function public.decide_principle_proposal(uuid, text, text) from p
 grant execute on function public.decide_principle_proposal(uuid, text, text) to authenticated;
 
 -- 권한 표 targets_valuation: equity-analyst만 W. finance-manager(Q-25: 목표가·의견은 reports.meta + 본문, R-VAL-R13 WARN) 등 다른 봇은 403
+-- M-4: tenant assert first; equity-analyst profile limit does not replace tenant guard
 create or replace function public.targets_valuation_guard()
 returns trigger language plpgsql as $$
+declare
+  v_bot uuid;
 begin
-  if public.mowa_is_service() and not exists (
-       select 1 from public.bot_clients b where b.id = public.mowa_current_bot() and b.profile = 'equity-analyst') then
-    raise exception '[R-PERM-04] targets_valuation is equity-analyst only (Q-25)' using errcode = '42501';
+  if public.mowa_is_service() then
+    if tg_op = 'DELETE' then
+      raise exception '[R-PERM-01] bots cannot delete' using errcode = '42501';
+    end if;
+    if tg_op = 'UPDATE' and new.owner_id is distinct from old.owner_id then
+      raise exception '[R-PERM-01] owner_id is immutable' using errcode = '42501';
+    end if;
+    v_bot := public.mowa_assert_bot_tenant(case when tg_op = 'UPDATE' then old.owner_id else new.owner_id end);
+    if not exists (select 1 from public.bot_clients b where b.id = v_bot and b.profile = 'equity-analyst') then
+      raise exception '[R-PERM-04] targets_valuation is equity-analyst only (Q-25)' using errcode = '42501';
+    end if;
   end if;
   return coalesce(new, old);
 end;

@@ -6,7 +6,11 @@ import { spawnSync, spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
-import { resolveMowaDbEnv, VALIDATE_DB_RE } from '../scripts/lib/local-db-guard.mjs';
+import {
+	resolveMowaDbEnv,
+	VALIDATE_DB_RE,
+	assertLoopbackHttpUrl
+} from '../scripts/lib/local-db-guard.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
@@ -43,6 +47,46 @@ const mowaEnv = {
 
 // Abort before any work if target is not loopback mowa_local.
 const dbTarget = resolveMowaDbEnv(mowaEnv, { dbNameRe: VALIDATE_DB_RE, label: 'test:db' });
+const postgrestUrl = assertLoopbackHttpUrl(mowaEnv.MOWA_POSTGREST_URL, 'MOWA_POSTGREST_URL');
+const jwtSecret = mowaEnv.MOWA_JWT_SECRET;
+
+// Guard self-check: DATABASE_URL must not steer the connection; remote host must abort.
+{
+	const poisoned = {
+		...mowaEnv,
+		DATABASE_URL: 'postgresql://postgres:postgres@db.example.supabase.co:5432/postgres'
+	};
+	const viaGuard = resolveMowaDbEnv(poisoned, { dbNameRe: VALIDATE_DB_RE, label: 'test:db-ignore-database-url' });
+	if (viaGuard.host !== dbTarget.host || viaGuard.dbName !== dbTarget.dbName) {
+		console.error('DATABASE_URL was not ignored by local-db-guard');
+		process.exit(1);
+	}
+	const remoteProbe = spawnSync(
+		process.execPath,
+		[
+			'-e',
+			`import { resolveMowaDbEnv, VALIDATE_DB_RE } from ${JSON.stringify(join(root, 'scripts/lib/local-db-guard.mjs'))}; resolveMowaDbEnv({ MOWA_DB_HOST:'db.x.supabase.co', MOWA_DB_NAME:'mowa_local' }, { dbNameRe: VALIDATE_DB_RE, label: 'probe' });`
+		],
+		{ encoding: 'utf8' }
+	);
+	if (remoteProbe.status === 0) {
+		console.error('expected local-db-guard to refuse non-loopback host');
+		process.exit(1);
+	}
+	const remoteHttp = spawnSync(
+		process.execPath,
+		[
+			'-e',
+			`import { assertLoopbackHttpUrl } from ${JSON.stringify(join(root, 'scripts/lib/local-db-guard.mjs'))}; assertLoopbackHttpUrl('https://db.x.supabase.co');`
+		],
+		{ encoding: 'utf8' }
+	);
+	if (remoteHttp.status === 0) {
+		console.error('expected assertLoopbackHttpUrl to refuse non-loopback host');
+		process.exit(1);
+	}
+	console.log('guard ok: DATABASE_URL ignored; remote DB/PostgREST hosts refused');
+}
 
 console.log('resetting local stack (migrations only; GATED stays .sql.txt)…');
 {
@@ -62,9 +106,6 @@ console.log('resetting local stack (migrations only; GATED stays .sql.txt)…');
 		if (line.startsWith('apply ')) console.log('draft ok ', line.slice(6));
 	}
 }
-
-const postgrestUrl = mowaEnv.MOWA_POSTGREST_URL;
-const jwtSecret = mowaEnv.MOWA_JWT_SECRET;
 
 const pool = new pg.Pool({
 	host: dbTarget.host,
@@ -468,6 +509,92 @@ await db.query(`insert into mowa_backup_log(kind,file_name,sha256,row_counts,ver
 await err('M-3: mowa_backup_log verified UPDATE 거부', () => db.query(`update mowa_backup_log set verified=true where file_name='probe.dump'`), /append-only|R-SYS-05/);
 await err('L-1: authenticated는 다른 owner settings 읽기 불가', () => other(`select public.mowa_setting('${U}','proposal_expiry_days','7'::jsonb)`), /R-PERM-01|another owner/);
 await err('authenticated는 bot_clients 직접 insert 불가', () => user(`insert into bot_clients(owner_id,name,profile,key_prefix,key_hash) values ('${U}','web-key','custom','webwebweb1','${H}')`), /permission denied/);
+
+console.log('\n[M-4 tenant · revoked/expired · CASCADE · TRUNCATE]');
+const FMX = (
+	await db.query(
+		`insert into bot_clients(owner_id,name,profile,key_prefix,key_hash,scopes) values ('${X}','fm-x','finance-manager','fmxfmxfmx1','${'e'.repeat(64)}','{read,positions:propose,principles:propose}') returning id`
+	)
+).rows[0].id;
+const FM_REV = (
+	await db.query(
+		`insert into bot_clients(owner_id,name,profile,key_prefix,key_hash,scopes) values ('${U}','fm-revoked','finance-manager','fmrevoked1','${'f'.repeat(64)}','{read,positions:propose,principles:propose}') returning id`
+	)
+).rows[0].id;
+await db.query(`update bot_clients set revoked_at=now(), revoked_reason='m4' where id='${FM_REV}'`);
+const FM_EXP = (
+	await db.query(
+		`insert into bot_clients(owner_id,name,profile,key_prefix,key_hash,scopes,expires_at) values ('${U}','fm-expired','finance-manager','fmexpired1','${'0'.repeat(64)}','{read,positions:propose,principles:propose}', now() - interval '1 day') returning id`
+	)
+).rows[0].id;
+const fmRev = asBot(FM_REV);
+const fmExp = asBot(FM_EXP);
+const instX = (
+	await other(
+		`insert into instruments(owner_id,ticker,name,market,asset_type) values ('${X}','TSLA','Tesla','NASDAQ','stock') returning id`
+	)
+).rows[0].id;
+const posX = (
+	await other(
+		`insert into positions(owner_id,instrument_id,status,currency,qty,avg_price) values ('${X}','${instX}','holding','USD',1,100) returning id`
+	)
+).rows[0].id;
+await err('M-4: revoked U bot cannot modify X positions', () => fmRev(`update positions set memo='x' where id='${posX}'`), /R-PERM-03/);
+await ok('M-4: X finance-manager can update own X position memo', () => asBot(FMX)(`update positions set memo='own-x' where id='${posX}'`));
+await err('M-4: expired bot cannot write U positions', () => fmExp(`insert into positions(owner_id,instrument_id,status,currency) values ('${U}','${g}','planned','USD')`), /R-PERM-03/);
+await err('M-4: U bot cannot insert into X instruments', () => fm(`insert into instruments(owner_id,ticker,name,market,asset_type,source_bot_id) values ('${X}','MSFT','Microsoft','NASDAQ','stock','${FM}')`), /R-PERM-03/);
+await err('M-4: U bot cannot insert into X price_snapshots', () => fm(`insert into price_snapshots(owner_id,instrument_id,as_of,close,currency) values ('${X}','${instX}','2026-11-21',250,'USD')`), /R-PERM-03/);
+await err('M-4: other-owner update on X instruments rejected', () => fm(`update instruments set sector='Auto' where id='${instX}'`), /R-PERM-03/);
+await err('M-4: owner_id change on instruments rejected', () => fm(`update instruments set owner_id='${X}' where id='${inst}'`), /R-PERM-01|immutable|owner/);
+await err('M-4: owner_id change on positions rejected', () => fm(`update positions set owner_id='${X}' where id='${pos.id}'`), /R-PERM-01|immutable|owner|R-VAL-P01/);
+await err('M-4: revoked bot position proposal insert rejected', () => fmRev(`insert into position_proposals(owner_id,change_type,position_id,proposed_values,evidence) values ('${U}','set_qty_avg','${pos.id}','{"qty":1}','[{"url":"https://m4"}]')`), /R-PERM-03/);
+await err('M-4: expired bot principle proposal insert rejected', () => fmExp(`insert into principle_proposals(owner_id,principle_id,proposed_body_md,reason_md,evidence) values ('${U}','${urep}','x','y','[{"url":"https://m4"}]')`), /R-PERM-03/);
+await ok('M-4: same-owner EA enriches instruments', () => ea(`update instruments set sector='IT' where id='${inst}'`));
+await ok('M-4: same-owner EA snapshot upsert stamps calling bot', async () => {
+	await ea(
+		`insert into price_snapshots(owner_id,instrument_id,as_of,close,currency) values ('${U}','${inst}','2026-11-21',252000,'KRW') on conflict (instrument_id,as_of) do update set close=excluded.close`
+	);
+	const row = (
+		await db.query(
+			`select source_bot_id::text b, close::float c from price_snapshots where instrument_id='${inst}' and as_of='2026-11-21'`
+		)
+	).rows[0];
+	if (row.b !== EA || row.c !== 252000) throw new Error(`stamp/close mismatch ${JSON.stringify(row)}`);
+});
+await err('M-4: FM cannot write targets_valuation (equity-analyst only)', () => fm(`insert into targets_valuation(owner_id,instrument_id,as_of,target_price,currency,opinion,source,report_id) values ('${U}','${inst}','2026-11-21',1,'KRW','buy','internal','${rep}')`), /R-PERM-04/);
+await err('TRUNCATE positions denied to service_role', () => run('service_role', null, FM, 'truncate public.positions'), /permission denied/);
+await err('TRUNCATE bot_clients denied to service_role', () => run('service_role', null, FM, 'truncate public.bot_clients'), /permission denied/);
+await err('anon cannot execute mowa_assert_bot_tenant', () => run('anon', null, null, `select public.mowa_assert_bot_tenant('${U}')`), /permission denied/);
+const Z = '33333333-3333-3333-3333-333333333333';
+await db.query(`insert into auth.users(id, email) values ('${Z}','cascade-del@x')`);
+await db.query(
+	`insert into reports(owner_id,kind,domain,slug,title,report_date,body_md) values ('${Z}','daily_brief','macro','cascade','c','2026-11-20','v1')`
+);
+await db.query(`update reports set body_md='v2' where owner_id='${Z}'`);
+await db.query(
+	`insert into mcp_audit_log(owner_id,actor_type,tool,result) values ('${Z}','system','cascade.probe','ok')`
+);
+eq(
+	'pre-delete: revision + audit exist for Z',
+	(
+		await db.query(
+			`select (select count(*)::int from report_revisions where owner_id='${Z}') r, (select count(*)::int from mcp_audit_log where owner_id='${Z}') a`
+		)
+	).rows[0],
+	{ r: 1, a: 1 }
+);
+await ok('account deletion CASCADE past immutable triggers', () => db.query(`delete from auth.users where id='${Z}'`));
+eq(
+	'CASCADE removed revisions + audit for Z',
+	(
+		await db.query(
+			`select (select count(*)::int from report_revisions where owner_id='${Z}') r, (select count(*)::int from mcp_audit_log where owner_id='${Z}') a`
+		)
+	).rows[0],
+	{ r: 0, a: 0 }
+);
+await err('app DELETE on report_revisions still blocked', () => db.query(`delete from report_revisions where owner_id='${U}'`), /append-only|R-SYS-05/);
+await err('app DELETE on mcp_audit_log still blocked', () => db.query(`delete from mcp_audit_log where owner_id='${U}'`), /append-only|R-SYS-05/);
 
 console.log('\n[인증·감사]');
 await err('R-SYS-05 감사 로그 append-only', () => db.query(`update mcp_audit_log set result='ok'`), /append-only/);

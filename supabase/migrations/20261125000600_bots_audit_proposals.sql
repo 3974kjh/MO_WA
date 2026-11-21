@@ -65,9 +65,14 @@ create index mcp_audit_log_owner_time_idx on public.mcp_audit_log (owner_id, cre
 create index mcp_audit_log_bot_time_idx on public.mcp_audit_log (bot_client_id, created_at desc);
 create index mcp_audit_log_warn_idx on public.mcp_audit_log (owner_id, created_at desc) where jsonb_array_length(warnings) > 0;
 
+-- Account deletion: CASCADE DELETE from auth.users must not be blocked (owner gone ⇒ allow DELETE only).
+-- App deletes remain blocked unless mowa.audit_purge=on.
 create or replace function public.mcp_audit_log_append_only()
 returns trigger language plpgsql as $$
 begin
+  if tg_op = 'DELETE' and not exists (select 1 from auth.users u where u.id = old.owner_id) then
+    return old;
+  end if;
   if coalesce(current_setting('mowa.audit_purge', true), '') <> 'on' then
     raise exception '[R-SYS-05] mcp_audit_log is append-only' using errcode = '42501';
   end if;
@@ -206,6 +211,72 @@ $$;
 
 -- ── 가드 트리거 ──
 
+-- M-4: shared tenant assert — service_role bypasses RLS, so every bot write path must call this.
+-- Compares bot_clients.owner_id to the row owner (do not trust a client-supplied owner alone).
+-- Returns the calling bot id when valid.
+create or replace function public.mowa_assert_bot_tenant(p_row_owner uuid)
+returns uuid
+language plpgsql
+stable
+set search_path = public, pg_temp
+as $$
+declare
+  v_bot uuid := public.mowa_current_bot();
+  v_owner uuid;
+begin
+  if v_bot is null then
+    raise exception '[R-PERM-03] missing bot identity' using errcode = '42501';
+  end if;
+  select b.owner_id into v_owner
+    from public.bot_clients b
+   where b.id = v_bot
+     and b.revoked_at is null
+     and (b.expires_at is null or b.expires_at > now());
+  if not found then
+    raise exception '[R-PERM-03] bot identity invalid, revoked, or expired' using errcode = '42501';
+  end if;
+  if p_row_owner is distinct from v_owner then
+    raise exception '[R-PERM-03] bot owner mismatch' using errcode = '42501';
+  end if;
+  return v_bot;
+end;
+$$;
+
+-- Refresh row guard to use shared tenant assert (+ expiry)
+create or replace function public.mowa_bot_row_guard()
+returns trigger language plpgsql as $$
+declare
+  v_bot uuid;
+  v_new jsonb := case when tg_op <> 'DELETE' then to_jsonb(new) end;
+  v_old jsonb := case when tg_op <> 'INSERT' then to_jsonb(old) end;
+begin
+  if not public.mowa_is_service() then
+    return coalesce(new, old);
+  end if;
+  if tg_op = 'DELETE' then
+    raise exception '[R-PERM-01] bots cannot delete (archive only)' using errcode = '42501';
+  end if;
+  if tg_op = 'UPDATE' and (v_old->>'owner_id') is distinct from (v_new->>'owner_id') then
+    raise exception '[R-PERM-01] owner_id is immutable' using errcode = '42501';
+  end if;
+  -- UPDATE: assert against OLD.owner_id (authoritative); INSERT: NEW.owner_id must match bot owner
+  v_bot := public.mowa_assert_bot_tenant(
+    case when tg_op = 'UPDATE' then (v_old->>'owner_id')::uuid else (v_new->>'owner_id')::uuid end);
+  if tg_op = 'UPDATE' then
+    if (v_old->>'source_bot_id') is distinct from v_bot::text then
+      raise exception '[R-PERM-01] bots can only modify/archive rows they created' using errcode = '42501';
+    end if;
+    if (v_old->>'archived_at') is not null then
+      raise exception '[R-PERM-01] archived rows can only be restored by the user' using errcode = '42501';
+    end if;
+  end if;
+  if (v_new->>'source_bot_id') is distinct from v_bot::text then
+    raise exception '[R-PERM-03] source_bot_id must be the calling bot' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
 -- (1) 자기 행 가드(R-PERM-01/03, R-SYS-03): 서술·기록 테이블
 do $$
 declare t text;
@@ -218,17 +289,21 @@ end
 $$;
 
 -- (2) 스냅샷류: 덮어쓰기(upsert) 허용, 삭제 금지, source_bot_id는 호출 봇으로 강제 (R-PERM-11)
+-- M-4: tenant assert required (same-owner enrich/upsert OK; other-owner rejected)
 create or replace function public.mowa_bot_stamp_guard()
 returns trigger language plpgsql as $$
+declare
+  v_bot uuid;
 begin
   if not public.mowa_is_service() then return coalesce(new, old); end if;
   if tg_op = 'DELETE' then
     raise exception '[R-PERM-01] bots cannot delete' using errcode = '42501';
   end if;
-  if public.mowa_current_bot() is null then
-    raise exception '[R-PERM-03] missing bot identity' using errcode = '42501';
+  if tg_op = 'UPDATE' and new.owner_id is distinct from old.owner_id then
+    raise exception '[R-PERM-01] owner_id is immutable' using errcode = '42501';
   end if;
-  new.source_bot_id := public.mowa_current_bot();
+  v_bot := public.mowa_assert_bot_tenant(case when tg_op = 'UPDATE' then old.owner_id else new.owner_id end);
+  new.source_bot_id := v_bot;
   return new;
 end;
 $$;
@@ -243,17 +318,23 @@ begin
 end
 $$;
 
--- (3) instruments: 여러 봇이 같은 행을 보강(R-PERM 표) → 자기 행 제한 없음. 삭제·보관·복원은 봇 금지
+-- (3) instruments: 여러 봇이 같은 행을 보강(R-PERM 표) → 자기 행 제한 없음(동일 owner). 삭제·보관·복원은 봇 금지
+-- M-4: other-owner insert/update rejected; same-owner enrich allowed
 create or replace function public.instruments_guard()
 returns trigger language plpgsql as $$
+declare
+  v_bot uuid;
 begin
   if not public.mowa_is_service() then return coalesce(new, old); end if;
   if tg_op = 'DELETE' then raise exception '[R-PERM-01] bots cannot delete' using errcode = '42501'; end if;
+  if tg_op = 'UPDATE' and new.owner_id is distinct from old.owner_id then
+    raise exception '[R-PERM-01] owner_id is immutable' using errcode = '42501';
+  end if;
+  v_bot := public.mowa_assert_bot_tenant(case when tg_op = 'UPDATE' then old.owner_id else new.owner_id end);
   if tg_op = 'INSERT' then
     if new.archived_at is not null then raise exception '[R-PERM-01] bots cannot archive instruments' using errcode = '42501'; end if;
-    new.source_bot_id := public.mowa_current_bot();
-  elsif new.archived_at is distinct from old.archived_at or new.ticker is distinct from old.ticker
-        or new.owner_id is distinct from old.owner_id then
+    new.source_bot_id := v_bot;
+  elsif new.archived_at is distinct from old.archived_at or new.ticker is distinct from old.ticker then
     raise exception '[R-PERM-01] bots cannot archive/rename instrument keys' using errcode = '42501';
   end if;
   return new;
@@ -307,25 +388,28 @@ declare
   v_fields text[];
   v_new jsonb; v_old jsonb;
   v_asset text;
+  v_bot uuid;
 begin
   if public.mowa_is_service() and coalesce(current_setting('mowa.via_proposal', true), '') <> 'on' then
     if tg_op = 'DELETE' then
       raise exception '[R-PERM-01] bots cannot delete positions' using errcode = '42501';
     end if;
-    if public.mowa_current_bot() is null then
-      raise exception '[R-PERM-03] missing bot identity' using errcode = '42501';
+    if tg_op = 'UPDATE' and new.owner_id is distinct from old.owner_id then
+      raise exception '[R-PERM-01] owner_id is immutable' using errcode = '42501';
     end if;
-    -- 권한 표 D3: positions 쓰기는 finance-manager만 (R-PERM-17 / R-VAL-P12: trigger_price·breakeven 포함, 다른 봇 403)
-    if not exists (select 1 from public.bot_clients b where b.id = public.mowa_current_bot() and b.profile = 'finance-manager') then
+    -- M-4 tenant first (revoked/expired/other-owner rejected), then profile limit
+    v_bot := public.mowa_assert_bot_tenant(case when tg_op = 'UPDATE' then old.owner_id else new.owner_id end);
+    -- 권한 표 D3: positions 쓰기는 finance-manager만 (R-PERM-17 / R-VAL-P12). profile limit does not replace tenant guard.
+    if not exists (select 1 from public.bot_clients b where b.id = v_bot and b.profile = 'finance-manager') then
       raise exception '[R-VAL-P12][R-PERM-04] only finance-manager may write positions' using errcode = '42501';
     end if;
-    v_fields := public.mowa_approval_fields(new.owner_id);
+    v_fields := public.mowa_approval_fields(case when tg_op = 'UPDATE' then old.owner_id else new.owner_id end);
     v_new := to_jsonb(new);
     if tg_op = 'INSERT' then
       if new.status <> 'planned' or new.qty <> 0 or new.avg_price is not null or new.archived_at is not null then
         raise exception '[R-VAL-P01] bots may only create planned positions without qty/avg_price' using errcode = '42501';
       end if;
-      new.source_bot_id := public.mowa_current_bot();
+      new.source_bot_id := v_bot;
     else
       v_old := to_jsonb(old);
       foreach f in array v_fields || array['owner_id','instrument_id','archived_at','closed_at','source_bot_id','approval_version'] loop
@@ -393,8 +477,12 @@ begin
       new.proposed_by_type := 'bot';
       new.proposed_by_user := null;
       if new.proposed_by is null then raise exception '[R-PERM-03] missing bot identity' using errcode = '42501'; end if;
+      -- M-4: revoked/expired/other-owner rejected (assert compares bot.owner_id to row owner)
+      perform public.mowa_assert_bot_tenant(new.owner_id);
       if not exists (select 1 from public.bot_clients b where b.id = new.proposed_by and b.owner_id = new.owner_id
-                       and b.profile = 'finance-manager' and 'positions:propose' = any(b.scopes)) then
+                       and b.profile = 'finance-manager' and 'positions:propose' = any(b.scopes)
+                       and b.revoked_at is null
+                       and (b.expires_at is null or b.expires_at > now())) then
         raise exception '[R-VAL-P07] only finance-manager with positions:propose can propose' using errcode = '42501';
       end if;
     elsif auth.uid() is not null and coalesce(auth.role(), '') = 'authenticated' then

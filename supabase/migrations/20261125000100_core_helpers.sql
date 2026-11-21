@@ -65,7 +65,7 @@ $$;
 
 -- 봇 쓰기 공통 가드 (R-PERM-01 자기 행만 보관 / R-SYS-03 삭제 없음 / R-PERM-03 신원)
 -- 사용: create trigger ... execute function public.mowa_bot_row_guard();  (source_bot_id 컬럼 필요)
--- M-4: bot_clients(id=mowa_current_bot(), owner_id=NEW.owner_id, not revoked); owner_id immutable
+-- Interim body: 000600 replaces this with mowa_assert_bot_tenant (shared tenant + expiry) after bot_clients exists.
 create or replace function public.mowa_bot_row_guard()
 returns trigger language plpgsql as $$
 declare
@@ -84,12 +84,13 @@ begin
   if v_bot is null then
     raise exception '[R-PERM-03] missing bot identity' using errcode = '42501';
   end if;
-  v_owner := (v_new->>'owner_id')::uuid;
+  v_owner := case when tg_op = 'UPDATE' then (v_old->>'owner_id')::uuid else (v_new->>'owner_id')::uuid end;
   if not exists (
     select 1 from public.bot_clients b
      where b.id = v_bot and b.owner_id = v_owner and b.revoked_at is null
+       and (b.expires_at is null or b.expires_at > now())
   ) then
-    raise exception '[R-PERM-03] bot identity invalid, revoked, or owner mismatch' using errcode = '42501';
+    raise exception '[R-PERM-03] bot identity invalid, revoked, expired, or owner mismatch' using errcode = '42501';
   end if;
   if tg_op = 'UPDATE' then
     if (v_old->>'owner_id') is distinct from (v_new->>'owner_id') then

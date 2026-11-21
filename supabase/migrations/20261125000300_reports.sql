@@ -47,7 +47,7 @@ create index reports_owner_domain_date_idx on public.reports (owner_id, domain, 
 create index reports_tags_gin on public.reports using gin (tags);
 create index reports_tickers_gin on public.reports using gin (tickers);
 create index reports_search_gin on public.reports using gin (search_tsv);
-create index reports_title_trgm on public.reports using gin (title gin_trgm_ops);
+create index reports_title_trgm on public.reports using gin (title extensions.gin_trgm_ops);
 create trigger reports_updated_at before update on public.reports
   for each row execute function public.set_updated_at();
 
@@ -68,9 +68,14 @@ create table public.report_revisions (
 );
 
 -- M-3: history/evidence rows are immutable (insert via reports_keep_revision only)
+-- Account deletion: CASCADE DELETE from auth.users must not be blocked (owner gone ⇒ allow DELETE only).
+-- App UPDATE/DELETE remains prohibited.
 create or replace function public.report_revisions_immutable()
 returns trigger language plpgsql as $$
 begin
+  if tg_op = 'DELETE' and not exists (select 1 from auth.users u where u.id = old.owner_id) then
+    return old;
+  end if;
   raise exception '[R-SYS-05] report_revisions is append-only (no update/delete)' using errcode = '42501';
 end;
 $$;

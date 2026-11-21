@@ -62,3 +62,21 @@ export function resolveMowaDbEnv(env = process.env, { dbNameRe = LOCAL_STACK_DB_
 		connectionString: `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${safeHost}:${port}/${safeDb}`
 	};
 }
+
+/** PostgREST / HTTP base URL must be loopback only (same local-only policy as DB host). */
+export function assertLoopbackHttpUrl(url, label = 'MOWA_POSTGREST_URL') {
+	let parsed;
+	try {
+		parsed = new URL(String(url || ''));
+	} catch {
+		console.error(`[${label}] Refusing invalid URL.`);
+		process.exit(1);
+	}
+	if (!isLoopbackHost(parsed.hostname)) {
+		console.error(
+			`[${label}] Refusing non-loopback host "${parsed.hostname}". Only 127.0.0.1 / localhost / ::1.`
+		);
+		process.exit(1);
+	}
+	return parsed.toString().replace(/\/$/, '');
+}

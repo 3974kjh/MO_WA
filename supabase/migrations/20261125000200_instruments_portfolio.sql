@@ -25,7 +25,7 @@ create table public.instruments (
                                           or ticker ~ '^[A-Z][A-Z0-9_]{1,31}$')                           -- R-VAL-C03
 );
 create index instruments_owner_watch_idx on public.instruments (owner_id, is_watchlist) where archived_at is null;
-create index instruments_name_trgm_idx on public.instruments using gin (name gin_trgm_ops);
+create index instruments_name_trgm_idx on public.instruments using gin (name extensions.gin_trgm_ops);
 create trigger instruments_updated_at before update on public.instruments
   for each row execute function public.set_updated_at();
 
