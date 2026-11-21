@@ -51,3 +51,37 @@ describe('FE-10 목록 load는 URL 쿼리를 BE-11 load에 넘긴다', () => {
 		);
 	});
 });
+
+describe('FE-10 허용 밖 tag는 해당 파라미터만 뺀 URL로 redirect', () => {
+	const redirected = async (href: string) => {
+		try {
+			await call(briefingsLoad, href);
+		} catch (e) {
+			const r = e as { status?: number; location?: string };
+			return { status: r.status, location: r.location };
+		}
+		return null;
+	};
+	it('tag=a,b → tag만 빠지고 q·month·page는 남음', async () => {
+		const r = await redirected('http://x/briefings?q=FOMC&tag=a%2Cb&month=2026-11&page=2');
+		expect(r?.status).toBe(303);
+		expect(r?.location).toBe('/briefings?q=FOMC&month=2026-11&page=2');
+		expect(repoMock.listBriefingsWithKospi).not.toHaveBeenCalled();
+	});
+	it('tag=<script> → 빈 쿼리면 trailing ? 없이', async () => {
+		const r = await redirected('http://x/briefings?tag=%3Cscript%3E');
+		expect(r?.location).toBe('/briefings');
+	});
+	it('여러 tag 중 허용된 것만 남김', async () => {
+		const r = await redirected('http://x/briefings?tag=CPI&tag=a%2Cb&q=x');
+		expect(r?.location).toBe('/briefings?tag=CPI&q=x');
+	});
+	it.each(['CPI', '52주 저가', '사이드카'])('허용된 %s는 redirect하지 않음', async (t) => {
+		expect(await redirected(`http://x/briefings?tag=${encodeURIComponent(t)}&q=a`)).toBeNull();
+		expect(repoMock.listBriefingsWithKospi).toHaveBeenCalledTimes(1);
+	});
+	it('tag가 없으면 redirect하지 않음', async () => {
+		expect(await redirected('http://x/briefings?q=a&month=2026-11')).toBeNull();
+		expect(await redirected('http://x/briefings')).toBeNull();
+	});
+});
