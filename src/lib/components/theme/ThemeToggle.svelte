@@ -20,21 +20,3 @@
 >
 	<ThemeIcon mode={themeState.mode} />
 </button>
-
-<style>
-	.icon-btn {
-		width: 40px;
-		height: 40px;
-		flex: none;
-		border-radius: var(--radius-sm);
-		border: 1px solid var(--color-line);
-		background: var(--color-surface);
-		display: inline-grid;
-		place-items: center;
-		color: var(--color-muted);
-	}
-	.icon-btn:hover {
-		background: var(--color-surface-2);
-		color: var(--color-text);
-	}
-</style>
