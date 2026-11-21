@@ -141,7 +141,11 @@
 	}
 </script>
 
-<div class="line-chart {className}" {@attach observeWidth((w) => (width = w || 600))}>
+<div
+	class="line-chart {className}"
+	style:--chart-h="{height ?? LINE_DEFAULT_HEIGHT}px"
+	{@attach observeWidth((w) => (width = w || 600))}
+>
 	<!-- 포인터 보조 읽기(툴팁·값 카드). 같은 값은 키보드·낭독기용 숨김 데이터 표로 제공한다. -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="plot" onpointermove={onmove} onpointerleave={() => (hover = null)} onpointerup={onup}>
@@ -218,14 +222,14 @@
 		<thead>
 			<tr>
 				<th scope="col">구간</th>
-				{#each series as s (s.name)}<th scope="col">{s.name}</th>{/each}
+				{#each series as s, si (si)}<th scope="col">{s.name}</th>{/each}
 			</tr>
 		</thead>
 		<tbody>
 			{#each labels as lb, i (i)}
 				<tr>
 					<th scope="row">{lb}</th>
-					{#each series as s (s.name)}<td
+					{#each series as s, si (si)}<td
 							>{Number.isFinite(s.values[i]) ? fmt(s.values[i]) : '—'}</td
 						>{/each}
 				</tr>
@@ -238,14 +242,23 @@
 	.line-chart {
 		position: relative;
 		width: 100%;
+		/* SSR 첫 렌더에서도 폭(<480)에 맞는 높이를 CSS로 잡아 CLS를 줄인다 */
+		container-type: inline-size;
 	}
 	.plot {
 		position: relative;
 		touch-action: pan-y;
+		height: var(--chart-h);
+	}
+	@container (max-width: 479.98px) {
+		.plot {
+			height: 190px;
+		}
 	}
 	.chart {
 		display: block;
 		width: 100%;
+		height: 100%;
 	}
 	.chart text {
 		font-family: var(--font-num);
