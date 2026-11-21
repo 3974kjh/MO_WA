@@ -23,9 +23,13 @@ async function rpc(scopes: string[], method: string, params: Record<string, unkn
 }
 
 describe('handleMcp whoami through runAuditedToolCall', () => {
-	it('tools/list shows only whoami for a read key (no echo/db_ping)', async () => {
+	it('tools/list shows only read tools for a read key (no echo/db_ping/write)', async () => {
 		const { body, rows } = await rpc(['read'], 'tools/list');
-		expect(body.result.tools.map((t: { name: string }) => t.name)).toEqual(['whoami']);
+		const names = body.result.tools.map((t: { name: string }) => t.name);
+		expect(names).toContain('whoami');
+		expect(names).not.toContain('echo');
+		expect(names).not.toContain('db_ping');
+		expect(names).not.toContain('add_journal_entry');
 		expect(rows).toHaveLength(0);
 	});
 
