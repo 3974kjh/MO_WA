@@ -1,269 +1,217 @@
 # BE-18 Dry-run report — Notion·JSON → MO_WA (no writes)
 
 - Ticket: **BE-18**
-- Generated: 2026-11-21 (agent run) · **Follow-up recount:** 2026-11-21 (exports attached)
-- Mode: **DRY-RUN ONLY** — zero DB inserts/updates; no migrations applied; no Production / operational DB access
+- Generated: 2026-11-21 · Follow-ups through Notion **29-row memo verification** (script-compared SoT for §2a)
+- Mode: **DRY-RUN ONLY** — zero DB inserts/updates; no migrations; no I-7; no Production / operational DB access
 - Rules doc: [`be-18-converter-rules.md`](./be-18-converter-rules.md)
 - Design: §7-1 · Rules: §5-0 Notion baselines · R-MIG-03
-- Display IDs: N/A for this dry-run (no proposal rows created). Future IDs: owner-scoped `P-` / `R-` via `display_sequences` / `mowa_display_id()` only (**no `PP-`**).
+- Display IDs: N/A this dry-run. Future: owner-scoped `P-` / `R-` via `display_sequences` / `mowa_display_id()` only (**no `PP-`**).
 
 ---
 
-## 0. Source availability
-
-| Source | Present? | Used for |
-|---|---|---|
-| Notion 📒 / 💼 live API | No | — |
-| Notion export dump | No | — |
-| `stock_report_context.json` (upload) | **Yes** | Alignment recount · §4 (`as_of` **2026-11-08**, 12 items — **not** latest prices) |
-| `investor-journal.json` (upload) | **Yes** | Body ticker extract §2 · alias keys in `price_snapshot_*` §3 (`updated_at` **2026-11-20T17:58:00+09:00**, **v39**, **42** entries) |
-| Equity-analysis report export / Notion D5 list | No | D5 attach still deferred |
-| rules·design measured tables | Yes | Notion baselines (§1, §2a) |
-
-**Important:** `investor-journal.json` is **not** treated as the Notion 📒 original. Counts below distinguish:
+## 0. Source streams (do not conflate)
 
 | Stream | Source | Counts |
 |---|---|---|
-| **(a) Journal file** | `investor-journal.json` v39 | **42** entries |
-| **(b) Notion baseline** | rules §5-0 (2026-11-21 read-only) | journal **54**, 「기타」 **26**, empty instrument **3** |
+| **(a) Journal file** | `investor-journal.json` v39 · `updated_at` 2026-11-20T17:58:00+09:00 | **42** entries |
+| **(b) Notion journal baseline** | rules §5-0 | **54** rows (「기타」26 + empty instrument 3 → **29** memo-extract candidates) |
+| **(b′) Notion 29-row memo verify** | Script-compared Notion memos (SoT for this recount) | **29** rows · see §2a |
 
-DB writes this run: **0**.
+**(a) and (b) have no common IDs** — do **not** auto-merge. At most build `(date, type, ticker-set)` **duplicate candidates** for I-7 prep; user decides priority later. File-only types (`user_intent`, `plan_draft`, `pending_decision`, `sell`) stay as **separate** rows.
+
+DB writes this run: **0**. Alias map: **not locked** (12 candidates + 7 unmapped remain unlocked). Do **not** map yield `UST30Y` → position `UST_30Y`.
 
 ---
 
-## 1. Portfolio / positions (§7-1 core)
+## 1. Portfolio / positions (§7-1)
 
-Unchanged by this follow-up (still rules §5-0 / §5-2 baselines; no Notion 💼 export attached).
+### 1-1. Baseline inventory (Notion 💼 · 9 rows)
 
-### 1-1. Baseline inventory
-
-| Metric | Count | Notes |
-|---|---:|---|
-| Notion 💼 보유·매수계획 rows | 9 | 보유 7 · 매수계획 2 |
-| Would import as active holding/planned (expected) | 8 | After UST_30Y → closed |
-| Would import as closed history | 1 | UST_30Y |
-| DB writes performed this run | **0** | Required |
+| Metric | Count |
+|---|---:|
+| Notion 💼 rows | **9** |
+| Immediate convert | **5** |
+| Partial hold (USD currency; avg/base empty) | **2** (SGOV, QBTS) |
+| Closed history | **2** (UST_30Y, KR_CORP_BOND) |
+| **Total** | **9** = 5 + 2 + 2 |
+| DB writes | **0** |
 
 ### 1-2. Hyundai Motor `005380`
 
-| Item | Count / value |
+| Item | Value |
 |---|---|
-| Matching position rows | **1** (baseline) |
-| Planned `watch_only=true`, `trigger_price=null` | 1 |
-| Notion trigger discarded | `300000` (prior report only; no memo prefix) |
+| Planned | `watch_only=true`, `trigger_price=null` |
+| Notion trigger discarded | `300000` (prior report only; **no** memo watch-only prefix) |
 
 ### 1-3. SGOV · QBTS
 
-| Ticker | `currency` | avg/base | Preserved Notion KRW (no FX) |
+| Ticker | `currency` | avg/base | Preserved Notion KRW (verbatim, **no FX**) |
 |---|---|---|---|
 | SGOV | USD | **hold (null)** | avg `138191`, base `134322` |
-| QBTS | USD | **hold (null)** | avg `22795`, base `9759` |
+| QBTS | USD | **hold (null)** | avg **`22775`** (Notion source text 22,775 — corrected from 22795), base `9759` |
 
-### 1-4. UST_30Y
+### 1-4. Closed history — `UST_30Y` · `KR_CORP_BOND`
 
-| Item | Value |
+| Ticker | Rule |
 |---|---|
-| Rows | 1 · `status=closed` · `currency=USD` |
+| `UST_30Y` | `status=closed` · `currency=USD` · history only |
+| `KR_CORP_BOND` | `status=closed` **only** — matured and redeemed (**user answer relayed by develop_boot**). Do **not** fill quantity, average price, or amount (no source text). Replaces earlier “deferred until user answers” wording. |
 
-### 1-5. Positions dry-run summary
+### 1-5. Positions dry-run classification (**5 / 2 / 2**, total 9)
 
-| Bucket | Count |
-|---|---:|
-| Ready (rules applied; still no write) | 7 |
-| Closed history ready | 1 (UST_30Y) |
-| Partial hold (USD OK, avg/base empty) | 2 (SGOV, QBTS) |
-| Written to DB | **0** |
+| Bucket | Count | Members |
+|---|---:|---|
+| Immediate convert | **5** | NAVER (`035420`), KT (`030200`), GOOGL, Robotis planned (`108490`), Hyundai Motor planned watch-only (`005380`) |
+| Partial hold | **2** | SGOV, QBTS |
+| Closed | **2** | UST_30Y, KR_CORP_BOND |
+| **Total** | **9** | |
+| Written to DB | **0** | |
+
+Changed from prior **6 / 1 / 2** because `KR_CORP_BOND` moved from immediate-convert → **closed** (decision 6 update). **§4-3 is unchanged** (still confirmed 5 / candidate 2 / deferred 5): that table is D5/`stock_report_context` attach classification; `KR_CORP_BOND` is not one of the 12 context keys, so this position-status change does not alter §4-3 counts.
+
+### 1-6. Importer evidence / open candidates (PM)
+
+| Item | Disposition |
+|---|---|
+| **GOOGL currency** | Importer mapping basis from memo evidence **「단위 USD」** — document and **leave that evidence**; currency=`USD` |
+| **NAVER trigger `180000`** | **Candidate only** — do **not** decide trigger direction (`below`/`above`) in BE-18 |
+| **`KR_CORP_BOND`** | **Closed** (matured/redeemed; relayed by develop_boot) — no qty / avg / amount |
+| **`005930` + 9 name-only names** | **Deferred** — enter `instruments` only at I-7 after original source (e.g. KRX) confirmation |
 
 ---
 
 ## 2. Journal body → `tickers[]`
 
-### 2a. Notion baseline (rules §5-0) — still no Notion memo dump
+### 2a. Notion 29-row memo recount (SoT for 「기타」/empty extract)
 
-| Metric | Count | Status |
-|---|---:|---|
-| Journal rows total | 54 | baseline only |
-| 「기타」 | 26 | **still unmeasured** for body extract (Notion bodies absent) |
-| Empty instrument | 3 | **still unmeasured** for body extract |
-| Rows needing Notion body → `tickers[]` | 29 | deferred until Notion export |
+Covers the **29** Notion rows that need memo → `tickers[]` (from baseline 54 = 「기타」26 + empty 3). **Not** the file’s 42 entries.
 
-### 2b. `investor-journal.json` recount (this follow-up)
+**Row deltas only (verification):**
 
-| Meta | Value |
-|---|---|
-| `updated_at` | `2026-11-20T17:58:00+09:00` (KST) |
-| `version` | v39 |
-| `entries` | **42** |
-| Candidate body fields only | `text`, `note`, `summary`, `summary_ko`, `title`, `mindset_summary_ko` |
+| # | Date | Change |
+|---|---|---|
+| 13 | 2026-10-18 | **Add** `000660` — memo contains «하이닉스 5.36조» |
+| 25 | 2026-11-15 | **Remove** `KR_CORP_BOND` — memo only «IRP 만기(11/16)» (no «회사채»); remaining ticker **`035420` only** |
+| 28 | 2026-11-19 | **Add** `000660` — memo contains «SK하이닉스 +3.41%» |
 
-**Extraction method (dry-run):** collect confirmed instrument codes only —
-
-- literal codes already known from Notion 💼 / context keys: `035420`, `030200`, `GOOGL`, `QBTS`, `SGOV`, `108490`, `005380`, `066570`, `000660`, `207940`, `068270`, `102110`, `UST_30Y`, `KR_CORP_BOND`
-- Korean/English display names that resolve via that **same confirmed set** (e.g. 네이버→`035420`, 로보티즈/`Robotis`→`108490`, 현대차/`Hyundai`→`005380`). Do **not** map yield indicator `UST30Y` → position `UST_30Y`.
-- **No estimated codes.** Unknown 6-digit tokens → hold. Tags never receive codes (`R-VAL-J08`).
-
-| Outcome | Count | Notes |
-|---|---:|---|
-| Entries with ≥1 candidate body field non-empty | **41** | |
-| Entries with no candidate body text | **1** | `2026-11-10` `user_decision` (id null) |
-| Entries with ≥1 confirmed code → planned `tickers[]` | **39** | |
-| Body present but **no** confirmed code | **2** | see hold list |
-| Unique confirmed codes seen | **11** | `000660`, `005380`, `030200`, `035420`, `102110`, `108490`, `GOOGL`, `KR_CORP_BOND`, `QBTS`, `SGOV`, `UST_30Y` |
-| Context tickers **never** hit in these bodies | **3** | `066570`, `207940`, `068270` |
-| Unconfirmed 6-digit token | `912810` on **2** entries | CUSIP fragment from UST sell notes — **hold token**, not filled as ticker |
-| `type=sell` with no resolvable MO_WA ticker in body | **1** | `entry-2026-10-16-ust30y-full-sell-executed` (mentions CUSIP / T 1.625; extracted `SGOV` only as nearby text — UST_30Y not literal; instrument object is not a ticker code) |
-| Tags that would receive ticker codes | **0** | policy forbids |
-
-**Code frequency (entries containing code; includes English `Robotis` / `Hyundai`):**
+**Updated frequency (29-row Notion memo):**
 
 | Code | Entries |
 |---|---:|
-| 035420 | 35 |
-| 005380 | 27 |
-| 030200 | 25 |
-| 108490 | 25 |
-| GOOGL | 24 |
-| QBTS | 10 |
-| 102110 | 10 |
-| SGOV | 7 |
-| KR_CORP_BOND | 5 |
-| 000660 | 2 |
-| UST_30Y | 2 |
+| 035420 | 27 |
+| 108490 | 24 |
+| 005380 | 24 |
+| GOOGL | 22 |
+| 030200 | 22 |
+| KR_CORP_BOND | 21 |
+| QBTS | 12 |
+| 000660 | 9 |
+| 102110* | 7 |
+| UST_30Y* | 6 |
+| SGOV | 3 |
 
-**Hold list — journal file (a):**
+| Metric | Value |
+|---|---|
+| Rows with ≥1 confirmed code | **28 / 29** |
+| Unique code types | **11** |
+| Not present in these 29 rows | `066570`, `207940`, `068270` |
+| Deferred token on row #1 | `005930` (do not fill / do not add instrument now) |
+| `UST30Y` (yield) → `UST_30Y` | **Not mapped** |
+| Tags receive codes | **0** (`R-VAL-J08`) |
 
-| id | date / key | reason | status |
-|---|---|---|---|
-| hold-ij-nobody | 2026-11-10 `user_decision` | No candidate body fields | deferred |
-| hold-ij-profile | 2026-10-08 `profile_analysis` (“매매 원칙 MD 분석…”) | Body has no confirmed instrument code | deferred |
-| hold-ij-plan-draft | 2026-10-14 `plan_draft` (“코스피200 ETF 계획서…”) | Name-only; **no code guessed** for 102110 | deferred |
-| hold-ij-cusip-912810 | `entry-2026-10-16-ust30y-full-sell-intent` + `-executed` | Token `912810` is not an instruments ticker | deferred |
-| hold-ij-sell-ust | `entry-2026-10-16-ust30y-full-sell-executed` (`type=sell`) | Sell row without confirmed `UST_30Y` / instrument_id from allowed fields alone | deferred |
+\* Marked in verify table as noted by PM; still confirmed-set codes when present as position/instrument tokens — not the yield key `UST30Y`.
 
-**Hold list — Notion (b) still open:**
+### 2b. Journal file (a) — 42 entries (separate; unchanged headlines)
 
-| id | reason | status |
-|---|---|---|
-| hold-jnl-notion-기타-empty | 「기타」×26 + empty×3 bodies not in these exports | **OPEN** |
+| Outcome | Count |
+|---|---:|
+| Entries total | **42** |
+| Confirmed `tickers[]` | **39** |
+| No body | **1** |
+| Body without confirmed code | **2** |
+| Unconfirmed token `912810` (CUSIP fragment) | held |
+| Sell hold | **1** |
+
+Do not auto-merge with Notion 54/29. Optional later: `(date, type, ticker-set)` **duplicate candidates** only.
+
+**File-only types (remain separate rows):** `user_intent`, `plan_draft`, `pending_decision`, `sell`.
 
 ---
 
-## 3. Aliases — `price_snapshot_*` inside `investor-journal.json`
-
-### 3-1. Policy
+## 3. Aliases — unlocked
 
 | Check | Result |
 |---|---|
 | Runtime alias mapping | **No** (`R-VAL-C05`) |
-| Importer-only map | **Yes** |
-| Codes guessed / filled this dry-run | **No** |
+| Map locked this dry-run? | **No** |
+| Codes guessed / instruments added? | **No** |
 
-### 3-2. Snapshot key inventory (recounted)
-
-| Metric | Count / value |
-|---|---|
-| Top-level `price_snapshot_*` keys | **32** = 31 date keys + `price_snapshot_batch` |
-| Latest **date** key (not name-sort with batch) | `price_snapshot_2026_11_20` |
-| Keys inside latest (excl. `source`) | **25** |
-
-**Latest (`price_snapshot_2026_11_20`) classification:**
-
-| Class | Count | Keys |
+| Class | Count | Keys / notes |
 |---|---:|---|
-| Indicator / FX / yield (not instrument aliases) | 5 | `USDKRW`, `USDKRW_close_1530`, `UST30Y`, `KOSPI`, `KOSDAQ` |
-| Exclude (derived) | 1 | `Hyundai_52wL` |
-| Importer **candidate** aliases (codes known from Notion/context — **map not locked**; I-7 source confirm still required) | **12** | `NAVER`→035420, `KT`→030200, `GOOGL`, `QBTS`, `SGOV`, `Robotis`→108490, `Hyundai`→005380, `LGE`→066570, `SKH`→000660, `SamsungBio`→207940, `Celltrion`→068270, `TIGER200`→102110 |
-| **Unmapped hold** | **7** | `Yuhan`, `Shinsegae`, `POSCOIntl`, `KoreanAir`, `LG`, `Glovis`, `SKT` |
+| `price_snapshot_*` top-level keys | **32** | 31 date keys + `price_snapshot_batch` |
+| Latest **date** key | `price_snapshot_2026_11_20` | (do not treat `price_snapshot_batch` as latest by name sort) |
+| Importer **candidates** (unlocked) | **12** | NAVER, KT, GOOGL, QBTS, SGOV, Robotis, Hyundai, LGE, SKH, SamsungBio, Celltrion, TIGER200 |
+| **Unmapped** (deferred, unlocked) | **7** | Yuhan, Shinsegae, POSCOIntl, KoreanAir, LG, Glovis, SKT |
+| Exclude | 1 | `Hyundai_52wL` |
+| Indicators (not instrument aliases) | 5 | USDKRW, USDKRW_close_1530, **UST30Y**, KOSPI, KOSDAQ |
 
-**Hold list — unmapped aliases (latest snapshot):**
-
-| alias | action |
-|---|---|
-| Yuhan | deferred — no confirmed code |
-| Shinsegae | deferred — no confirmed code |
-| POSCOIntl | deferred — no confirmed code |
-| KoreanAir | deferred — no confirmed code |
-| LG | deferred — no confirmed code |
-| Glovis | deferred — no confirmed code |
-| SKT | deferred — no confirmed code |
-
-Historical extras appear under older `price_snapshot_*` keys (e.g. `SKhynix`, `SBL`, `CEL`, `*_fdr`, `*_usd`, `TLT`, `Samsung`, `SEC`). Those remain **non-locked / deferred or exclude** until source confirmation; this dry-run does **not** invent codes for them.
+Name-only / `005930`: deferred until I-7 + source confirmation (same as §1-6).
 
 ---
 
-## 4. `stock_report_context.json` → alignment
+## 4. `stock_report_context.json` → alignment + D5
 
 ### 4-1. File meta
 
 | Field | Value |
 |---|---|
-| `as_of` | **2026-11-08** (disclose: **not** latest market prices) |
-| `items` | **12** (keys already ticker codes) |
+| `as_of` | **2026-11-08** (**not** latest prices) |
+| `items` | **12** (keys already tickers) |
 | Q-33 fields | `plan_status`, `fields`, `history`, `draft` — **not mapped** |
 
-### 4-2. Korean label → enum (design interpretation)
+### 4-2. Label → enum
 
-| Korean label | → `alignment` | Count in this file |
+| Korean | → enum | Count |
 |---|---|---:|
-| 일치 | `aligned` | **0** |
+| 일치 | `aligned` | 0 |
 | 부분일치 | `partial` | **5** |
-| 불일치 | `conflict` | **0** |
+| 불일치 | `conflict` | 0 |
 | 판단보류 | `unchecked` | **7** |
-| *(any other)* | deferred | **0** in file |
 
-**Per-ticker mapped values:**
+### 4-3. D5 attach classification (PM)
 
-| Ticker | Source label | Mapped enum |
-|---|---|---|
-| 035420 | 부분일치 | `partial` |
-| 030200 | 부분일치 | `partial` |
-| GOOGL | 부분일치 | `partial` |
-| 108490 | 부분일치 | `partial` |
-| 000660 | 부분일치 | `partial` |
-| QBTS | 판단보류 | `unchecked` |
-| SGOV | 판단보류 | `unchecked` |
-| 005380 | 판단보류 | `unchecked` |
-| 066570 | 판단보류 | `unchecked` |
-| 207940 | 판단보류 | `unchecked` |
-| 068270 | 판단보류 | `unchecked` |
-| 102110 | 판단보류 | `unchecked` |
-
-### 4-3. D5 (`equity_analysis`) attach gate
-
-These two uploads **do not** contain equity-analysis reports or a D5 inventory. rules §5-0 Notion baseline still lists **9** equity_analysis pages vs **12** context items, but **join cannot be confirmed from these files alone**.
-
-| Outcome | Count | Disposition |
+| Class | Count | Rule |
 |---|---:|---|
-| Alignment labels mappable to enum | **12 / 12** | counted above |
-| Context attach to `reports.meta` on existing D5 | **0 confirmed** | **all 12 deferred** |
+| **Confirmed** | **5** | Context may attach to an existing equity_analysis |
+| **Candidate** | **2** | Attach only via **multi-ticker** D5 reports kept **whole** (`tickers[]` multi); contexts as candidates — **do not split** the 3 multi-ticker D5 items into separate reports |
+| **Deferred** | **5** | No confirmed equity_analysis for attach |
 
-**Hold list — context / D5:**
+**102110 plan document:** `equity_analysis` with **`subtype=buy_plan` (draft)** — not a general equity_analysis. Count it under the buy_plan path when classifying confirmed attaches.
 
-| ticker | reason | status |
-|---|---|---|
-| 035420, 030200, GOOGL, QBTS, SGOV, 108490, 005380, 066570, 000660, 207940, 068270, 102110 | No equity_analysis export in the two attached files; cannot prove D5 exists per ticker (Q-20 / `R-VAL-R15`) | **deferred** |
+**Deferred context tickers (5):** `QBTS`, `SGOV`, `066570`, `207940`, `068270`.
+
+**Independence from decision 6:** §4-3 counts stay **5 / 2 / 5**. Moving `KR_CORP_BOND` to closed affects §1-5 only (positions), not context/D5 attach buckets.
 
 ---
 
-## 5. Acceptance checklist (BE-18)
+## 5. Acceptance checklist
 
 | Requirement | Met? |
 |---|---|
-| Converter rules document exists | Yes |
-| Dry-run has per-item counts + hold lists | Yes (positions baselines + journal/alias/alignment recounts) |
-| No database writes | **Yes — 0 writes** |
-| No FX conversion / no guessed codes | Yes |
-| I-7 execution | **Not started** |
-| PR merge | **Not merged** |
+| Converter rules + dry-run with counts/holds | Yes |
+| No database writes / no SQL / no I-7 | **Yes** |
+| Alias map unlocked; no guessed codes; no `UST30Y`→`UST_30Y` | Yes |
+| File 42 ≠ Notion 54/29 (no auto-merge) | Yes |
+| PR not merged | Yes |
 
 ---
 
-## 6. Still unmeasurable / deferred (why)
+## 6. Still deferred
 
-1. **Notion 「기타」×26 + empty×3 body → `tickers[]`** — Notion memo dump still absent; journal file (a) ≠ Notion (b).
-2. **Fresh Notion row re-count for R-MIG-03 full table** (daily 34, equity 9, weekly 6, realestate 28, …) — needs live Notion or full export; not in these two files.
-3. **D5 existence per context ticker** — no equity_analysis bodies/list in the two files → all 12 context attaches deferred.
-4. **Importer alias map lock** — 12 candidates still require I-7 source confirmation; 7 latest unmapped aliases stay deferred; historical derived keys not auto-mapped.
-5. **Positions Notion 💼 re-count** — no 💼 export in this follow-up (baselines retained).
+1. Notion rows beyond the verified 29-memo set / full R-MIG-03 live re-count  
+2. D5 deferred contexts (5) + multi-ticker candidate attaches (2) pending I-7 inventory  
+3. Alias lock; 7 unmapped names; `005930` + 9 name-only → instruments only after KRX/source confirm at I-7  
+4. NAVER trigger `180000` direction (candidate only)  
+5. File↔Notion duplicate resolution priority (user at I-7 prep)
 
 No database was written. Execution remains gated on **I-7** sign-off.

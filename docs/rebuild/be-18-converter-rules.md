@@ -28,11 +28,14 @@ Validation mode for a future importer run: **`migration`** (not `strict`). ERROR
 | Target | Converter rule | Rule / Q refs |
 |---|---|---|
 | Hyundai Motor `005380` | Set `watch_only=true`, `trigger_price=null`. Do **not** import Notion trigger `300000`. Keep Notion `status` as-is (`holding` / `planned`). Do **not** prefix `memo` with watch-only text (UI reads `watch_only`). Preserve Notion trigger value only in the prior/migration report (`source_ref` / hold note). | Q-17, Q-32, `R-VAL-P13` |
-| SGOV, QBTS | Set `currency=USD`. Leave `avg_price` and `base_price` **empty (on hold)**. Preserve Notion KRW avg/base **verbatim** in the prior report / hold list. **No FX conversion.** User later confirms USD avg via web correction (`proposed_by=user`, G-4 / `R-VAL-P11`). | Q-21, `R-MIG`, `R-VAL-P10` |
-| `UST_30Y` | Import as `status=closed` history only (full exit 2026-10-16). `currency=USD`. | Q-21 |
-| Journal rows tagged 「기타」 or empty instrument | Extract ticker codes from body → `journal_entries.tickers[]`. **Never** put those codes in `tags`. If `kind∈{buy,sell}` and no instrument can be resolved → **hold list**. | Q-16, `R-VAL-J03`, `R-VAL-J08` |
-| Aliases | Name→code map is **importer-only**. Runtime bots must not alias-resolve (`R-VAL-C05`). Unmapped aliases → hold list. Codes filled only after source confirmation (KRX / Notion code). **No guessing.** | Q-24, `R-VAL-C05` |
-| `stock_report_context.json` | Map labels into `reports.meta` alignment enum: `aligned` \| `partial` \| `conflict` \| `unchecked` (+ `selection_reason`, `reason_source`, `align_reason`, `lenses{social,corporate,policy}`). If no `equity_analysis` report exists for that ticker → **hold context**. | Q-20, `R-VAL-R15` |
+| SGOV, QBTS | Set `currency=USD`. Leave `avg_price` and `base_price` **empty (on hold)**. Preserve Notion KRW avg/base **verbatim** (QBTS avg **`22775`** = source text 22,775; SGOV avg `138191`). **No FX conversion.** User later confirms USD avg via web correction (`proposed_by=user`, G-4 / `R-VAL-P11`). | Q-21, `R-MIG`, `R-VAL-P10` |
+| `UST_30Y` | Import as `status=closed` history only (full exit 2026-10-16). `currency=USD`. Do **not** map yield indicator `UST30Y` → this position. | Q-21 |
+| `KR_CORP_BOND` | `status=closed` **only** (matured and redeemed — **user answer relayed by develop_boot**). Do **not** fill qty, avg_price, or amount (no source text). | decision 6 |
+| GOOGL currency | Importer basis: Notion memo evidence **「단위 USD」** — keep that evidence; set `currency=USD`. | Q-21 / importer map |
+| NAVER trigger `180000` | **Candidate only** — do not decide `trigger_direction` in BE-18. | R-VAL-P15 |
+| Journal rows tagged 「기타」 or empty instrument | Extract ticker codes from body → `journal_entries.tickers[]`. **Never** put those codes in `tags`. If `kind∈{buy,sell}` and no instrument can be resolved → **hold list**. Notion 29-row memo verify is SoT for that subset; journal **file** 42 ≠ Notion **54**. | Q-16, `R-VAL-J03`, `R-VAL-J08` |
+| Aliases | Name→code map is **importer-only** and stays **unlocked** in BE-18 (12 candidates + 7 unmapped). Runtime bots must not alias-resolve (`R-VAL-C05`). Unmapped aliases → hold list. Codes / new instruments (`005930`, 9 name-only) only after source confirmation at I-7. **No guessing.** | Q-24, `R-VAL-C05` |
+| `stock_report_context.json` | Map labels into alignment enum (Korean map below). D5 attach: **confirmed 5 / candidate 2 / deferred 5**. Do **not** split the 3 multi-ticker D5 reports — one report, multi `tickers[]`, attach contexts as candidates. `102110` plan = `equity_analysis` **`subtype=buy_plan` (draft)**. | Q-20, `R-VAL-R15` |
 | Daily candidates (adjacent) | Move past daily candidate tables into `meta.candidates[]` only when shape matches; else WARN + hold (`R-VAL-R14`). Out of BE-18 acceptance core but listed in §7-1. | Q-19, `R-VAL-R14` |
 
 ---
@@ -66,12 +69,20 @@ OUTPUT positions:
   # qty / status / other fields: follow general Notion→positions map (rules §5-2)
 PRESERVE (prior report / hold list, verbatim — no FX):
   SGOV: Notion avg 138191, base 134322 (KRW-denominated source values)
-  QBTS: Notion avg 22795,  base 9759  (KRW-denominated source values)
+  QBTS: Notion avg 22775,  base 9759  (KRW-denominated; source text 22,775)
 POST-I-7:
   User enters USD avg via CorrectionSheet → apply_user_correction (approved, no pending)
 ```
 
+Positions dry-run classification (Notion 💼 **9** rows): **immediate convert 5 / partial hold 2 / closed 2**
+(NAVER, KT, GOOGL, Robotis planned, Hyundai planned watch-only) / (SGOV, QBTS) / (UST_30Y, KR_CORP_BOND).
+`KR_CORP_BOND` closed rule: matured/redeemed (**relayed by develop_boot**); qty·avg·amount left empty.
+
 Do not invent USD averages from exchange rates at import time.
+
+**GOOGL:** leave memo evidence 「단위 USD」 as the importer currency mapping basis (`currency=USD`).
+
+**NAVER `trigger_price=180000`:** record as a **candidate** only — do not set `trigger_direction` in BE-18.
 
 ### 2-3. UST_30Y — closed history, USD
 
@@ -81,6 +92,18 @@ OUTPUT positions:
   status   = "closed"               # override Notion "보유" label
   currency = "USD"
   # history row only; not active holding/planned
+```
+
+### 2-4. KR_CORP_BOND — closed only (matured / redeemed)
+
+```
+INPUT  Notion 💼 domestic corporate bond (만기·상환)
+OUTPUT positions:
+  status   = "closed"               # only
+  qty      = null                   # do not fill — no source text
+  avg_price = null
+  # amount / proceeds: do not invent
+SOURCE: user answer relayed by develop_boot (decision 6 update)
 ```
 
 ---
@@ -100,30 +123,33 @@ Extraction policy (dry-run / future importer):
 3. Codes not in `instruments` → hold that entry (or that token).
 4. `kind∈{buy,sell}` with unresolved instrument → **entire row on hold** (`R-VAL-J02` / `R-VAL-J03`).
 
-Measured baseline (rules §5-0, Notion read-only 2026-11-21): journal **54** rows; 「기타」 **26**; empty instrument **3**.
+Measured baseline (rules §5-0): Notion journal **54** rows; 「기타」 **26**; empty instrument **3** → **29** memo-extract candidates. Script-verified Notion memo recount (SoT for that subset): **28/29** rows with a code; see dry-run §2a (row deltas #13/#25/#28).
+
+**Separate stream:** `investor-journal.json` **42** entries — **no common IDs** with Notion 54; do **not** auto-merge. Optional `(date, type, ticker-set)` duplicate **candidates** only; file-only types (`user_intent`, `plan_draft`, `pending_decision`, `sell`) stay separate. User sets I-7 priority later.
+
+Deferred tokens: `005930` (Notion memo #1) and **9 name-only** names — **not** added to `instruments` until I-7 + original source (e.g. KRX).
 
 ---
 
-## 4. Alias map (importer-only)
+## 4. Alias map (importer-only, unlocked)
 
 - Runtime MCP: alias input → ERROR + candidates (`R-VAL-C05`). No runtime rewrite.
-- Importer may use a **confirmed** alias→code table only.
-- Candidate list from rules §5-5 (for confirmation workflow — **not** auto-applied until source-checked):
+- BE-18 keeps the importer map **unlocked**: **12** candidates + **7** unmapped. Do not lock; do not invent codes.
+- Candidate list (confirm before any future lock):
 
 | Alias (example) | Candidate code (confirm before fill) | Status for BE-18 |
 |---|---|---|
-| Robotis | 108490 | Confirm from Notion/KRX before map lock |
-| Hyundai | 005380 | Confirm |
-| SKH / SKhynix | 000660 | Confirm |
-| LGE | 066570 | Confirm |
-| SamsungBio / SBL | 207940 | Confirm |
-| Celltrion / CEL | 068270 | Confirm |
-| TIGER200 | 102110 | Confirm |
-| NAVER, KT, GOOGL, QBTS, SGOV | Already appear as Notion codes / selects | Confirm |
-| Yuhan, Shinsegae, POSCOIntl, KoreanAir, LG, Glovis, SKT, … | — | **Hold — unmapped** until source confirmation |
-| `Hyundai_52wL` and other derived keys | — | **Exclude** from import |
-
-**BE-18 rule:** this document must not invent codes. Dry-run lists unmapped aliases under holds. Codes are filled only after I-7 prep confirmation.
+| Robotis | 108490 | Unlocked candidate |
+| Hyundai | 005380 | Unlocked candidate |
+| SKH / SKhynix | 000660 | Unlocked candidate |
+| LGE | 066570 | Unlocked candidate |
+| SamsungBio / SBL | 207940 | Unlocked candidate |
+| Celltrion / CEL | 068270 | Unlocked candidate |
+| TIGER200 | 102110 | Unlocked candidate |
+| NAVER, KT, GOOGL, QBTS, SGOV | Already appear as Notion codes / selects | Unlocked candidate |
+| Yuhan, Shinsegae, POSCOIntl, KoreanAir, LG, Glovis, SKT | — | **Unmapped hold** (unlocked) |
+| `Hyundai_52wL` and other derived keys | — | **Exclude** |
+| `UST30Y` | — | Yield **indicator** — **not** `UST_30Y` position |
 
 ---
 
@@ -151,14 +177,19 @@ Korean `alignment` labels (design interpretation; map only these):
 
 Measured export (`stock_report_context.json`, `as_of` **2026-11-08**, 12 items — not latest prices): keys are already tickers `035420`, `030200`, `GOOGL`, `QBTS`, `SGOV`, `108490`, `005380`, `066570`, `000660`, `207940`, `068270`, `102110`. File labels observed: 부분일치×5, 판단보류×7 (일치/불일치×0). See dry-run §4.
 
+D5 attach classification (PM): **confirmed 5 / candidate 2 / deferred 5**.
+
+- **Do not split** the 3 multi-ticker D5 items. Keep **one** report with multiple `tickers[]`; attach matching contexts as **candidates**.
+- **`102110` plan document** = `kind=equity_analysis`, **`subtype=buy_plan`**, status **draft** — not a general equity_analysis.
+- Deferred contexts (5): `QBTS`, `SGOV`, `066570`, `207940`, `068270`.
+
 Gate:
 
 ```
-IF equity_analysis exists for ticker → apply mapped meta (migration mode)
-ELSE → hold context for that ticker (do not invent equity_analysis)
+IF equity_analysis (or buy_plan subtype) exists for ticker → apply mapped meta (migration mode)
+ELSE IF only multi-ticker D5 covers ticker → candidate attach (do not split report)
+ELSE → hold context (do not invent equity_analysis)
 ```
-
-D5 attach cannot be confirmed from `stock_report_context.json` + `investor-journal.json` alone — dry-run defers all 12 context attaches until an equity_analysis inventory is available (rules §5-0 Notion baseline still lists 9 equity_analysis pages).
 
 ---
 
