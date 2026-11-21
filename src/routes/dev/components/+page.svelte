@@ -103,7 +103,7 @@
 	});
 
 	const themeOptions: { value: ThemeMode; label: string }[] = [
-		{ value: 'system', label: '시스템' },
+		{ value: 'system', label: '기기 설정 따름' },
 		{ value: 'light', label: '라이트' },
 		{ value: 'dark', label: '다크' }
 	];
@@ -117,9 +117,9 @@
 	const holdingCols: Col<HoldingRow>[] = [
 		{ key: 'name', label: '종목', title: true, render: nameCell },
 		{ key: 'qty', label: '수량', align: 'right', render: qtyCell },
-		{ key: 'avg', label: '평단', align: 'right', render: avgCell },
+		{ key: 'avg', label: '평균 단가', align: 'right', render: avgCell },
 		{ key: 'price', label: '현재가', align: 'right', render: priceCell },
-		{ key: 'pnlPct', label: '평단 대비', align: 'right', render: pnlCell },
+		{ key: 'pnlPct', label: '평균 단가 대비', align: 'right', render: pnlCell },
 		{ key: 'weight', label: '비중', align: 'right', render: weightCell }
 	];
 	const themeCols: Col<ThemeRow>[] = [
@@ -235,10 +235,10 @@
 				>
 			</div>
 			<div class="type-row">
-				<code>text-base 15/24</code><span>UI 기본. 보유 종목, 승인 대기, 최근 브리핑</span>
+				<code>text-base 15/24</code><span>UI 기본. 보유 종목, 확인 대기, 최근 브리핑</span>
 			</div>
 			<div class="type-row">
-				<code>text-sm 13/20</code><span class="ts">표 본문·보조 설명. 평단 대비 −23.0%</span>
+				<code>text-sm 13/20</code><span class="ts">표 본문·보조 설명. 평균 단가 대비 −23.0%</span>
 			</div>
 			<div class="type-row">
 				<code>text-xs 12/16</code><span class="tx"
@@ -287,7 +287,7 @@
 		<Card>
 			<div class="stack">
 				<div class="demo">
-					<button type="button" class="btn primary">승인</button>
+					<button type="button" class="btn primary">반영</button>
 					<button type="button" class="btn">보류</button>
 					<button type="button" class="btn danger">거절</button>
 					<button type="button" class="btn ghost">더 보기</button>
@@ -321,7 +321,7 @@
 					<Badge tone="down" icon="▼">매도</Badge>
 					<Badge tone="warn" icon="⚠">3% 이내</Badge>
 					<Badge tone="info">계획</Badge>
-					<Badge tone="ok" icon="✓">승인됨</Badge>
+					<Badge tone="ok" icon="✓">반영됨</Badge>
 					<Badge tone="accent">신규</Badge>
 					<Badge>보류</Badge>
 					<Pill count={2} />
@@ -420,9 +420,9 @@
 	<section class="sec" id="money">
 		<h2>금액 표기 (만 원 축약)</h2>
 		<p class="lead">
-			금액(평가액·손익·총액)만 축약하고, 단가(주가·평단·손익분기)는 항상 전체 값. 축약 값은 마우스
-			오버/포커스 시 정확한 값(title·aria-label)을 제공하고, 터치 환경에서는 탭하면 하단 시트로
-			보여줍니다.
+			금액(평가액·손익·총액)만 축약하고, 단가(주가·평균 단가·손익분기 가격)는 항상 전체 값. 축약
+			값은 마우스 오버/포커스 시 정확한 값(title·aria-label)을 제공하고, 터치 환경에서는 탭하면 하단
+			시트로 보여줍니다.
 		</p>
 		<DataTable
 			columns={moneyCols}
@@ -475,7 +475,7 @@
 					<button
 						type="button"
 						class="btn sm"
-						onclick={() => toast.show('승인했습니다', { tone: 'ok' })}>토스트(성공)</button
+						onclick={() => toast.show('반영했습니다', { tone: 'ok' })}>토스트(성공)</button
 					>
 					<button
 						type="button"
@@ -483,8 +483,8 @@
 						onclick={() =>
 							toast.show('반영했습니다', {
 								duration: 5000,
-								action: { label: '실행 취소', onclick: () => toast.show('취소했습니다') }
-							})}>토스트(실행 취소)</button
+								action: { label: '되돌리기', onclick: () => toast.show('취소했습니다') }
+							})}>토스트(되돌리기)</button
 					>
 				</div>
 			</div>
