@@ -2,6 +2,8 @@
  * 금액 표기 (FE-02, DS §3-1 · H §10). 축약은 이 파일 한 곳에서만 한다.
  * - 금액(amount): '만 원' 축약. 단가(unit: 주가·평단·손익분기·체결가): 항상 전체 값.
  * - 음수는 유니코드 마이너스 `−`(U+2212). 저장·계산·API는 전체 원 정수만 쓴다.
+ * - D-4(2026-11-21): USD 단가는 저장·전송·계산에서 소수 4자리를 유지하고(서버 정밀도 그대로), **화면 표시만** 모든 화면에서 소수 2자리다.
+ *   이 파일의 포맷터는 표시 문자열만 만든다. 입력값을 반올림해 되돌려 주지 않으며, 폼 상태·diff 원본·API 전송에는 원래 number/string을 쓴다.
  * 참고 구현: design/shared/util.js U.won / U.usd (반올림 Math.round, 1억 경계 올림 포함)
  */
 
@@ -25,6 +27,9 @@ export interface MoneyOptions {
 	/** 양수에 `+`를 붙인다(손익 등) */
 	plus?: boolean;
 }
+
+/** D-4: USD 단가 화면 표시 소수 자릿수(저장은 4자리 유지, 표시만 2자리). */
+export const USD_UNIT_DISPLAY_DECIMALS = 2;
 
 const nf0 = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 0 });
 const nf2fixed = new Intl.NumberFormat('ko-KR', {
@@ -82,7 +87,7 @@ export function formatWonUnit(v: number, opts: MoneyOptions = {}): FormattedMone
 
 /**
  * 달러.
- * - 단가(unit): 항상 `$` + 소수 2자리 ($272.66)
+ * - 단가(unit): 항상 `$` + 소수 2자리 ($272.66). D-4: 저장값 12.3456 → 표시 `$12.35`(값은 그대로 12.3456, 표시만 2자리)
  * - 금액 1만 달러 미만: `$` + 전체(소수 최대 2자리) ($1,820.12)
  * - 금액 1만 달러 이상: `$` + `만`, 소수 1자리(.0 생략) ($18,400 → $1.8만)
  * 음수는 `−$1.2만`.

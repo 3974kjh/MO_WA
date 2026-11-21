@@ -67,6 +67,12 @@ export const moneyRows: {
 	{ value: 243_105_000, currency: 'KRW', kind: 'amount', note: '1억 이상' },
 	{ value: 100_000_000, currency: 'KRW', kind: 'amount', note: '정확히 1억' },
 	{ value: 272.66, currency: 'USD', kind: 'unit', note: '주가(달러)' },
+	{
+		value: 12.3456,
+		currency: 'USD',
+		kind: 'unit',
+		note: 'D-4: 저장 12.3456 → 표시 $12.35(표시만 2자리)'
+	},
 	{ value: 1_820.115, currency: 'USD', kind: 'amount', note: '달러 금액 1만 미만' },
 	{ value: 18_400, currency: 'USD', kind: 'amount', note: '달러 금액 1만 이상' }
 ];

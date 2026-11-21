@@ -25,7 +25,6 @@
 	import { toast } from '$lib/components/ui/toast.svelte';
 	import type { Col, SheetVariant } from '$lib/components/ui/types';
 	import { contrastRatio } from '$lib/dev/contrast';
-	import { formatMoney } from '$lib/format/money';
 	import { formatQty } from '$lib/format/number';
 	import { formatKstShort } from '$lib/format/datetime';
 	import {
@@ -131,7 +130,7 @@
 	];
 	type MoneyRow = (typeof moneyRows)[number] & Record<string, unknown>;
 	const moneyCols: Col<MoneyRow>[] = [
-		{ key: 'value', label: '원본', render: rawCell },
+		{ key: 'value', label: '저장 값(원본·D-4: USD 4자리 유지)', render: rawCell },
 		{ key: 'shown', label: '표기', render: shownCell },
 		{ key: 'note', label: '규칙' }
 	];
@@ -150,7 +149,7 @@
 {#snippet kindCell(r: ThemeRow)}<Badge tone={r.kind === '반복' ? 'default' : 'info'}>{r.kind}</Badge
 	>{/snippet}
 {#snippet themeCell(r: ThemeRow)}<b>{r.theme}</b>{/snippet}
-{#snippet rawCell(r: MoneyRow)}{formatMoney(r.value, r.currency, 'unit').exact}{/snippet}
+{#snippet rawCell(r: MoneyRow)}<span class="num">{r.value}</span>{/snippet}
 {#snippet shownCell(r: MoneyRow)}<b><Money value={r.value} currency={r.currency} kind={r.kind} /></b
 	>{/snippet}
 
