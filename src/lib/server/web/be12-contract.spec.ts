@@ -36,6 +36,32 @@ describe('BE-12 route contracts', () => {
 		expect(actions).toMatch(/generateBotApiKey/);
 	});
 
+	it('never logs apiKey / secret / key_hash (no console.* of plaintext)', () => {
+		const actions = readFileSync(
+			join(process.cwd(), 'src/lib/server/web/botKeyActions.ts'),
+			'utf8'
+		);
+		expect(actions).not.toMatch(/console\.(log|warn|error|info|debug)\([^)]*apiKey/);
+		expect(actions).not.toMatch(/console\.(log|warn|error|info|debug)\([^)]*secret/);
+		expect(actions).not.toMatch(/console\.(log|warn|error|info|debug)\([^)]*key_hash/);
+		expect(actions).not.toMatch(/console\.(log|warn|error|info|debug)\([^)]*generated\.key/);
+	});
+
+	it('revoke / setExpiry / setRateLimit use forUser (not service_role/admin)', () => {
+		const actions = readFileSync(
+			join(process.cwd(), 'src/lib/server/web/botKeyActions.ts'),
+			'utf8'
+		);
+		const repo = readFileSync(
+			join(process.cwd(), 'src/lib/server/repo/botClients.repo.ts'),
+			'utf8'
+		);
+		expect(actions).toMatch(/forUser\(/);
+		expect(actions).not.toMatch(/createSupabaseAdminClient|supabase\/admin/);
+		expect(repo).not.toMatch(/createSupabaseAdminClient|supabase\/admin/);
+		expect(repo).toMatch(/fromRepo\(repo, 'bot_clients'\)/);
+	});
+
 	it('migration issue_bot_client exists with rollback header', () => {
 		const sql = readFileSync(
 			join(process.cwd(), 'supabase/migrations/20261125130000_issue_bot_client.sql'),

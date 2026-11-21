@@ -8,8 +8,11 @@
 --
 -- Rollback (manual, after this file applied):
 --   DROP FUNCTION IF EXISTS public.issue_bot_client(
---     text, text, text, text, text, text[], integer, timestamptz
+--     text, text, text, text, text[], text, integer, timestamptz
 --   );
+-- Signature order matches CREATE / REVOKE / GRANT below:
+--   (p_name, p_profile, p_key_prefix, p_key_hash, p_scopes, p_description,
+--    p_rate_limit_per_min, p_expires_at)
 
 create or replace function public.issue_bot_client(
   p_name text,

@@ -2468,6 +2468,148 @@ console.log('\n[BE-20 expire_stale_proposals cron]');
 	}
 }
 
+console.log('\n[BE-12 issue_bot_client]');
+{
+	const BE12_FN =
+		'public.issue_bot_client(text, text, text, text, text[], text, integer, timestamptz)';
+	const be12Hash = 'e'.repeat(64);
+	const be12Hash2 = 'f'.repeat(64);
+	const be12HashImp = '1'.repeat(64);
+
+	eq(
+		'BE-12 has_function_privilege anon EXECUTE = false',
+		(await db.query(`select has_function_privilege('anon', '${BE12_FN}', 'EXECUTE') as ok`)).rows[0]
+			.ok,
+		false
+	);
+	eq(
+		'BE-12 has_function_privilege service_role EXECUTE = false',
+		(await db.query(`select has_function_privilege('service_role', '${BE12_FN}', 'EXECUTE') as ok`))
+			.rows[0].ok,
+		false
+	);
+	eq(
+		'BE-12 has_function_privilege authenticated EXECUTE = true',
+		(
+			await db.query(
+				`select has_function_privilege('authenticated', '${BE12_FN}', 'EXECUTE') as ok`
+			)
+		).rows[0].ok,
+		true
+	);
+	await err(
+		'BE-12 anon cannot execute issue_bot_client',
+		() =>
+			run(
+				'anon',
+				null,
+				null,
+				`select * from issue_bot_client('preview-be12-anon','custom','be12anon01','${be12Hash}')`
+			),
+		/permission denied|must be owner/
+	);
+	await err(
+		'BE-12 service_role cannot execute issue_bot_client',
+		() =>
+			asBot(null)(
+				`select * from issue_bot_client('preview-be12-sr','custom','be12serv01','${be12Hash}')`
+			),
+		/permission denied|must be owner/
+	);
+
+	const issued = (
+		await user(
+			`select * from issue_bot_client(
+        'preview-be12-fm','finance-manager','be12fmky01','${be12Hash}',
+        '{read,positions:propose,principles:propose,reports:equity_analysis}'::text[],
+        'be12 unit', 45, null)`
+		)
+	).rows[0];
+	eq('BE-12 issue owner_id = auth.uid()', issued.owner_id, U);
+	eq('BE-12 issue returns key_prefix', issued.key_prefix, 'be12fmky01');
+	eq(
+		'BE-12 returned columns exclude key_hash',
+		Object.prototype.hasOwnProperty.call(issued, 'key_hash'),
+		false
+	);
+	eq('BE-12 returned row keys have no key_hash', Object.keys(issued).includes('key_hash'), false);
+
+	const audit = (
+		await db.query(
+			`select tool, result, args_preview::text as preview
+         from mcp_audit_log
+        where tool = 'bot_key.issue'
+          and affected_ids @> jsonb_build_array(jsonb_build_object('table','bot_clients','id','${issued.id}'))
+        order by id desc limit 1`
+		)
+	).rows[0];
+	eq(
+		'BE-12 audit row written (bot_key.issue)',
+		[audit?.tool, audit?.result],
+		['bot_key.issue', 'ok']
+	);
+	eq(
+		'BE-12 audit args_preview excludes key_hash',
+		audit?.preview?.includes('key_hash') ?? true,
+		false
+	);
+
+	await err(
+		'BE-12 non-FM + positions:propose rejected by DB CHECK',
+		() =>
+			user(
+				`select * from issue_bot_client(
+          'preview-be12-ea-bad','equity-analyst','be12eabad1','${be12Hash2}',
+          '{read,positions:propose}'::text[], null, 60, null)`
+			),
+		/propose_only_fm|bot_clients_propose_only_fm/
+	);
+	await err(
+		'BE-12 non-FM + principles:propose rejected by DB CHECK',
+		() =>
+			user(
+				`select * from issue_bot_client(
+          'preview-be12-ea-prin','equity-analyst','be12eabad2','${be12Hash2}',
+          '{read,principles:propose}'::text[], null, 60, null)`
+			),
+		/principles_propose_only_fm|bot_clients_principles_propose_only_fm/
+	);
+
+	// Existing CHECK bot_clients_importer_expires (000600) — no new schema.
+	await err(
+		'BE-12 importer without expires_at rejected by DB CHECK',
+		() =>
+			user(
+				`select * from issue_bot_client(
+          'preview-be12-imp','importer','be12imp001','${be12HashImp}',
+          '{import:all}'::text[], null, 60, null)`
+			),
+		/importer_expires|bot_clients_importer_expires/
+	);
+	await ok('BE-12 importer with expires_at succeeds', () =>
+		user(
+			`select * from issue_bot_client(
+        'preview-be12-imp-ok','importer','be12impok1','${be12HashImp}',
+        '{import:all}'::text[], null, 60, now() + interval '7 days')`
+		)
+	);
+
+	// Same UPDATE path as web revokeBotClient (authenticated + owner RLS; no DELETE).
+	await ok('BE-12 web-path revoke UPDATE', () =>
+		user(
+			`update bot_clients
+          set revoked_at = now(), revoked_reason = 'user_revoke'
+        where id = '${issued.id}' and owner_id = '${U}' and revoked_at is null`
+		)
+	);
+	eq(
+		'BE-12 after revoke mcp_authenticate returns no row',
+		(await asBot(null)(`select * from mcp_authenticate('be12fmky01','${be12Hash}','127.0.0.1')`))
+			.rows.length,
+		0
+	);
+}
+
 console.log('\n[GATED drop]');
 if (process.env.MOWA_ALLOW_GATED_TEST === '1') {
 	const gatedSql = readFileSync(gatedPath, 'utf8');
