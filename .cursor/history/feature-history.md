@@ -98,6 +98,13 @@
 - 결과: check 0; server unit 141; test:db 230 pass
 - 남은 리스크: Preview Dashboard에 `MCP_AUTH_MODE=db` + 로컬 봇 키 시드 후 whoami 확인(키 미로그)
 
+### Review follow-up (same PR)
+
+- Low 1: smoke S5 asserts `auth_mode === "db"` and `bot === MCP_WHOAMI_BOT` (env mode no longer passes)
+- Low 2: host allowlist (loopback + Preview `*.mo-wa.pages.dev`); refuse apex / `main` / `www` (+ unit tests)
+- Nit 5: S3 protocolVersion assert; S1 wrong-key 401
+- Low 3 (429 audit cap) deferred; Nit 2 deferred to BE-06
+
 ## 2026-11-21 — BE-05 MCP 감사 로그·응답 규약
 
 ### Context

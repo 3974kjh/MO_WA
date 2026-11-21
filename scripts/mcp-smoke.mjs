@@ -1,14 +1,19 @@
 #!/usr/bin/env node
 /**
  * Local / Preview MCP smoke (S1–S10 subset). Never prints key material.
- * Refuses production hosts (apex mo-wa.pages.dev and non-branch pages.dev).
  *
- * Usage:
- *   MCP_SMOKE_URL=http://127.0.0.1:5173/api/mcp MCP_SMOKE_KEY=mowa_… node scripts/mcp-smoke.mjs
- *   MCP_SMOKE_URL=https://<branch>.mo-wa.pages.dev/api/mcp …  (Preview only)
+ * Allowlist only: loopback, or genuine Cloudflare Pages Preview hosts
+ * (`<label>.mo-wa.pages.dev` excluding production aliases).
+ *
+ * Usage (Preview / local DB mode — auth_mode=db required):
+ *   MCP_SMOKE_URL=… MCP_SMOKE_KEY=mowa_… MCP_WHOAMI_BOT=local-bot \
+ *     node scripts/mcp-smoke.mjs
  */
+import { assertDbWhoami, isAllowedMcpSmokeHost } from './lib/mcp-smoke-guard.mjs';
+
 const url = process.env.MCP_SMOKE_URL ?? '';
 const key = process.env.MCP_SMOKE_KEY ?? '';
+const expectedBot = process.env.MCP_WHOAMI_BOT ?? '';
 
 function refuse(msg) {
 	console.error(`REFUSED: ${msg}`);
@@ -23,19 +28,19 @@ try {
 	refuse('MCP_SMOKE_URL is not a valid URL');
 }
 
-const host = parsed.hostname.toLowerCase();
-const isLoopback = host === '127.0.0.1' || host === 'localhost' || host === '::1';
-const isBranchPreview =
-	host.endsWith('.mo-wa.pages.dev') && host !== 'mo-wa.pages.dev' && host.split('.').length >= 4;
-if (!isLoopback && !isBranchPreview) {
+const host = parsed.hostname;
+if (!isAllowedMcpSmokeHost(host)) {
 	refuse(
-		`host ${host} is not loopback or a branch Preview (*.mo-wa.pages.dev). Production apex blocked.`
+		`host ${host.toLowerCase()} is not allowlisted (loopback or Preview *.mo-wa.pages.dev; apex/main/www refused)`
 	);
 }
-if (host === 'mo-wa.pages.dev') refuse('production apex mo-wa.pages.dev is blocked');
 
 if (!key || !/^mowa_[a-z0-9]{10}_[A-Za-z0-9_-]{43}$/.test(key)) {
 	refuse('MCP_SMOKE_KEY missing or malformed (not printed)');
+}
+
+if (!expectedBot) {
+	refuse('MCP_WHOAMI_BOT required (exact whoami bot name for S5)');
 }
 
 const auth = { authorization: `Bearer ${key}` };
@@ -85,11 +90,26 @@ function assert(cond, label) {
 {
 	const r = await post(
 		{ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} },
-		{
-			authorization: 'Bearer not-a-key'
-		}
+		{ authorization: 'Bearer not-a-key' }
 	);
 	assert(r.status === 401, 'S1 malformed → 401');
+	assert(
+		(r.headers.get('www-authenticate') || '').toLowerCase().includes('bearer'),
+		'S1 malformed WWW-Authenticate'
+	);
+}
+// S1 well-formed wrong secret (same prefix shape, different secret)
+{
+	const wrong = key.replace(/_[A-Za-z0-9_-]{43}$/, `_${'Z'.repeat(43)}`);
+	const r = await post(
+		{ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} },
+		{ authorization: `Bearer ${wrong}` }
+	);
+	assert(r.status === 401, 'S1 wrong key → 401');
+	assert(
+		(r.headers.get('www-authenticate') || '').toLowerCase().includes('bearer'),
+		'S1 wrong key WWW-Authenticate'
+	);
 }
 
 // S2 GET
@@ -135,7 +155,10 @@ const initBody = {
 	assert(!r.headers.get('mcp-session-id'), 'S3 no Mcp-Session-Id');
 	const name = r.json?.result?.serverInfo?.name;
 	assert(name === 'mo-wa', `S3 serverInfo.name=mo-wa (got ${name})`);
-	console.log(`note S3 wall_ms=${Date.now() - t0}`);
+	const pv = r.json?.result?.protocolVersion;
+	const known = new Set(['2024-11-05', '2025-03-26', '2025-06-18']);
+	assert(typeof pv === 'string' && known.has(pv), `S3 protocolVersion known (got ${pv})`);
+	console.log(`note S3 protocolVersion=${pv} wall_ms=${Date.now() - t0}`);
 }
 
 // S4 tools/list
@@ -153,7 +176,7 @@ const initBody = {
 	}
 }
 
-// S5 whoami
+// S5 whoami — must prove DB mode + expected bot (Preview merge gate)
 {
 	const t0 = Date.now();
 	const r = await post(
@@ -165,11 +188,12 @@ const initBody = {
 	assert(sc && typeof sc.bot === 'string', 'S5 structuredContent.bot');
 	assert(typeof sc.bot_client_id === 'string', 'S5 bot_client_id');
 	assert(Array.isArray(sc.scopes), 'S5 scopes');
-	assert(typeof sc.auth_mode === 'string', 'S5 auth_mode');
 	assert(Array.isArray(r.json?.result?.content), 'S5 text content');
-	console.log(
-		`note S5 auth_mode=${sc.auth_mode} bot_len=${sc.bot.length} wall_ms=${Date.now() - t0}`
-	);
+	const check = assertDbWhoami(sc, expectedBot);
+	assert(check.ok, `S5 ${check.reason}`);
+	assert(sc.auth_mode === 'db', 'S5 auth_mode === db');
+	assert(sc.bot === expectedBot, 'S5 bot === MCP_WHOAMI_BOT');
+	console.log(`note S5 auth_mode=db bot_ok=1 wall_ms=${Date.now() - t0}`);
 }
 
 // BE-04-H spoof header
