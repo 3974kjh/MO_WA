@@ -1,11 +1,13 @@
-import { error, type Handle } from '@sveltejs/kit';
+import type { Handle } from '@sveltejs/kit';
 import { createSupabaseServerClient } from '$lib/supabase/server';
 import { getSupabasePublicConfig } from '$lib/supabase/config';
 import {
+	authUnavailableResponse,
 	cache,
 	clearSupabaseAuthCookies,
 	isMcpApiPath,
-	resolveAuthenticatedUser
+	resolveAuthenticatedUser,
+	type PendingSetCookie
 } from '$lib/server/auth';
 
 export const handle: Handle = async ({ event, resolve }) => {
@@ -36,15 +38,18 @@ export const handle: Handle = async ({ event, resolve }) => {
 		return new Response('Internal Server Error', { status: 500 });
 	}
 
-	event.locals.supabase = createSupabaseServerClient(event.cookies);
+	// Collect Set-Cookie mutations from Auth (refresh etc.) so 503 can still send them (option B).
+	const pendingCookies: PendingSetCookie[] = [];
+	event.locals.supabase = createSupabaseServerClient(event.cookies, pendingCookies);
 
 	event.locals.getUser = cache(() => event.locals.supabase.auth.getUser());
 	const resolution = resolveAuthenticatedUser(await event.locals.getUser());
 
 	if (resolution.kind === 'unavailable') {
 		console.error(`[auth] Auth unavailable (${resolution.reason}); returning 503`);
-		// Use error() so SvelteKit can still flush Set-Cookie from this request (H-1).
-		error(503, 'Auth service unavailable');
+		// Do not use error(503): SvelteKit does not guarantee Set-Cookie on thrown HttpErrors from hooks.
+		// Attach collected cookies directly on the Response (criterion 3 option B).
+		return authUnavailableResponse(pendingCookies);
 	}
 
 	if (resolution.kind === 'anonymous' && resolution.clearCookies) {

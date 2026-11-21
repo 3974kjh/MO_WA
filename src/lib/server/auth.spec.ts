@@ -2,15 +2,19 @@ import { describe, expect, it, vi } from 'vitest';
 import {
 	AuthError,
 	AuthSessionMissingError,
+	AuthUnknownError,
 	type User,
 	type UserResponse
 } from '@supabase/supabase-js';
 import {
 	authGuardRedirect,
+	authUnavailableResponse,
 	cache,
 	clearSupabaseAuthCookies,
+	isAuthUnavailable,
 	isMcpApiPath,
 	resolveAuthenticatedUser,
+	serializeSetCookieHeader,
 	toPublicUser
 } from './auth';
 import { isUsableSupabasePublicConfig } from '$lib/supabase/publicConfig';
@@ -51,7 +55,11 @@ describe('BE-02 auth.getUser transition', () => {
 	it('H-1: 400 refresh_token_not_found is anonymous (login + clear), not 503', () => {
 		const stale: UserResponse = {
 			data: { user: null },
-			error: new AuthError('Invalid Refresh Token: Refresh Token Not Found', 400, 'refresh_token_not_found')
+			error: new AuthError(
+				'Invalid Refresh Token: Refresh Token Not Found',
+				400,
+				'refresh_token_not_found'
+			)
 		};
 		const result = resolveAuthenticatedUser(stale);
 		expect(result).toEqual({ kind: 'anonymous', user: null, clearCookies: true });
@@ -68,6 +76,33 @@ describe('BE-02 auth.getUser transition', () => {
 		expect(result.kind).toBe('anonymous');
 		expect(result.user).toBeNull();
 		expect(authGuardRedirect(result.user, '/')).toBe('/login');
+	});
+
+	it('M-2: 429 from /user is unavailable and does not clear cookies', () => {
+		expect(isAuthUnavailable({ status: 429 })).toBe(true);
+		const result = resolveAuthenticatedUser({
+			data: { user: null },
+			error: new AuthError('rate limited', 429)
+		});
+		expect(result).toEqual({ kind: 'unavailable', user: null, reason: 'auth_upstream' });
+	});
+
+	it('M-2: AuthUnknownError is unavailable', () => {
+		const err = new AuthUnknownError('wrapped', new Error('boom'));
+		expect(isAuthUnavailable(err)).toBe(true);
+		expect(
+			resolveAuthenticatedUser({ data: { user: null }, error: err }).kind
+		).toBe('unavailable');
+	});
+
+	it('M-2: non-numeric status is unavailable', () => {
+		const err = new AuthError('odd');
+		// AuthError may leave status undefined — treat as unavailable.
+		expect(typeof err.status !== 'number' || Number.isNaN(err.status as number)).toBe(true);
+		expect(isAuthUnavailable(err)).toBe(true);
+		expect(
+			resolveAuthenticatedUser({ data: { user: null }, error: err }).kind
+		).toBe('unavailable');
 	});
 
 	it('Auth 5xx does not log the user out (unavailable → 503 path)', () => {
@@ -93,6 +128,30 @@ describe('BE-02 auth.getUser transition', () => {
 		err.name = 'AuthRetryableFetchError';
 		const result = resolveAuthenticatedUser({ data: { user: null }, error: err });
 		expect(result.kind).toBe('unavailable');
+	});
+
+	it('option B: 503 response carries Set-Cookie from pending Auth cookie writes', () => {
+		const response = authUnavailableResponse([
+			{
+				name: 'sb-testproject-auth-token',
+				value: 'rotated-session',
+				options: { path: '/', httpOnly: true, sameSite: 'lax' }
+			}
+		]);
+		expect(response.status).toBe(503);
+		const setCookie = response.headers.getSetCookie?.() ?? [];
+		const header =
+			setCookie.length > 0
+				? setCookie.join('\n')
+				: (response.headers.get('set-cookie') ?? '');
+		expect(header).toContain('sb-testproject-auth-token=');
+		expect(header).toContain('rotated-session');
+		expect(header).toContain('HttpOnly');
+		expect(serializeSetCookieHeader({
+			name: 'a',
+			value: 'b',
+			options: { path: '/' }
+		})).toContain('a=b');
 	});
 
 	it('clearSupabaseAuthCookies deletes sb-*-auth-token cookies', () => {
@@ -156,7 +215,9 @@ describe('BE-02 auth.getUser transition', () => {
 		expect(isUsableSupabasePublicConfig(undefined, undefined)).toBe(false);
 		expect(isUsableSupabasePublicConfig('', 'x')).toBe(false);
 		expect(isUsableSupabasePublicConfig('https://example.supabase.co', 'key')).toBe(false);
-		expect(isUsableSupabasePublicConfig('https://abc.supabase.co', 'public-anon-key')).toBe(false);
+		expect(isUsableSupabasePublicConfig('https://abc.supabase.co', 'public-anon-key')).toBe(
+			false
+		);
 		expect(isUsableSupabasePublicConfig('https://abc.supabase.co', 'test-anon-key')).toBe(true);
 	});
 });

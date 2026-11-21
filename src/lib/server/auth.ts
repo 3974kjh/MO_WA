@@ -4,6 +4,20 @@ import type { Database } from '$lib/types/database.types';
 
 export type PublicUser = { id: string; email: string | null };
 
+export type PendingSetCookie = {
+	name: string;
+	value: string;
+	options: {
+		path?: string;
+		maxAge?: number;
+		domain?: string;
+		secure?: boolean;
+		httpOnly?: boolean;
+		sameSite?: boolean | 'lax' | 'strict' | 'none';
+		expires?: Date;
+	};
+};
+
 export type AuthUserResolution =
 	| { kind: 'authenticated'; user: User }
 	| { kind: 'anonymous'; user: null; clearCookies: boolean }
@@ -26,16 +40,28 @@ export function cache<T>(fn: () => T): () => T {
 	};
 }
 
-function isAuthUnreachable(error: { status?: number; name?: string }): boolean {
-	if (error.name === 'AuthRetryableFetchError') return true;
+/**
+ * Outage / unavailable: do not clear cookies.
+ * Includes unreachable Auth (0/5xx/retryable), rate limits (429), AuthUnknownError,
+ * and non-numeric status (M-2).
+ */
+export function isAuthUnavailable(error: { status?: number; name?: string }): boolean {
+	if (error.name === 'AuthRetryableFetchError' || error.name === 'AuthUnknownError') {
+		return true;
+	}
+
 	const status = error.status;
-	return status === 0 || (typeof status === 'number' && status >= 500);
+	if (typeof status !== 'number' || Number.isNaN(status)) {
+		return true;
+	}
+
+	return status === 0 || status === 429 || status >= 500;
 }
 
 /**
- * Map getUser() results for authorization (H-1).
- * 503/unavailable only when Auth could not be reached (status 0, 5xx, AuthRetryableFetchError).
- * All other errors (including 4xx such as refresh_token_not_found) are anonymous.
+ * Map getUser() results for authorization (H-1 + M-2).
+ * Unavailable → 503 without clearing cookies.
+ * Confirmed invalid-session 4xx (e.g. refresh_token_not_found, 401/403) → anonymous + clear.
  */
 export function resolveAuthenticatedUser(result: UserResponse): AuthUserResolution {
 	if (!result.error) {
@@ -43,12 +69,44 @@ export function resolveAuthenticatedUser(result: UserResponse): AuthUserResoluti
 		return { kind: 'anonymous', user: null, clearCookies: false };
 	}
 
-	if (isAuthUnreachable(result.error)) {
+	if (isAuthUnavailable(result.error)) {
 		return { kind: 'unavailable', user: null, reason: 'auth_upstream' };
 	}
 
-	// AuthSessionMissingError (400), refresh_token_not_found (400), 401/403, other 4xx → anonymous.
+	// AuthSessionMissingError (400), refresh_token_not_found (400), 401/403, other confirmed 4xx.
 	return { kind: 'anonymous', user: null, clearCookies: true };
+}
+
+/** Serialize one Set-Cookie header line (option B; no reliance on error(503)). */
+export function serializeSetCookieHeader(cookie: PendingSetCookie): string {
+	const { name, value, options } = cookie;
+	const parts = [`${encodeURIComponent(name)}=${encodeURIComponent(value)}`];
+
+	if (options.maxAge !== undefined) parts.push(`Max-Age=${Math.floor(options.maxAge)}`);
+	if (options.domain) parts.push(`Domain=${options.domain}`);
+	if (options.path) parts.push(`Path=${options.path}`);
+	if (options.expires) parts.push(`Expires=${options.expires.toUTCString()}`);
+	if (options.httpOnly) parts.push('HttpOnly');
+	if (options.secure) parts.push('Secure');
+	if (options.sameSite === true) parts.push('SameSite=Strict');
+	else if (typeof options.sameSite === 'string') {
+		const labeled = options.sameSite.charAt(0).toUpperCase() + options.sameSite.slice(1);
+		parts.push(`SameSite=${labeled}`);
+	}
+
+	return parts.join('; ');
+}
+
+/**
+ * Build a 503 and attach any cookies Auth wrote during this request (criterion 3 option B).
+ * SvelteKit does not guarantee Set-Cookie when hooks return/throw without resolve().
+ */
+export function authUnavailableResponse(pendingCookies: PendingSetCookie[]): Response {
+	const headers = new Headers({ 'content-type': 'text/plain; charset=utf-8' });
+	for (const cookie of pendingCookies) {
+		headers.append('set-cookie', serializeSetCookieHeader(cookie));
+	}
+	return new Response('Service Unavailable', { status: 503, headers });
 }
 
 /** Clear Supabase SSR auth cookie chunks so stale/invalid sessions cannot stick. */
