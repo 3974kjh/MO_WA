@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { applyBriefingFilter, applyJournalFilter, ilikeAnyOf, ilikeValue } from './listFilters';
+import {
+	applyBriefingFilter,
+	applyJournalFilter,
+	ilikeAnyOf,
+	ilikeValue,
+	tagArrayLiteral
+} from './listFilters';
 
 /** 호출을 기록하는 가짜 PostgREST 빌더 */
 function recorder() {
@@ -22,7 +28,9 @@ describe('FE-10 검색어 → or() 값', () => {
 	});
 	it('PostgREST 예약 문자·LIKE 와일드카드·따옴표를 지운다', () => {
 		expect(ilikeValue('a,title.eq.x)')).toBe('"%a title.eq.x%"');
-		expect(ilikeValue('"%_*\\\':')).toBeNull();
+		expect(ilikeValue('"%_*\\:')).toBeNull();
+		// Nit: 작은따옴표는 큰따옴표 값 안에서 의미가 없어 그대로 둔다.
+		expect(ilikeValue("it's")).toBe('"%it\'s%"');
 		expect(ilikeAnyOf(['headline', 'title'], 'a),owner_id.neq.(b')).toBe(
 			'headline.ilike."%a owner id.neq. b%",title.ilike."%a owner id.neq. b%"'
 		);
@@ -41,10 +49,25 @@ describe('applyBriefingFilter', () => {
 		applyBriefingFilter(q, { q: 'FOMC', tag: 'CPI', month: '2026-12' });
 		expect(q.calls).toEqual([
 			['or', 'headline.ilike."%FOMC%",title.ilike."%FOMC%"'],
-			['contains', 'tags', ['CPI']],
+			['contains', 'tags', '{"CPI"}'],
 			['gte', 'report_date', '2026-12-01'],
 			['lt', 'report_date', '2027-01-01']
 		]);
+	});
+});
+
+describe('FE-10 Low-2 tag → 배열 리터럴', () => {
+	it('허용 문자는 원소 하나짜리 따옴표 리터럴', () => {
+		expect(tagArrayLiteral('CPI')).toBe('{"CPI"}');
+		expect(tagArrayLiteral('52주 저가')).toBe('{"52주 저가"}');
+	});
+	it('허용 밖·빈 값은 null이고 필터를 붙이지 않는다', () => {
+		for (const t of ['a,b', 'a}', 'x"y', '{a}', 'a\\b', '', undefined]) {
+			expect(tagArrayLiteral(t)).toBeNull();
+			const q = recorder();
+			applyBriefingFilter(q, { q: '', tag: t, month: '' });
+			expect(q.calls).toEqual([]);
+		}
 	});
 });
 

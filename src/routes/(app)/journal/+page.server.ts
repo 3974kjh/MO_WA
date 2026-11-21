@@ -3,6 +3,7 @@ import { parseJournalQuery } from '$lib/routing/listQuery';
 import { parsePageParams } from '$lib/server/domain/web/pagination';
 import { forUser, listJournalPage } from '$lib/server/repo';
 import { handleArchive, handleRestore } from '$lib/server/web/proposalActions';
+import { publicListError } from '$lib/server/web/listError';
 import { requireUser } from '$lib/server/web/requireUser';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
@@ -15,7 +16,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		title: '매매일지',
 		query,
 		journal: data,
-		error: error?.message ?? null
+		// DB 오류 원문은 화면·페이지 데이터로 보내지 않는다(FE-10 Low-2).
+		error: publicListError('journal', error)
 	};
 };
 

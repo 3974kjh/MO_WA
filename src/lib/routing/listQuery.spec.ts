@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	briefingSearch,
 	cleanText,
+	isValidTag,
 	journalSearch,
 	monthRange,
 	parseBriefingQuery,
@@ -51,6 +52,30 @@ describe('FE-10 브리핑 목록 ?q=&tag=&month=', () => {
 		expect(cleanText('a\u0000b\nc')).toBe('a b c');
 		expect(cleanText('x'.repeat(500))).toHaveLength(100);
 		expect(parseBriefingQuery(sp(`tag=${'t'.repeat(80)}`)).tag).toHaveLength(40);
+	});
+	it('폭 0 문자는 지운다(Nit)', () => {
+		expect(cleanText('삼\u200b성\u200c전\u200d자\u2060\ufeff')).toBe('삼성전자');
+		expect(cleanText('\u200b')).toBe('');
+	});
+});
+
+describe('FE-10 Low-2 태그 허용 문자(문자·숫자·공백·._-)', () => {
+	it('허용 문자만 있으면 통과', () => {
+		for (const t of ['CPI', '52주 저가', 'S.E_A-1', '반도체', 'café']) {
+			expect(isValidTag(t)).toBe(true);
+			expect(parseBriefingQuery(sp(`tag=${encodeURIComponent(t)}`)).tag).toBe(t);
+		}
+	});
+	it('PostgREST 배열·필터 문자가 섞이면 통째로 버린다', () => {
+		for (const t of ['a,b', 'a}', '{a}', 'x"y', 'a\\b', 'a(b)', 'a*', '%', "it's", '-a', ' ']) {
+			expect(isValidTag(t)).toBe(false);
+			expect(parseBriefingQuery(sp(`tag=${encodeURIComponent(t)}`)).tag).toBe('');
+		}
+		expect(isValidTag('')).toBe(false);
+		expect(isValidTag('t'.repeat(41))).toBe(false);
+	});
+	it('버려진 태그는 URL에도 남지 않는다', () => {
+		expect(briefingSearch({ q: 'a', tag: 'a,b' })).toBe('?q=a');
 	});
 });
 
