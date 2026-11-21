@@ -1,16 +1,13 @@
 import { redirect } from '@sveltejs/kit';
 import type { LayoutServerLoad } from './$types';
+import { authGuardRedirect, toPublicUser } from '$lib/server/auth';
 
 export const load: LayoutServerLoad = async ({ locals, url }) => {
-	if (!locals.session && url.pathname !== '/login') {
-		redirect(303, '/login');
-	}
-
-	if (locals.session && url.pathname === '/login') {
-		redirect(303, '/');
-	}
+	const target = authGuardRedirect(locals.user, url.pathname);
+	if (target) redirect(303, target);
 
 	return {
-		session: locals.session
+		// L-4: never serialize the full User (tokens/metadata) to the client.
+		user: toPublicUser(locals.user)
 	};
 };

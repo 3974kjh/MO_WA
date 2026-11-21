@@ -1,5 +1,6 @@
-import type { Session, SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient, User } from '@supabase/supabase-js';
 import type { Database } from '$lib/types/database.types';
+import type { PublicUser } from '$lib/server/auth';
 
 interface Env {
 	PUBLIC_SUPABASE_URL: string;
@@ -13,11 +14,12 @@ declare global {
 		// interface Error {}
 		interface Locals {
 			supabase: SupabaseClient<Database>;
-			session: Session | null;
-			user: Session['user'] | null;
+			/** Request-scoped cached `supabase.auth.getUser()` (BE-02). */
+			getUser: () => ReturnType<SupabaseClient<Database>['auth']['getUser']>;
+			user: User | null;
 		}
 		interface PageData {
-			session: Session | null;
+			user: PublicUser | null;
 		}
 		// interface PageState {}
 		interface Platform {
