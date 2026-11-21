@@ -35,9 +35,17 @@ export const TOOL_REQUIRED_SCOPE: Readonly<Record<string, string>> = {
 };
 
 /**
- * Principles write tools — `import:all` must NOT unlock these (M-6).
- * Direct principles writes stay finance-manager + principles:propose only.
+ * Live proposal-queue tools — finance-manager only (`positions:propose` / `principles:propose`).
+ * `import:all` must NOT unlock these (do not migrate holdings via the proposal queue).
  */
+export const PROPOSAL_TOOLS = new Set([
+	'propose_position_change',
+	'cancel_proposal',
+	'propose_principle_change',
+	'cancel_principle_proposal'
+]);
+
+/** @deprecated alias — prefer PROPOSAL_TOOLS (principles subset of proposal tools). */
 export const PRINCIPLES_WRITE_TOOLS = new Set([
 	'propose_principle_change',
 	'cancel_principle_proposal'
@@ -53,15 +61,15 @@ export function hasScope(ctx: Pick<McpContext, 'scopes'>, scope: string): boolea
 
 /**
  * Whether `import:all` may unlock this tool (I-7 migration via existing write tools).
- * Not a full wildcard: principles write tools stay excluded.
+ * Not a wildcard: proposal tools (positions + principles) stay excluded.
  */
 export function importAllUnlocksTool(tool: string): boolean {
-	return !PRINCIPLES_WRITE_TOOLS.has(tool);
+	return !PROPOSAL_TOOLS.has(tool);
 }
 
 /**
  * R-PERM-04: out-of-scope or unknown tool → FORBIDDEN_SCOPE.
- * `import:all` unlocks existing §5-5 tools except principles writes (M-6).
+ * `import:all` unlocks §5-5 write/read tools except live proposal tools.
  */
 export function assertToolScope(
 	ctx: Pick<McpContext, 'scopes'>,

@@ -102,6 +102,7 @@
 
 - Pass 1: M-1…M-6, L-1…L-5, display-id nit
 - Pass 2: M-1 regex in free text + key allowlist (no over-mask); digest keeps body text; `recordRateLimited` strip+mask; M-6 remove fake `import_legacy_*`, `import:all` unlocks §5-5 writes except principles (BE-04 auth note); testing.ts prod throw + eslint; identity key normalize + UUID lower + proto skip; no-ctx → onError
+- Pass 3: restore secret key names (token/cookie/bearer/…); eslint blocks testing path/ext/export*/dynamic import; `import:all` forbids all proposal tools; OWNERID not identity; Object.hasOwn
 
 ## 2026-05-29 — Scenario Lab Dashboard Projection
 

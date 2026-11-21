@@ -55,6 +55,7 @@ export {
 	hasScope,
 	importAllUnlocksTool,
 	PRINCIPLES_WRITE_TOOLS,
+	PROPOSAL_TOOLS,
 	requiredScopeForTool,
 	TOOL_REQUIRED_SCOPE
 } from './scopes';

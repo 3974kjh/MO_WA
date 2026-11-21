@@ -42,7 +42,7 @@ export default defineConfig(
 		rules: {}
 	},
 	{
-		// mcp/testing.ts is test/dev only — block production imports (BE-05 Low).
+		// mcp/testing.ts is test/dev only — block production imports (BE-05 Low / M-4).
 		files: ['src/**/*.{ts,js}'],
 		ignores: [
 			'src/**/*.{test,spec}.{ts,js}',
@@ -53,13 +53,59 @@ export default defineConfig(
 			'no-restricted-imports': [
 				'error',
 				{
+					paths: [
+						{
+							name: './testing',
+							message: 'mcp/testing.ts is test/dev only — do not import from production code'
+						},
+						{
+							name: '../testing',
+							message: 'mcp/testing.ts is test/dev only — do not import from production code'
+						},
+						{
+							name: '../mcp/testing',
+							message: 'mcp/testing.ts is test/dev only — do not import from production code'
+						},
+						{
+							name: '$lib/server/mcp/testing',
+							message: 'mcp/testing.ts is test/dev only — do not import from production code'
+						}
+					],
 					patterns: [
 						{
-							group: ['**/server/mcp/testing', '$lib/server/mcp/testing'],
+							group: [
+								'**/mcp/testing',
+								'**/mcp/testing.js',
+								'**/mcp/testing.ts',
+								'**/server/mcp/testing',
+								'**/server/mcp/testing.js',
+								'**/server/mcp/testing.ts',
+								'$lib/server/mcp/testing',
+								'$lib/server/mcp/testing.js',
+								'$lib/server/mcp/testing.ts'
+							],
 							message:
 								'mcp/testing.ts is test/dev only — do not import from production code'
 						}
 					]
+				}
+			],
+			'no-restricted-syntax': [
+				'error',
+				{
+					selector:
+						"ExportAllDeclaration[source.value='./testing'], ExportAllDeclaration[source.value='./testing.ts'], ExportAllDeclaration[source.value='./testing.js']",
+					message: 'Do not re-export mcp/testing.ts from production barrels'
+				},
+				{
+					selector:
+						"ExportNamedDeclaration[source.value='./testing'], ExportNamedDeclaration[source.value='./testing.ts'], ExportNamedDeclaration[source.value='./testing.js']",
+					message: 'Do not re-export mcp/testing.ts from production barrels'
+				},
+				{
+					selector:
+						"ImportExpression[source.value=/mcp\\/testing|\\/testing(\\.ts|\\.js)?$/]",
+					message: 'Do not dynamically import mcp/testing.ts from production code'
 				}
 			]
 		}

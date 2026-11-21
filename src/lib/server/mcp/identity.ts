@@ -4,6 +4,9 @@ import type { McpContext } from './types';
 /**
  * Canonical snake_lower identity keys (R-PERM-03).
  * Matching uses toSnakeLower so ownerId / owner-id / owner_id all hit.
+ * Underscore-free forms like OWNERID are NOT identity keys (no separator to split).
+ * DANGEROUS_KEYS (__proto__/constructor/prototype) are skipped as whole keys —
+ * never inspect nested owner_id inside them.
  */
 const IDENTITY_CANONICAL = new Set([
 	'owner_id',

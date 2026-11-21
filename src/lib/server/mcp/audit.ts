@@ -31,11 +31,13 @@ const BODY_LENGTH_ONLY_KEYS = new Set([
 
 /**
  * Secret key tokens (after snake_lower normalization).
- * Match exact key or separator-bounded segment — not substring (excludes tokens_count).
+ * Match exact key or separator-bounded segment — not substring
+ * (exclusions: session_date, tokens_count, token_count).
  */
 const SECRET_KEY_TOKENS = [
 	'pass',
 	'pwd',
+	'passwd',
 	'password',
 	'secret',
 	'private_key',
@@ -46,7 +48,17 @@ const SECRET_KEY_TOKENS = [
 	'access_token',
 	'refresh_token',
 	'id_token',
-	'client_secret'
+	'client_secret',
+	'token',
+	'cookie',
+	'bearer',
+	'credential',
+	'credentials',
+	'session_id',
+	'session_token',
+	'pepper',
+	'service_role_key',
+	'signature'
 ] as const;
 
 /** Explicit non-secret keys that must not be treated as secret names. */

@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import {
 	assertPreviewHasNoRawBody,
@@ -20,28 +23,69 @@ import {
 	McpToolError,
 	validationError
 } from './errors';
-import { botProposalIdentity, sanitizeIdentityFields } from './identity';
-import { assertToolScope, hasScope, PRINCIPLES_WRITE_TOOLS } from './scopes';
+import { botProposalIdentity, isIdentityKey, sanitizeIdentityFields } from './identity';
+import { assertToolScope, hasScope, PROPOSAL_TOOLS } from './scopes';
 import { createStubMcpContext } from './testing';
 import { recordRateLimited, runAuditedToolCall } from './tool-gate';
 
 const SAMPLE_MCP_KEY = 'mowa_abcdefgh12_' + 'A'.repeat(43);
 const SAMPLE_JWT = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signaturepart';
+const MCP_DIR = dirname(fileURLToPath(import.meta.url));
 
 describe('M-1 secret masking', () => {
 	it('matches secret key names by exact/boundary tokens; excludes tokens_count', () => {
-		expect(isSecretKeyName('password')).toBe(true);
-		expect(isSecretKeyName('user_password')).toBe(true);
-		expect(isSecretKeyName('api_key')).toBe(true);
-		expect(isSecretKeyName('accessToken')).toBe(true);
-		expect(isSecretKeyName('client-secret')).toBe(true);
-		expect(isSecretKeyName('key_hash')).toBe(true);
-		expect(isSecretKeyName('mcp_key')).toBe(true);
-		expect(isSecretKeyName('authorization')).toBe(true);
+		for (const key of [
+			'pass',
+			'pwd',
+			'passwd',
+			'password',
+			'user_password',
+			'secret',
+			'private_key',
+			'mcp_key',
+			'authorization',
+			'api_key',
+			'apiKey',
+			'key_hash',
+			'access_token',
+			'accessToken',
+			'refresh_token',
+			'id_token',
+			'client_secret',
+			'client-secret',
+			'token',
+			'cookie',
+			'set-cookie',
+			'bearer',
+			'credential',
+			'credentials',
+			'session_id',
+			'session_token',
+			'sessionToken',
+			'pepper',
+			'service_role_key',
+			'serviceRoleKey',
+			'signature'
+		]) {
+			expect(isSecretKeyName(key), key).toBe(true);
+		}
 		expect(isSecretKeyName('session_date')).toBe(false);
 		expect(isSecretKeyName('tokens_count')).toBe(false);
 		expect(isSecretKeyName('token_count')).toBe(false);
 		expect(isSecretKeyName('title')).toBe(false);
+	});
+
+	it('preview redacts token/cookie keys as {redacted:true}, not raw text', () => {
+		const preview = buildArgsPreview({
+			token: 'not-a-jwt-but-still-secret-key',
+			cookie: 'session=abc123secret',
+			title: 'Bearer market briefing'
+		});
+		expect(preview.token).toEqual({ redacted: true });
+		expect(preview.cookie).toEqual({ redacted: true });
+		expect(preview.title).toBe('Bearer market briefing');
+		expect(JSON.stringify(preview)).not.toContain('not-a-jwt-but-still-secret-key');
+		expect(JSON.stringify(preview)).not.toContain('session=abc123secret');
 	});
 
 	it('masks MCP key / JWT / Bearer+secret in free text; not "Bearer market…"', () => {
@@ -162,13 +206,13 @@ describe('M-3 / Low identity strip (R-PERM-03)', () => {
 		expect(mismatch.args.created_by).toBeUndefined();
 	});
 
-	it('strips camelCase nested identity; skips __proto__', () => {
+	it('strips camelCase nested identity; skips __proto__ whole key', () => {
 		const ctx = createStubMcpContext();
 		const polluted = JSON.parse(
 			'{"ownerId":"spoof","items":[{"owner_id":"nested-spoof","qty":1}],"meta":{"user_id":"u1","proposedByType":"user"}}'
 		);
 		Object.defineProperty(polluted, '__proto__', {
-			value: { polluted: true },
+			value: { owner_id: 'inside-proto' },
 			enumerable: true
 		});
 		const result = sanitizeIdentityFields(polluted, ctx);
@@ -177,7 +221,17 @@ describe('M-3 / Low identity strip (R-PERM-03)', () => {
 		expect(result.args.ownerId).toBeUndefined();
 		expect((result.args.items as Array<Record<string, unknown>>)[0]).toEqual({ qty: 1 });
 		expect(result.args.meta).toEqual({});
-		expect(Object.prototype.hasOwnProperty.call(result.args, '__proto__')).toBe(false);
+		// Whole-key skip: never copy __proto__ / never inspect nested owner_id inside it
+		expect(Object.hasOwn(result.args, '__proto__')).toBe(false);
+		expect(JSON.stringify(result.args)).not.toContain('inside-proto');
+	});
+
+	it('OWNERID (underscore-free) is not an identity key', () => {
+		const ctx = createStubMcpContext();
+		expect(isIdentityKey('OWNERID')).toBe(false);
+		const result = sanitizeIdentityFields({ OWNERID: 'spoof', title: 't' }, ctx);
+		expect(result.identityMismatch).toBe(false);
+		expect(result.args.OWNERID).toBe('spoof');
 	});
 
 	it('botProposalIdentity matches PR #7 (no proposed_by_bot_id / proposer_type)', () => {
@@ -194,20 +248,36 @@ describe('M-3 / Low identity strip (R-PERM-03)', () => {
 });
 
 describe('M-6 import:all', () => {
-	it('unlocks existing write tools but not principles writes', () => {
+	it('unlocks non-proposal writes; forbids proposal + principles tools', () => {
 		const importer = { scopes: ['import:all'] };
 		expect(assertToolScope(importer, 'add_journal_entry')).toBeNull();
-		expect(assertToolScope(importer, 'propose_position_change')).toBeNull();
 		expect(assertToolScope(importer, 'upsert_report')).toBeNull();
+		expect(assertToolScope(importer, 'create_planned_position')).toBeNull();
 		expect(assertToolScope(importer, 'whoami')).toBeNull();
-		expect(PRINCIPLES_WRITE_TOOLS.has('propose_principle_change')).toBe(true);
-		expect(assertToolScope(importer, 'propose_principle_change')?.structuredContent.code).toBe(
-			'FORBIDDEN_SCOPE'
-		);
+
+		for (const tool of PROPOSAL_TOOLS) {
+			expect(assertToolScope(importer, tool)?.structuredContent.code, tool).toBe(
+				'FORBIDDEN_SCOPE'
+			);
+		}
+		expect(assertToolScope(importer, 'propose_position_change')?.isError).toBe(true);
+		expect(assertToolScope(importer, 'cancel_proposal')?.isError).toBe(true);
+		expect(assertToolScope(importer, 'propose_principle_change')?.isError).toBe(true);
+		expect(assertToolScope(importer, 'cancel_principle_proposal')?.isError).toBe(true);
+		expect(hasScope(importer, 'positions:propose')).toBe(false);
 		expect(hasScope(importer, 'principles:propose')).toBe(false);
-		// Official M-6: no inventing import_legacy_* — unregistered → FORBIDDEN
+		// Official: no inventing import_legacy_* — unregistered → FORBIDDEN
 		expect(assertToolScope(importer, 'import_legacy_positions')?.isError).toBe(true);
 		expect(assertToolScope(importer, 'import_legacy_journal')?.isError).toBe(true);
+	});
+});
+
+describe('M-4 testing.ts barrel guard', () => {
+	it('forbids index.ts re-exports of ./testing', () => {
+		const src = readFileSync(join(MCP_DIR, 'index.ts'), 'utf8');
+		expect(src).not.toMatch(/from\s+['"]\.\/testing['"]/);
+		expect(src).not.toMatch(/export\s+\*\s+from\s+['"]\.\/testing/);
+		expect(src).not.toMatch(/createStubMcpContext|createStubAuthProvider/);
 	});
 });
 

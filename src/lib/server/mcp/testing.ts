@@ -1,16 +1,21 @@
 /**
  * Test-only MCP helpers.
  * NOT exported from the package barrel — import from this path in specs only.
- * Throws outside development / test so production code cannot rely on stubs.
+ * Throws when NODE_ENV is unset, and outside development / test.
  */
 import type { McpAuthProvider, McpContext } from './types';
 
 function assertDevOrTest(): void {
-	const env = (typeof process !== 'undefined' ? process.env.NODE_ENV : undefined) ?? '';
+	const raw = typeof process !== 'undefined' ? process.env.NODE_ENV : undefined;
+	if (raw === undefined || raw === '') {
+		throw new Error(
+			'UNSAFE_: $lib/server/mcp/testing.ts requires NODE_ENV=test|development'
+		);
+	}
 	const viteDev =
 		typeof import.meta !== 'undefined' &&
 		Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV);
-	const allowed = env === 'test' || env === 'development' || viteDev;
+	const allowed = raw === 'test' || raw === 'development' || viteDev;
 	if (!allowed) {
 		throw new Error(
 			'UNSAFE_: $lib/server/mcp/testing.ts is test/dev only — refuse outside development/test'
