@@ -594,6 +594,7 @@ export type Database = {
 					price: number | null;
 					qty: number | null;
 					report_id: string | null;
+					search_tsv: unknown;
 					source_bot_id: string | null;
 					source_ref: NonNullable<Json>;
 					source_url: string | null;
@@ -619,6 +620,7 @@ export type Database = {
 					price?: number | null;
 					qty?: number | null;
 					report_id?: string | null;
+					search_tsv?: never;
 					source_bot_id?: string | null;
 					source_ref?: NonNullable<Json>;
 					source_url?: string | null;
@@ -643,6 +645,7 @@ export type Database = {
 					price?: number | null;
 					qty?: number | null;
 					report_id?: string | null;
+					search_tsv?: never;
 					source_bot_id?: string | null;
 					source_ref?: NonNullable<Json>;
 					source_url?: string | null;

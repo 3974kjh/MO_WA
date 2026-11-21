@@ -141,7 +141,9 @@ describe('FE-10 listJournalPage: count·page 요청 모두 같은 owner·필터'
 			expectOwnerOnly(r.params);
 			expect(r.params.get('kind')).toBe('eq.buy');
 			expect(r.params.get('tickers')).toBe('cs.{NVDA}');
-			expect(r.params.get('or')).toBe('(title.ilike."%추가%",memo_md.ilike."%추가%")');
+			expect(r.params.get('or')).toBe(
+				'(search_tsv.wfts(simple)."추가",title.ilike."%추가%",memo_md.ilike."%추가%")'
+			);
 			expect(r.params.get('archived_at')).toBe('is.null');
 		}
 	});

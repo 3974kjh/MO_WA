@@ -5,6 +5,7 @@ import {
 	applyJournalFilter,
 	ilikeAnyOf,
 	ilikeValue,
+	journalTextFilter,
 	tagArrayLiteral
 } from './listFilters';
 
@@ -84,14 +85,26 @@ describe('FE-10 Low-2 tag → 배열 리터럴', () => {
 	});
 });
 
+describe('journalTextFilter', () => {
+	it('or() 예약 문자를 지워 전문 검색 값에도 주입할 수 없다', () => {
+		expect(journalTextFilter('a),owner_id.neq.(b')).toBe(
+			'search_tsv.wfts(simple)."a owner id.neq. b",title.ilike."%a owner id.neq. b%",memo_md.ilike."%a owner id.neq. b%"'
+		);
+		expect(journalTextFilter('"%_*')).toBeNull();
+	});
+	it('여러 단어는 공백 하나로 묶인다', () => {
+		expect(journalTextFilter('  추가   매수 ')).toContain('search_tsv.wfts(simple)."추가 매수"');
+	});
+});
+
 describe('applyJournalFilter', () => {
-	it('type → kind, ticker → tickers contains, q → title/memo_md', () => {
+	it('type → kind, ticker → tickers contains, q → search_tsv 전문 검색 + title/memo_md 부분 일치', () => {
 		const q = recorder();
 		applyJournalFilter(q, { type: 'buy', ticker: 'NVDA', q: '추가' });
 		expect(q.calls).toEqual([
 			['eq', 'kind', 'buy'],
 			['contains', 'tickers', ['NVDA']],
-			['or', 'title.ilike."%추가%",memo_md.ilike."%추가%"']
+			['or', 'search_tsv.wfts(simple)."추가",title.ilike."%추가%",memo_md.ilike."%추가%"']
 		]);
 	});
 	it('빈 필터는 조건 없음', () => {
