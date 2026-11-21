@@ -19,9 +19,22 @@ end
 $$;
 
 -- Global (schema-less): cluster-wide PUBLIC EXECUTE must be revoked FOR ROLE <creator>.
--- Keep FOR ROLE postgres; also apply for current_user when migrations run as MOWA_DB_USER ≠ postgres.
-alter default privileges for role postgres revoke execute on functions from public;
-do $$
+-- FOR ROLE postgres: hosted (current_user=postgres) must run unconditionally (never silently skip).
+do $mowa_pg$
+begin
+  if current_user = 'postgres' then
+    execute 'alter default privileges for role postgres revoke execute on functions from public';
+  elsif exists (select 1 from pg_roles where rolname = 'postgres')
+        and pg_has_role(current_user, 'postgres', 'USAGE') then
+    execute 'alter default privileges for role postgres revoke execute on functions from public';
+  else
+    raise notice 'skip ALTER DEFAULT PRIVILEGES FOR ROLE postgres: role missing or current_user lacks USAGE';
+  end if;
+end
+$mowa_pg$;
+
+-- Also apply for current_user when migrations run as MOWA_DB_USER ≠ postgres.
+do $mowa_cu$
 begin
   if current_user is distinct from 'postgres' then
     execute format(
@@ -33,20 +46,23 @@ exception
   when insufficient_privilege then
     raise notice 'skip ALTER DEFAULT PRIVILEGES FOR ROLE %: insufficient_privilege', current_user;
 end
-$$;
+$mowa_cu$;
 
--- supabase_admin: only when current_user is a MEMBER (hosted postgres is not superuser).
-do $$
+-- BEGIN mowa_supabase_admin_default_priv
+do $mowa_sa$
 begin
   if exists (select 1 from pg_roles where rolname = 'supabase_admin')
-     and pg_has_role(current_user, 'supabase_admin', 'MEMBER') then
+     and pg_has_role(current_user, 'supabase_admin', 'USAGE') then
     execute 'alter default privileges for role supabase_admin revoke execute on functions from public';
+  else
+    raise notice 'skip ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin: role missing or current_user lacks USAGE';
   end if;
 exception
   when insufficient_privilege then
     raise notice 'skip ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin: insufficient_privilege';
 end
-$$;
+$mowa_sa$;
+-- END mowa_supabase_admin_default_priv
 
 alter default privileges in schema public revoke all on tables from anon;
 alter default privileges in schema public revoke all on sequences from anon;

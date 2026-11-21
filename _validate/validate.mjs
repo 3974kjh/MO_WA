@@ -599,20 +599,44 @@ await err('TRUNCATE display_sequences denied to service_role', () => run('servic
 await db.query(`
   create or replace function public.mowa_probe_priv_fn()
   returns int language sql immutable as $f$ select 1 $f$`);
-await ok('supabase_admin default-priv DO does not throw when not a member', () =>
-	db.query(`
-    do $sa$
-    begin
-      if exists (select 1 from pg_roles where rolname = 'supabase_admin')
-         and pg_has_role(current_user, 'supabase_admin', 'MEMBER') then
-        execute 'alter default privileges for role supabase_admin revoke execute on functions from public';
-      end if;
-    exception
-      when insufficient_privilege then
-        raise notice 'skip ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin: insufficient_privilege';
-    end
-    $sa$`)
-);
+await ok('supabase_admin default-priv DO from 000100 is safe when role exists but user lacks USAGE', async () => {
+	const coreSql = readFileSync(
+		join(root, 'supabase/migrations/20261125000100_core_helpers.sql'),
+		'utf8'
+	);
+	const extracted = coreSql.match(
+		/-- BEGIN mowa_supabase_admin_default_priv\n([\s\S]*?)\n-- END mowa_supabase_admin_default_priv/
+	);
+	if (!extracted) {
+		throw new Error('missing mowa_supabase_admin_default_priv markers in 000100');
+	}
+	const saBlock = extracted[1].trim();
+	const hadSa = (
+		await db.query(`select exists(select 1 from pg_roles where rolname = 'supabase_admin') as e`)
+	).rows[0].e;
+	const probe = 'mowa_priv_probe_nonmember';
+	try {
+		if (!hadSa) {
+			await db.query(`create role supabase_admin nologin`);
+		}
+		await db.query(`drop role if exists ${probe}`);
+		await db.query(`create role ${probe} nologin`);
+		await db.query(`grant ${probe} to current_user`);
+		await db.query(`set role ${probe}`);
+		await db.query(saBlock);
+		await db.query(`reset role`);
+	} finally {
+		try {
+			await db.query(`reset role`);
+		} catch {
+			/* ignore */
+		}
+		await db.query(`drop role if exists ${probe}`);
+		if (!hadSa) {
+			await db.query(`drop role if exists supabase_admin`);
+		}
+	}
+});
 eq(
 	'new function is not executable by anon (global PUBLIC EXECUTE revoked)',
 	(

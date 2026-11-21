@@ -106,8 +106,20 @@ GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA extensions TO anon, authenticated, serv
 GRANT ALL ON SCHEMA public TO ${qUser}, anon, authenticated, service_role;
 -- Defaults must not give anon EXECUTE, authenticated TRUNCATE/DELETE, or PUBLIC EXECUTE.
 -- Schema-less PUBLIC EXECUTE revoke is required (schema-scoped alone is a false fix).
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
-DO $priv$
+-- FOR ROLE postgres: hosted (current_user=postgres) must run unconditionally (never silently skip).
+DO $mowa_pg$
+BEGIN
+  IF current_user = 'postgres' THEN
+    EXECUTE 'ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC';
+  ELSIF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'postgres')
+        AND pg_has_role(current_user, 'postgres', 'USAGE') THEN
+    EXECUTE 'ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC';
+  ELSE
+    RAISE NOTICE 'skip ALTER DEFAULT PRIVILEGES FOR ROLE postgres: role missing or current_user lacks USAGE';
+  END IF;
+END
+$mowa_pg$;
+DO $mowa_cu$
 BEGIN
   IF current_user IS DISTINCT FROM 'postgres' THEN
     EXECUTE format(
@@ -119,19 +131,21 @@ EXCEPTION
   WHEN insufficient_privilege THEN
     RAISE NOTICE 'skip ALTER DEFAULT PRIVILEGES FOR ROLE %: insufficient_privilege', current_user;
 END
-$priv$;
--- supabase_admin only when current_user is a MEMBER (hosted postgres is not superuser).
-DO $sa$
+$mowa_cu$;
+-- supabase_admin only when current_user has USAGE (PG17 needs inheritance/USAGE).
+DO $mowa_sa$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_admin')
-     AND pg_has_role(current_user, 'supabase_admin', 'MEMBER') THEN
+     AND pg_has_role(current_user, 'supabase_admin', 'USAGE') THEN
     EXECUTE 'ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC';
+  ELSE
+    RAISE NOTICE 'skip ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin: role missing or current_user lacks USAGE';
   END IF;
 EXCEPTION
   WHEN insufficient_privilege THEN
     RAISE NOTICE 'skip ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin: insufficient_privilege';
 END
-$sa$;
+$mowa_sa$;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, REFERENCES, TRIGGER ON TABLES TO authenticated;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE, REFERENCES, TRIGGER ON TABLES TO service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE TRUNCATE, DELETE ON TABLES FROM authenticated;
