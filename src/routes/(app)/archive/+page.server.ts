@@ -22,7 +22,13 @@ export const load: PageServerLoad = async ({ locals }) => {
 		reports: onlyArchived(reports.data),
 		positions: onlyArchived(positions.data),
 		journal: onlyArchived(journal.data),
-		error: publicListError('archive', reports.error ?? positions.error ?? journal.error)
+		// 사용자 문구는 하나, 서버 로그에는 있는 오류를 모두 남긴다.
+		error:
+			[
+				publicListError('archive.reports', reports.error),
+				publicListError('archive.positions', positions.error),
+				publicListError('archive.journal', journal.error)
+			].find((m) => m !== null) ?? null
 	};
 };
 

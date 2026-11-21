@@ -114,10 +114,12 @@ describe('BE-11 approve action', () => {
 		form.set('overrides', JSON.stringify({ qty: 2 }));
 		const result = (await handleApprove(fakeSupabase({}), 'owner', form)) as {
 			status: number;
-			data: { status?: string; ruleIds: string[] };
+			data: { status?: string; ruleIds: string[]; code?: string; message?: string };
 		};
 		expect(result.status).toBe(409);
 		expect(result.data.status).toBe('conflict');
+		expect(result.data.code).toBe('CONFLICT');
+		expect(result.data.message).toBe('반영 안 됨(기록 달라짐)');
 		expect(result.data.ruleIds).toContain('R-PERM-13');
 	});
 

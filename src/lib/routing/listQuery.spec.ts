@@ -142,5 +142,8 @@ describe('FE-10 stripInvalidTagSearch', () => {
 	it('허용 밖 tag만 제거하고 나머지는 유지', () => {
 		expect(stripInvalidTagSearch(sp('tag=a%2Cb&q=x&page=2'))).toBe('?q=x&page=2');
 		expect(stripInvalidTagSearch(sp('tag=%3Cscript%3E'))).toBe('');
+		expect(stripInvalidTagSearch(sp('tag='))).toBe('');
+		expect(stripInvalidTagSearch(sp('tag=&q=x'))).toBe('?q=x');
+		expect(stripInvalidTagSearch(sp('tag=%22%22'))).toBe('');
 	});
 });
