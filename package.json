@@ -15,6 +15,7 @@
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run && npm run test:e2e",
 		"test:e2e": "playwright install && playwright test",
+		"docs:mcp-tools": "node scripts/generate-mcp-tools-docs.mjs",
 		"cf:preview": "pnpm build && wrangler pages dev .svelte-kit/cloudflare",
 		"cf:deploy": "pnpm build && wrangler pages deploy .svelte-kit/cloudflare --project-name=mo-wa",
 		"db:types": "supabase gen types typescript --local > src/lib/types/database.types.ts",

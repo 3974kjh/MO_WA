@@ -62,8 +62,9 @@ export const TOOL_REQUIRED_SCOPE: Readonly<Record<string, string>> = {
 /**
  * Tools unlocked by any one of several scopes (handler narrows further:
  * report kind → REPORT_KIND_TO_SCOPE, instrument enrich fields, event domain).
+ * Exported for operator docs (BE-14) — must stay aligned with assertToolScope.
  */
-const TOOL_ANY_OF_SCOPES: Readonly<Record<string, readonly string[]>> = {
+export const TOOL_ANY_OF_SCOPES: Readonly<Record<string, readonly string[]>> = {
 	upsert_report: REPORT_WRITE_SCOPES,
 	archive_report: REPORT_WRITE_SCOPES,
 	upsert_instrument: ['instruments:write', 'instruments:enrich'],
