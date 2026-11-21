@@ -1,8 +1,12 @@
 -- MO_WA rebuild M1 · DRAFT (미적용) · 공용 확장/헬퍼
 -- 규칙 기준: /workspace/mo_wa/rules.md v0.1 (규칙 ID를 주석에 표기)
 
-create extension if not exists "pgcrypto";
-create extension if not exists "pg_trgm";
+create schema if not exists extensions;
+-- Match Supabase: pgcrypto/pg_trgm live in extensions (call as extensions.digest).
+create extension if not exists "pgcrypto" with schema extensions;
+create extension if not exists "pg_trgm" with schema extensions;
+grant usage on schema extensions to anon, authenticated, service_role;
+grant execute on all functions in schema extensions to anon, authenticated, service_role;
 
 create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$
@@ -40,9 +44,15 @@ create table public.app_settings (
 create trigger app_settings_updated_at before update on public.app_settings
   for each row execute function public.set_updated_at();
 
+-- L-1: authenticated may only read own settings (security definer otherwise bypasses RLS)
 create or replace function public.mowa_setting(p_owner uuid, p_key text, p_default jsonb)
-returns jsonb language sql stable security definer set search_path = public, pg_temp as $$
-  select coalesce((select value from public.app_settings where owner_id = p_owner and key = p_key), p_default);
+returns jsonb language plpgsql stable security definer set search_path = public, extensions, pg_temp as $$
+begin
+  if coalesce(auth.role(), '') = 'authenticated' and auth.uid() is distinct from p_owner then
+    raise exception '[R-PERM-01] cannot read another owner''s settings' using errcode = '42501';
+  end if;
+  return coalesce((select value from public.app_settings where owner_id = p_owner and key = p_key), p_default);
+end;
 $$;
 
 -- 승인 큐 대상 필드 = 항상(qty, avg_price, status, currency) + 설정(기본 [], Q-13 확정)
@@ -55,10 +65,12 @@ $$;
 
 -- 봇 쓰기 공통 가드 (R-PERM-01 자기 행만 보관 / R-SYS-03 삭제 없음 / R-PERM-03 신원)
 -- 사용: create trigger ... execute function public.mowa_bot_row_guard();  (source_bot_id 컬럼 필요)
+-- M-4: bot_clients(id=mowa_current_bot(), owner_id=NEW.owner_id, not revoked); owner_id immutable
 create or replace function public.mowa_bot_row_guard()
 returns trigger language plpgsql as $$
 declare
   v_bot uuid;
+  v_owner uuid;
   v_new jsonb := case when tg_op <> 'DELETE' then to_jsonb(new) end;
   v_old jsonb := case when tg_op <> 'INSERT' then to_jsonb(old) end;
 begin
@@ -72,7 +84,17 @@ begin
   if v_bot is null then
     raise exception '[R-PERM-03] missing bot identity' using errcode = '42501';
   end if;
+  v_owner := (v_new->>'owner_id')::uuid;
+  if not exists (
+    select 1 from public.bot_clients b
+     where b.id = v_bot and b.owner_id = v_owner and b.revoked_at is null
+  ) then
+    raise exception '[R-PERM-03] bot identity invalid, revoked, or owner mismatch' using errcode = '42501';
+  end if;
   if tg_op = 'UPDATE' then
+    if (v_old->>'owner_id') is distinct from (v_new->>'owner_id') then
+      raise exception '[R-PERM-01] owner_id is immutable' using errcode = '42501';
+    end if;
     if (v_old->>'source_bot_id') is distinct from v_bot::text then
       raise exception '[R-PERM-01] bots can only modify/archive rows they created' using errcode = '42501';
     end if;

@@ -77,6 +77,17 @@ $$;
 create trigger mcp_audit_log_no_update before update or delete on public.mcp_audit_log
   for each row execute function public.mcp_audit_log_append_only();
 
+-- M-3: block TRUNCATE (row triggers do not fire on TRUNCATE)
+create or replace function public.mcp_audit_log_no_truncate()
+returns trigger language plpgsql as $$
+begin
+  raise exception '[R-SYS-05] mcp_audit_log cannot be truncated' using errcode = '42501';
+end;
+$$;
+create trigger mcp_audit_log_no_truncate before truncate on public.mcp_audit_log
+  for each statement execute function public.mcp_audit_log_no_truncate();
+revoke truncate on table public.mcp_audit_log from public, anon, authenticated, service_role;
+
 -- ── 표시 ID 카운터 display_sequences (PM 결정 2026-11-21, 디자인 v1.1 표시 규칙) ──
 -- owner·scope별 행 잠금 카운터. 증가만 하고 감소하지 않는다 → 취소·거절·만료 뒤에도 번호를 다시 쓰지 않는다.
 -- scope: 'position_proposal'(표시 P-0412, 10000 이상은 P-10000) / 'principle_proposal'(표시 R-0001).
@@ -469,19 +480,48 @@ begin
     return new;
   end if;
 
-  -- UPDATE / DELETE by bot
+  -- UPDATE / DELETE by bot (M-2)
+  -- superseded: only internal trigger/RPC (pg_trigger_depth()>1). Direct bot UPDATE: cancelled on own proposal only; lock other columns.
   if public.mowa_is_service() then
     if tg_op = 'DELETE' then raise exception '[R-PERM-01] bots cannot delete proposals' using errcode = '42501'; end if;
-    -- 봇이 할 수 있는 전이: 자기 제안 pending·on_hold → cancelled(R-VAL-P14, Q-29), 서버의 superseded(pending·on_hold)
-    if new.status not in ('cancelled','superseded')
-       or (new.status = 'cancelled' and old.status not in ('pending','on_hold'))
-       or (new.status = 'superseded' and old.status not in ('pending','on_hold'))
-       or new.proposed_values is distinct from old.proposed_values or new.applied_values is not null or new.decided_by is not null
-       or (new.acknowledged_at, new.acknowledged_by, new.attention_started_at) is distinct from (old.acknowledged_at, old.acknowledged_by, old.attention_started_at) then
-      raise exception '[R-PERM-05] bots cannot approve/reject/hold proposals' using errcode = '42501';
+    if new.status = 'superseded' then
+      if pg_trigger_depth() <= 1 or old.status not in ('pending','on_hold') then
+        raise exception '[R-PERM-05] bots cannot mark proposals superseded (server-only)' using errcode = '42501';
+      end if;
+      if new.owner_id is distinct from old.owner_id
+         or new.proposed_values is distinct from old.proposed_values
+         or new.evidence is distinct from old.evidence
+         or new.calc_note is distinct from old.calc_note
+         or new.display_no is distinct from old.display_no
+         or new.proposed_by is distinct from old.proposed_by
+         or new.proposed_by_type is distinct from old.proposed_by_type
+         or new.applied_values is distinct from old.applied_values
+         or (new.acknowledged_at, new.acknowledged_by, new.attention_started_at)
+            is distinct from (old.acknowledged_at, old.acknowledged_by, old.attention_started_at) then
+        raise exception '[R-PERM-05] superseded update may only change status/decision fields' using errcode = '42501';
+      end if;
+      return new;
     end if;
-    if new.status = 'cancelled' and (old.proposed_by_type <> 'bot' or old.proposed_by is distinct from public.mowa_current_bot()) then
-      raise exception '[R-PERM-01] bots can only cancel their own proposals' using errcode = '42501';
+    if new.status <> 'cancelled'
+       or old.status not in ('pending','on_hold')
+       or old.proposed_by_type <> 'bot'
+       or old.proposed_by is distinct from public.mowa_current_bot()
+       or new.owner_id is distinct from old.owner_id
+       or new.position_id is distinct from old.position_id
+       or new.instrument_id is distinct from old.instrument_id
+       or new.change_type is distinct from old.change_type
+       or new.proposed_values is distinct from old.proposed_values
+       or new.evidence is distinct from old.evidence
+       or new.calc_note is distinct from old.calc_note
+       or new.current_values is distinct from old.current_values
+       or new.display_no is distinct from old.display_no
+       or new.proposed_by is distinct from old.proposed_by
+       or new.proposed_by_type is distinct from old.proposed_by_type
+       or new.applied_values is not null
+       or new.decided_by is not null
+       or (new.acknowledged_at, new.acknowledged_by, new.attention_started_at)
+          is distinct from (old.acknowledged_at, old.acknowledged_by, old.attention_started_at) then
+      raise exception '[R-PERM-05] bots can only cancel their own pending/on_hold proposals' using errcode = '42501';
     end if;
   end if;
   return coalesce(new, old);

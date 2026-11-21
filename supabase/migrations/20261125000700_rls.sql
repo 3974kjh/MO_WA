@@ -41,14 +41,12 @@ $$;
 create policy "market_indicator_keys_read" on public.market_indicator_keys for select to authenticated using (true);
 revoke insert, update on table public.market_indicator_keys from authenticated;
 
--- bot_clients: 발급(insert)·조회·폐기(update). key_hash는 브라우저로 내려가지 않게 컬럼 단위 권한
+-- bot_clients: 조회·폐기(update). 발급 insert/key_hash 쓰기는 BE-12 RPC만(authenticated 직접 insert 금지)
 create policy "bot_clients_owner_select" on public.bot_clients for select to authenticated
   using (owner_id = (select auth.uid()));
-create policy "bot_clients_owner_insert" on public.bot_clients for insert to authenticated
-  with check (owner_id = (select auth.uid()));
 create policy "bot_clients_owner_update" on public.bot_clients for update to authenticated
   using (owner_id = (select auth.uid())) with check (owner_id = (select auth.uid()));
-revoke update on table public.bot_clients from authenticated;
+revoke insert, update on table public.bot_clients from authenticated;
 grant update (name, description, scopes, rate_limit_per_min, expires_at, revoked_at, revoked_reason)
   on table public.bot_clients to authenticated;
 revoke select on table public.bot_clients from authenticated;

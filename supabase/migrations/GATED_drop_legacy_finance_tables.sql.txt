@@ -1,12 +1,40 @@
 -- ⚠️ GATED · 되돌릴 수 없음 · 자동 적용 금지 (확장자 .sql.txt → apply-migrations.mjs가 읽지 않음)
 -- 실행 조건: (1) spike/design 승인 (2) 백업 덤프 완료 + 건수 검증 리포트 (3) PM·사용자 명시 승인
 -- 승인 후 파일명을 supabase/migrations/2026MMDDhhmmss_drop_legacy_finance.sql 로 옮겨 적용.
+-- L-2: verified + 오늘(KST) 기록 + row_counts가 현재 레거시 테이블 건수와 일치해야 함.
+-- 이 파일은 원격 DB에 적용하지 않는다(로컬 검증만, MOWA_ALLOW_GATED_TEST=1).
 begin;
--- 안전장치: 백업 확인 테이블에 오늘자 기록이 없으면 중단
 do $$
+declare
+  v_log public.mowa_backup_log%rowtype;
+  v_live jsonb;
+  v_today date := (now() at time zone 'Asia/Seoul')::date;
 begin
-  if not exists (select 1 from public.mowa_backup_log where kind = 'legacy_finance_dump' and verified = true) then
+  select * into v_log
+    from public.mowa_backup_log
+   where kind = 'legacy_finance_dump'
+     and verified = true
+     and (created_at at time zone 'Asia/Seoul')::date = v_today
+   order by created_at desc
+   limit 1;
+  if not found then
     raise exception 'legacy backup not verified; abort drop';
+  end if;
+
+  select jsonb_build_object(
+           'assets', (select count(*)::int from public.assets),
+           'asset_categories', (select count(*)::int from public.asset_categories),
+           'asset_valuations', (select count(*)::int from public.asset_valuations),
+           'liabilities', (select count(*)::int from public.liabilities),
+           'liability_payments', (select count(*)::int from public.liability_payments),
+           'snapshots', (select count(*)::int from public.snapshots),
+           'goals', (select count(*)::int from public.goals),
+           'cashflow_items', (select count(*)::int from public.cashflow_items)
+         )
+    into v_live;
+
+  if v_log.row_counts is distinct from v_live then
+    raise exception 'legacy backup row_counts mismatch; abort drop (log=%, live=%)', v_log.row_counts, v_live;
   end if;
 end
 $$;

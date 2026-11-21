@@ -3,31 +3,39 @@
  * BE-01 local stack: Postgres roles/auth bootstrap + apply supabase/migrations/*.sql
  * Does NOT apply GATED_drop_legacy_finance_tables.sql.txt
  * Does NOT touch remote/staging/production.
+ * Target must be loopback + mowa_local(_suffix)?; otherwise exit.
  */
 import { spawnSync } from 'node:child_process';
-import { readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readdirSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertLocalDbTarget, quoteIdent, resolveMowaDbEnv, LOCAL_STACK_DB_RE } from './lib/local-db-guard.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
-const dbName = process.env.MOWA_DB_NAME ?? 'mowa_local';
-const dbHost = process.env.MOWA_DB_HOST ?? '127.0.0.1';
-const dbPort = process.env.MOWA_DB_PORT ?? '5432';
-const dbUser = process.env.MOWA_DB_USER ?? 'postgres';
-const dbPass = process.env.MOWA_DB_PASSWORD ?? 'postgres';
+
+const db = resolveMowaDbEnv(process.env, { dbNameRe: LOCAL_STACK_DB_RE, label: 'local-stack-up' });
+assertLocalDbTarget({ host: db.host, dbName: db.dbName, dbNameRe: LOCAL_STACK_DB_RE, label: 'local-stack-up' });
+
 const authPass = process.env.MOWA_AUTHENTICATOR_PASSWORD ?? 'mowa_local_auth';
 const jwtSecret =
 	process.env.MOWA_JWT_SECRET ?? 'super-secret-jwt-token-with-at-least-32-characters-long';
 const postgrestPort = process.env.MOWA_POSTGREST_PORT ?? '54321';
 
+const qDb = quoteIdent(db.dbName);
+const qUser = quoteIdent(db.user);
+const authPassLit = authPass.replace(/'/g, "''");
+
 function psql(args, input) {
-	const env = { ...process.env, PGPASSWORD: dbPass };
-	const r = spawnSync('psql', ['-h', dbHost, '-p', dbPort, '-U', dbUser, '-v', 'ON_ERROR_STOP=1', ...args], {
-		input,
-		env,
-		encoding: 'utf8'
-	});
+	const env = { ...process.env, PGPASSWORD: db.password };
+	// Strip any DATABASE_URL so psql cannot be redirected remotely via libpq.
+	delete env.DATABASE_URL;
+	delete env.PGHOSTADDR;
+	const r = spawnSync(
+		'psql',
+		['-h', db.host, '-p', db.port, '-U', db.user, '-v', 'ON_ERROR_STOP=1', ...args],
+		{ input, env, encoding: 'utf8' }
+	);
 	if (r.status !== 0) {
 		console.error(r.stdout);
 		console.error(r.stderr);
@@ -47,29 +55,32 @@ DO $$ BEGIN
   CREATE ROLE service_role NOLOGIN BYPASSRLS; EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 DO $$ BEGIN
-  CREATE ROLE mowa_authenticator LOGIN PASSWORD '${authPass.replace(/'/g, "''")}' NOINHERIT;
+  CREATE ROLE mowa_authenticator LOGIN PASSWORD '${authPassLit}' NOINHERIT;
 EXCEPTION WHEN duplicate_object THEN
-  ALTER ROLE mowa_authenticator WITH LOGIN PASSWORD '${authPass.replace(/'/g, "''")}' NOINHERIT;
+  ALTER ROLE mowa_authenticator WITH LOGIN PASSWORD '${authPassLit}' NOINHERIT;
 END $$;
 GRANT anon, authenticated, service_role TO mowa_authenticator;
-GRANT anon, authenticated, service_role TO ${dbUser};
+GRANT anon, authenticated, service_role TO ${qUser};
 
 SELECT pg_terminate_backend(pid) FROM pg_stat_activity
- WHERE datname = '${dbName}' AND pid <> pg_backend_pid();
-DROP DATABASE IF EXISTS ${dbName};
-CREATE DATABASE ${dbName} OWNER ${dbUser};
+ WHERE datname = ${literal(db.dbName)} AND pid <> pg_backend_pid();
+DROP DATABASE IF EXISTS ${qDb};
+CREATE DATABASE ${qDb} OWNER ${qUser};
 `;
+
+function literal(s) {
+	return `'${String(s).replace(/'/g, "''")}'`;
+}
 
 psql(['-d', 'postgres'], bootstrap);
 
 const authSetup = `
 CREATE SCHEMA IF NOT EXISTS auth;
 CREATE SCHEMA IF NOT EXISTS extensions;
--- Install into public so security-definer functions with
--- search_path=public,pg_temp can resolve digest()/pgcrypto (matches draft migrations).
-CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
-CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
-ALTER DATABASE ${dbName} SET search_path TO public, extensions;
+-- Match Supabase: pgcrypto lives in extensions (not public).
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
+CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA extensions;
+ALTER DATABASE ${qDb} SET search_path TO public, extensions;
 
 CREATE TABLE auth.users (
   id uuid PRIMARY KEY,
@@ -90,13 +101,15 @@ $fn$;
 
 GRANT USAGE ON SCHEMA auth, public, extensions TO anon, authenticated, service_role, mowa_authenticator;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA auth TO anon, authenticated, service_role, mowa_authenticator;
-GRANT ALL ON SCHEMA public TO ${dbUser}, anon, authenticated, service_role;
+GRANT USAGE ON SCHEMA extensions TO anon, authenticated, service_role, mowa_authenticator;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA extensions TO anon, authenticated, service_role, mowa_authenticator;
+GRANT ALL ON SCHEMA public TO ${qUser}, anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
 `;
 
-psql(['-d', dbName], authSetup);
+psql(['-d', db.dbName], authSetup);
 
 const migDir = join(root, 'supabase/migrations');
 const files = readdirSync(migDir)
@@ -106,14 +119,15 @@ const files = readdirSync(migDir)
 for (const f of files) {
 	const path = join(migDir, f);
 	console.log('apply', f);
-	psql(['-d', dbName, '-f', path]);
+	psql(['-d', db.dbName, '-f', path]);
 }
 
 mkdirSync(join(root, '.local'), { recursive: true });
 const conf = `
-db-uri = "postgres://mowa_authenticator:${authPass}@${dbHost}:${dbPort}/${dbName}"
+db-uri = "postgres://mowa_authenticator:${authPass}@${db.host}:${db.port}/${db.dbName}"
 db-schemas = "public"
 db-anon-role = "anon"
+server-host = "127.0.0.1"
 server-port = ${postgrestPort}
 jwt-secret = "${jwtSecret}"
 `;
@@ -122,7 +136,11 @@ writeFileSync(confPath, conf);
 writeFileSync(
 	join(root, '.local/stack.env'),
 	[
-		`DATABASE_URL=postgresql://${dbUser}:${dbPass}@${dbHost}:${dbPort}/${dbName}`,
+		`MOWA_DB_HOST=${db.host}`,
+		`MOWA_DB_PORT=${db.port}`,
+		`MOWA_DB_USER=${db.user}`,
+		`MOWA_DB_PASSWORD=${db.password}`,
+		`MOWA_DB_NAME=${db.dbName}`,
 		`MOWA_POSTGREST_URL=http://127.0.0.1:${postgrestPort}`,
 		`MOWA_JWT_SECRET=${jwtSecret}`,
 		`MOWA_ANON_ROLE=anon`,
@@ -133,6 +151,6 @@ writeFileSync(
 );
 
 console.log('local stack ready');
-console.log(`DATABASE_URL=postgresql://${dbUser}:***@${dbHost}:${dbPort}/${dbName}`);
-console.log(`PostgREST conf: ${confPath}`);
+console.log(`MOWA_DB_HOST=${db.host} MOWA_DB_NAME=${db.dbName}`);
+console.log(`PostgREST conf: ${confPath} (127.0.0.1 only)`);
 console.log(`Start: postgrest ${confPath}`);

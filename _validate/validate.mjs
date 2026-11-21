@@ -1,37 +1,57 @@
 // MO_WA M1 schema validation against local Postgres + PostgREST (BE-01).
-// Uses the same request.jwt.claims / request.headers GUC contract PostgREST sets,
-// plus HTTP checks for anon denial and the x-mowa-bot-id header path.
+// B-1: ignores DATABASE_URL; connects via MOWA_DB_* only; aborts unless loopback + mowa_local.
 import { createHmac } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync, spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+import { resolveMowaDbEnv, VALIDATE_DB_RE } from '../scripts/lib/local-db-guard.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 const gatedPath = join(root, 'supabase/migrations/GATED_drop_legacy_finance_tables.sql.txt');
 
-function loadEnvFile(path) {
-	if (!existsSync(path)) return;
+function readEnvFile(path) {
+	const out = {};
+	if (!existsSync(path)) return out;
 	for (const line of readFileSync(path, 'utf8').split('\n')) {
 		const t = line.trim();
 		if (!t || t.startsWith('#') || !t.includes('=')) continue;
 		const i = t.indexOf('=');
-		const k = t.slice(0, i);
-		const v = t.slice(i + 1);
-		if (process.env[k] === undefined) process.env[k] = v;
+		out[t.slice(0, i)] = t.slice(i + 1);
 	}
+	return out;
 }
 
-loadEnvFile(join(root, '.local/stack.env'));
+// Load .local/stack.env into a copy — never let shell DATABASE_URL win.
+const stackFile = readEnvFile(join(root, '.local/stack.env'));
+const mowaEnv = {
+	MOWA_DB_HOST: process.env.MOWA_DB_HOST ?? stackFile.MOWA_DB_HOST ?? '127.0.0.1',
+	MOWA_DB_PORT: process.env.MOWA_DB_PORT ?? stackFile.MOWA_DB_PORT ?? '5432',
+	MOWA_DB_USER: process.env.MOWA_DB_USER ?? stackFile.MOWA_DB_USER ?? 'postgres',
+	MOWA_DB_PASSWORD: process.env.MOWA_DB_PASSWORD ?? stackFile.MOWA_DB_PASSWORD ?? 'postgres',
+	MOWA_DB_NAME: process.env.MOWA_DB_NAME ?? stackFile.MOWA_DB_NAME ?? 'mowa_local',
+	MOWA_POSTGREST_URL: process.env.MOWA_POSTGREST_URL ?? stackFile.MOWA_POSTGREST_URL ?? 'http://127.0.0.1:54321',
+	MOWA_JWT_SECRET:
+		process.env.MOWA_JWT_SECRET ??
+		stackFile.MOWA_JWT_SECRET ??
+		'super-secret-jwt-token-with-at-least-32-characters-long',
+	MOWA_AUTHENTICATOR_PASSWORD:
+		process.env.MOWA_AUTHENTICATOR_PASSWORD ?? stackFile.MOWA_AUTHENTICATOR_PASSWORD
+};
+
+// Abort before any work if target is not loopback mowa_local.
+const dbTarget = resolveMowaDbEnv(mowaEnv, { dbNameRe: VALIDATE_DB_RE, label: 'test:db' });
 
 console.log('resetting local stack (migrations only; GATED stays .sql.txt)…');
 {
+	const childEnv = { ...process.env, ...mowaEnv };
+	delete childEnv.DATABASE_URL;
 	const r = spawnSync(process.execPath, [join(root, 'scripts/local-stack-up.mjs')], {
 		cwd: root,
 		encoding: 'utf8',
-		env: process.env
+		env: childEnv
 	});
 	if (r.status !== 0) {
 		console.error(r.stdout);
@@ -41,23 +61,27 @@ console.log('resetting local stack (migrations only; GATED stays .sql.txt)…');
 	for (const line of (r.stdout || '').split('\n')) {
 		if (line.startsWith('apply ')) console.log('draft ok ', line.slice(6));
 	}
-	loadEnvFile(join(root, '.local/stack.env'));
 }
 
-const databaseUrl =
-	process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:5432/mowa_local';
-const postgrestUrl = process.env.MOWA_POSTGREST_URL ?? 'http://127.0.0.1:54321';
-const jwtSecret =
-	process.env.MOWA_JWT_SECRET ?? 'super-secret-jwt-token-with-at-least-32-characters-long';
+const postgrestUrl = mowaEnv.MOWA_POSTGREST_URL;
+const jwtSecret = mowaEnv.MOWA_JWT_SECRET;
 
-const pool = new pg.Pool({ connectionString: databaseUrl });
+const pool = new pg.Pool({
+	host: dbTarget.host,
+	port: Number(dbTarget.port),
+	user: dbTarget.user,
+	password: dbTarget.password,
+	database: dbTarget.dbName
+});
 const db = {
 	query: (text, params) => pool.query(text, params),
 	exec: async (sql) => {
+		const env = { ...process.env, PGPASSWORD: dbTarget.password };
+		delete env.DATABASE_URL;
 		const r = spawnSync(
 			'psql',
-			[databaseUrl, '-v', 'ON_ERROR_STOP=1', '-c', sql],
-			{ encoding: 'utf8' }
+			['-h', dbTarget.host, '-p', dbTarget.port, '-U', dbTarget.user, '-d', dbTarget.dbName, '-v', 'ON_ERROR_STOP=1', '-c', sql],
+			{ encoding: 'utf8', env }
 		);
 		if (r.status !== 0) {
 			const msg = (r.stderr || r.stdout || 'psql failed').trim();
@@ -106,7 +130,6 @@ function signJwt(payload) {
 let postgrestProc = null;
 function startPostgrest() {
 	const conf = join(root, '.local/postgrest.conf');
-	// Ensure a clean listener (previous runs / manual starts).
 	spawnSync('pkill', ['-f', `postgrest ${conf}`], { encoding: 'utf8' });
 	postgrestProc = spawn('postgrest', [conf], { stdio: ['ignore', 'pipe', 'pipe'] });
 	let stderr = '';
@@ -375,18 +398,24 @@ const tables = (
      where schemaname='public'
      order by tablename`)
 ).rows.map((r) => r.tablename);
-await ok('anon key denied select on every public table', async () => {
+await ok('anon key denied select on every public table (SQLSTATE 42501)', async () => {
 	const allowed = [];
 	for (const t of tables) {
 		const res = await fetch(`${postgrestUrl}/${t}?select=*&limit=1`, {
 			headers: { Authorization: `Bearer ${anonJwt}`, apikey: anonJwt }
 		});
 		const body = await res.text();
-		const denied =
-			!res.ok && /permission denied|42501|JWT|PGRST301|not find the table/i.test(`${res.status} ${body}`);
-		if (!denied) allowed.push(`${t}:${res.status}`);
+		// L-6: pass only on SQLSTATE 42501 (PostgREST JSON code or message)
+		let code = null;
+		try {
+			code = JSON.parse(body)?.code;
+		} catch {
+			/* non-json */
+		}
+		const denied = !res.ok && (code === '42501' || /"code"\s*:\s*"42501"/.test(body));
+		if (!denied) allowed.push(`${t}:${res.status}:${code ?? body.slice(0, 40)}`);
 	}
-	if (allowed.length) throw new Error(`anon select not denied: ${allowed.join(',')}`);
+	if (allowed.length) throw new Error(`anon select not denied with 42501: ${allowed.join(',')}`);
 	return { tables: tables.length };
 });
 await err(
@@ -425,6 +454,20 @@ await ok('PostgREST: service_role + x-mowa-bot-id can patch bot-writable memo', 
 	return JSON.parse(body);
 });
 
+console.log('\n[M-2·M-3·L-1 hardening]');
+const ownPend = (await fm(`insert into position_proposals(owner_id,change_type,position_id,proposed_values,evidence) values ('${U}','set_qty_avg','${pos.id}','{"qty":30}','[{"url":"https://m2"}]') returning id`)).rows[0].id;
+await err('M-2: 봇이 직접 superseded 표시 불가', () => fm(`update position_proposals set status='superseded' where id='${ownPend}'`), /superseded|R-PERM-05/);
+await err('M-2: 다른 봇이 cancelled로 위조 불가', () => ea(`update position_proposals set status='cancelled' where id='${ownPend}'`), /cancel|R-PERM|own/);
+await err('M-2: 봇 cancelled 시 다른 컬럼 변경 불가', () => fm(`update position_proposals set status='cancelled', calc_note='x' where id='${ownPend}'`), /cancel|R-PERM-05/);
+const ownPend2 = (await fm(`insert into position_proposals(owner_id,change_type,position_id,proposed_values,evidence) values ('${U}','set_qty_avg','${pos.id}','{"qty":29}','[{"url":"https://m2b"}]') returning id`)).rows[0].id;
+eq('M-2: 서버 supersede(새 제안)는 이전 pending을 superseded', (await db.query(`select status from position_proposals where id='${ownPend}'`)).rows[0].status, 'superseded');
+eq('M-2: 최신 제안은 pending 유지', (await db.query(`select status from position_proposals where id='${ownPend2}'`)).rows[0].status, 'pending');
+await err('M-3: mcp_audit_log TRUNCATE 거부', () => db.query(`truncate public.mcp_audit_log`), /append-only|truncated|R-SYS-05|42501/);
+await err('M-3: report_revisions DELETE 거부', () => db.query(`delete from report_revisions`), /append-only|R-SYS-05/);
+await err('M-3: mowa_backup_log verified UPDATE 거부', () => db.query(`update mowa_backup_log set verified=true`), /append-only|R-SYS-05/);
+await err('L-1: authenticated는 다른 owner settings 읽기 불가', () => other(`select public.mowa_setting('${U}','proposal_expiry_days','7'::jsonb)`), /R-PERM-01|another owner/);
+await err('authenticated는 bot_clients 직접 insert 불가', () => user(`insert into bot_clients(owner_id,name,profile,key_prefix,key_hash) values ('${U}','web-key','custom','webwebweb1','${H}')`), /permission denied/);
+
 console.log('\n[인증·감사]');
 await err('R-SYS-05 감사 로그 append-only', () => db.query(`update mcp_audit_log set result='ok'`), /append-only/);
 const au = await asBot(null)(`select * from mcp_authenticate('fmfmfmfm01','${H}','1.2.3.4')`);
@@ -440,11 +483,44 @@ await err('importer 키는 만료 필수', () => db.query(`insert into bot_clien
 eq('승인/거절 감사 행 존재', (await db.query(`select count(*)::int c from mcp_audit_log where tool like 'proposal.%'`)).rows[0].c >= 2, true);
 
 console.log('\n[GATED drop]');
-const gatedSql = readFileSync(gatedPath, 'utf8');
-await err('백업 검증 기록 없으면 drop 중단', () => db.exec(gatedSql), /backup not verified/);
-await db.query(`insert into mowa_backup_log(kind,file_name,sha256,row_counts,verified) values ('legacy_finance_dump','x.dump','00','{}',true)`);
-await ok('검증 기록 후 drop 실행', () => db.exec(gatedSql));
-eq('레거시 테이블 제거·profiles 유지', (await db.query(`select count(*) filter (where table_name in ('assets','liabilities','cashflow_items','goals','snapshots'))::int legacy, count(*) filter (where table_name='profiles')::int prof from information_schema.tables where table_schema='public'`)).rows[0], { legacy: 0, prof: 1 });
+if (process.env.MOWA_ALLOW_GATED_TEST === '1') {
+	const gatedSql = readFileSync(gatedPath, 'utf8');
+	await err('백업 검증 기록 없으면 drop 중단', () => db.exec(gatedSql), /backup not verified/);
+	const live = (
+		await db.query(`
+    select jsonb_build_object(
+      'assets', (select count(*)::int from assets),
+      'asset_categories', (select count(*)::int from asset_categories),
+      'asset_valuations', (select count(*)::int from asset_valuations),
+      'liabilities', (select count(*)::int from liabilities),
+      'liability_payments', (select count(*)::int from liability_payments),
+      'snapshots', (select count(*)::int from snapshots),
+      'goals', (select count(*)::int from goals),
+      'cashflow_items', (select count(*)::int from cashflow_items)
+    ) c`)
+	).rows[0].c;
+	await err('row_counts 불일치면 drop 중단', async () => {
+		await db.query(
+			`insert into mowa_backup_log(kind,file_name,sha256,row_counts,verified) values ('legacy_finance_dump','bad.dump','00','{"assets":999}',true)`
+		);
+		await db.exec(gatedSql);
+	}, /row_counts mismatch|abort drop/);
+	// wipe bad insert is blocked (immutable) — use a matching insert only
+	await db.query(
+		`insert into mowa_backup_log(kind,file_name,sha256,row_counts,verified) values ('legacy_finance_dump','ok.dump','00',$1::jsonb,true)`,
+		[JSON.stringify(live)]
+	);
+	await ok('검증 기록 후 drop 실행', () => db.exec(gatedSql));
+	eq(
+		'레거시 테이블 제거·profiles 유지',
+		(
+			await db.query(`select count(*) filter (where table_name in ('assets','liabilities','cashflow_items','goals','snapshots'))::int legacy, count(*) filter (where table_name='profiles')::int prof from information_schema.tables where table_schema='public'`)
+		).rows[0],
+		{ legacy: 0, prof: 1 }
+	);
+} else {
+	console.log('  (skip GATED drop tests — set MOWA_ALLOW_GATED_TEST=1 for local gated suite)');
+}
 console.log(`\nRESULT pass=${pass} fail=${fail}`);
 if (postgrestProc) postgrestProc.kill('SIGTERM');
 await pool.end();

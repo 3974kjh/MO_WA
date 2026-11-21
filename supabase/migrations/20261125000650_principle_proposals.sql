@@ -91,24 +91,38 @@ begin
       raise exception '[R-VAL-P10] evidence references a missing report/journal entry' using errcode = '22023';
     end if;
     new.base_version := v_rep.version;
-    new.base_body_hash := encode(digest(v_rep.body_md, 'sha256'), 'hex');
+    new.base_body_hash := encode(extensions.digest(v_rep.body_md, 'sha256'), 'hex');
     new.expires_at := public.mowa_proposal_expiry(new.owner_id);
     return new;
   end if;
 
+  -- M-2: superseded only when pg_trigger_depth()>1; bot direct UPDATE = cancelled on own proposal; lock other columns
   if public.mowa_is_service() then
     if tg_op = 'DELETE' then raise exception '[R-PERM-01] bots cannot delete proposals' using errcode = '42501'; end if;
-    if new.status not in ('cancelled','superseded')
-       or (new.status = 'cancelled' and old.status not in ('pending','on_hold'))   -- R-VAL-P14
-       or (new.status = 'superseded' and old.status not in ('pending','on_hold'))
-       or (new.proposed_body_md, new.reason_md, new.base_version, new.base_body_hash)
-          is distinct from (old.proposed_body_md, old.reason_md, old.base_version, old.base_body_hash)
-       or new.applied_report_id is not null or new.decided_by is not null
-       or (new.acknowledged_at, new.acknowledged_by, new.attention_started_at) is distinct from (old.acknowledged_at, old.acknowledged_by, old.attention_started_at) then
-      raise exception '[R-PERM-05] bots cannot approve/reject/hold proposals' using errcode = '42501';
+    if new.status = 'superseded' then
+      if pg_trigger_depth() <= 1 or old.status not in ('pending','on_hold') then
+        raise exception '[R-PERM-05] bots cannot mark proposals superseded (server-only)' using errcode = '42501';
+      end if;
+      if new.owner_id is distinct from old.owner_id
+         or (new.proposed_body_md, new.reason_md, new.base_version, new.base_body_hash, new.evidence, new.display_no)
+            is distinct from (old.proposed_body_md, old.reason_md, old.base_version, old.base_body_hash, old.evidence, old.display_no)
+         or (new.acknowledged_at, new.acknowledged_by, new.attention_started_at)
+            is distinct from (old.acknowledged_at, old.acknowledged_by, old.attention_started_at) then
+        raise exception '[R-PERM-05] superseded update may only change status/decision fields' using errcode = '42501';
+      end if;
+      return new;
     end if;
-    if new.status = 'cancelled' and (old.proposer_type <> 'bot' or old.proposed_by_bot_id is distinct from public.mowa_current_bot()) then
-      raise exception '[R-PERM-01] bots can only cancel their own proposals' using errcode = '42501';
+    if new.status <> 'cancelled'
+       or old.status not in ('pending','on_hold')
+       or old.proposer_type <> 'bot'
+       or old.proposed_by_bot_id is distinct from public.mowa_current_bot()
+       or new.owner_id is distinct from old.owner_id
+       or (new.proposed_body_md, new.reason_md, new.base_version, new.base_body_hash, new.evidence, new.display_no, new.principle_id)
+          is distinct from (old.proposed_body_md, old.reason_md, old.base_version, old.base_body_hash, old.evidence, old.display_no, old.principle_id)
+       or new.applied_report_id is not null or new.decided_by is not null
+       or (new.acknowledged_at, new.acknowledged_by, new.attention_started_at)
+          is distinct from (old.acknowledged_at, old.acknowledged_by, old.attention_started_at) then
+      raise exception '[R-PERM-05] bots can only cancel their own pending/on_hold proposals' using errcode = '42501';
     end if;
   end if;
   return coalesce(new, old);
@@ -149,7 +163,7 @@ create policy "principle_proposals_owner_insert" on public.principle_proposals f
 --   p_final_body_md를 주면 사용자가 고친 최종 본문을 쓴다(없으면 proposed_body_md). 봇은 실행 불가(R-PERM-05)
 create or replace function public.approve_principle_proposal(p_id uuid, p_final_body_md text default null, p_summary text default null, p_note text default null)
 returns public.principle_proposals
-language plpgsql security definer set search_path = public, pg_temp
+language plpgsql security definer set search_path = public, extensions, pg_temp
 as $$
 declare
   v_uid uuid := auth.uid();
@@ -169,7 +183,7 @@ begin
     return v_p;
   end if;
   select * into v_rep from public.reports where id = v_p.principle_id for update;
-  if v_rep.version <> v_p.base_version or encode(digest(v_rep.body_md, 'sha256'), 'hex') <> v_p.base_body_hash
+  if v_rep.version <> v_p.base_version or encode(extensions.digest(v_rep.body_md, 'sha256'), 'hex') <> v_p.base_body_hash
      or v_rep.archived_at is not null then
     update public.principle_proposals set status = 'conflict', decided_at = now(), decided_by = v_uid
      where id = p_id returning * into v_p;

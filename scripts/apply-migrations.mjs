@@ -1,7 +1,13 @@
 #!/usr/bin/env node
-import { readFileSync, readdirSync } from 'node:fs';
+/**
+ * Local-only migration applicator (BE-01 hardening).
+ * Default: dry-run. Requires --apply to execute.
+ * Ignores DATABASE_URL / remote poolers. Uses MOWA_DB_* loopback only.
+ */
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import pg from 'pg';
+import { resolveMowaDbEnv, LOCAL_STACK_DB_RE } from './lib/local-db-guard.mjs';
 
 const { Client } = pg;
 
@@ -13,92 +19,61 @@ function loadEnvFile(path = '.env') {
 			if (!trimmed || trimmed.startsWith('#')) continue;
 			const index = trimmed.indexOf('=');
 			if (index === -1) continue;
-			const key = trimmed.slice(0, index).trim();
-			const value = trimmed.slice(index + 1).trim();
-			values[key] = value;
+			values[trimmed.slice(0, index).trim()] = trimmed.slice(index + 1).trim();
 		}
 	} catch {
-		// .env optional if env vars already exported
+		/* optional */
 	}
 	return values;
 }
 
-function projectRefFromUrl(url) {
-	const match = url.match(/https:\/\/([^.]+)\.supabase\.co/);
-	return match?.[1] ?? null;
+function loadStackEnv() {
+	const p = join(process.cwd(), '.local/stack.env');
+	if (!existsSync(p)) return {};
+	return loadEnvFile(p);
 }
 
-function resolveDatabaseUrl(env) {
-	if (env.DATABASE_URL) return env.DATABASE_URL;
+async function main() {
+	const apply = process.argv.includes('--apply');
+	// Prefer .local/stack.env MOWA_DB_*; never use DATABASE_URL from shell/.env.
+	const fileEnv = { ...loadEnvFile(), ...loadStackEnv() };
+	const env = {
+		MOWA_DB_HOST: process.env.MOWA_DB_HOST ?? fileEnv.MOWA_DB_HOST,
+		MOWA_DB_PORT: process.env.MOWA_DB_PORT ?? fileEnv.MOWA_DB_PORT,
+		MOWA_DB_USER: process.env.MOWA_DB_USER ?? fileEnv.MOWA_DB_USER,
+		MOWA_DB_PASSWORD: process.env.MOWA_DB_PASSWORD ?? fileEnv.MOWA_DB_PASSWORD,
+		MOWA_DB_NAME: process.env.MOWA_DB_NAME ?? fileEnv.MOWA_DB_NAME
+	};
+	const db = resolveMowaDbEnv(env, { dbNameRe: LOCAL_STACK_DB_RE, label: 'db:migrate' });
 
-	const password = env.SUPABASE_DB_PASSWORD;
-	const projectRef = projectRefFromUrl(env.PUBLIC_SUPABASE_URL ?? '');
+	const migrationsDir = join(process.cwd(), 'supabase', 'migrations');
+	const files = readdirSync(migrationsDir)
+		.filter((file) => file.endsWith('.sql') && !file.endsWith('.sql.txt'))
+		.sort();
 
-	if (!password || !projectRef) {
-		throw new Error(
-			'DATABASE_URL 또는 PUBLIC_SUPABASE_URL + SUPABASE_DB_PASSWORD 가 .env 에 필요합니다.'
-		);
+	console.log(`target ${db.host}:${db.port}/${db.dbName} (${apply ? 'APPLY' : 'dry-run'})`);
+	if (files.length === 0) {
+		console.log('적용할 migration 파일이 없습니다.');
+		return;
 	}
 
-	const encodedPassword = encodeURIComponent(password);
-
-	if (env.SUPABASE_DB_POOLER_HOST) {
-		const port = env.SUPABASE_DB_POOLER_PORT ?? '5432';
-		return `postgresql://postgres.${projectRef}:${encodedPassword}@${env.SUPABASE_DB_POOLER_HOST}:${port}/postgres`;
+	if (!apply) {
+		for (const file of files) console.log(`dry-run would apply ${file}`);
+		console.log('Dry-run only. Re-run with --apply against loopback mowa_local* to execute.');
+		return;
 	}
 
-	// Direct connection (legacy projects)
-	return `postgresql://postgres:${encodedPassword}@db.${projectRef}.supabase.co:5432/postgres`;
-}
-
-async function connectClient(databaseUrl, env) {
 	const client = new Client({
-		connectionString: databaseUrl,
-		ssl: { rejectUnauthorized: false },
+		host: db.host,
+		port: Number(db.port),
+		user: db.user,
+		password: db.password,
+		database: db.dbName,
 		connectionTimeoutMillis: 10_000
+		// no ssl / no remote pooler fallback
 	});
+	await client.connect();
 
-	try {
-		await client.connect();
-		return client;
-	} catch (error) {
-		await client.end().catch(() => undefined);
-
-		const projectRef = projectRefFromUrl(env.PUBLIC_SUPABASE_URL ?? '');
-		const password = encodeURIComponent(env.SUPABASE_DB_PASSWORD ?? '');
-		const fallbackHosts = [
-			env.SUPABASE_DB_POOLER_HOST,
-			'aws-1-ap-northeast-1.pooler.supabase.com',
-			'aws-0-ap-northeast-2.pooler.supabase.com',
-			'aws-0-ap-northeast-1.pooler.supabase.com'
-		].filter(Boolean);
-
-		for (const host of fallbackHosts) {
-			for (const port of ['5432', '6543']) {
-				const poolerUrl = `postgresql://postgres.${projectRef}:${password}@${host}:${port}/postgres`;
-				if (poolerUrl === databaseUrl) continue;
-
-				const fallback = new Client({
-					connectionString: poolerUrl,
-					ssl: { rejectUnauthorized: false },
-					connectionTimeoutMillis: 10_000
-				});
-
-				try {
-					await fallback.connect();
-					console.log(`connected via pooler ${host}:${port}`);
-					return fallback;
-				} catch {
-					await fallback.end().catch(() => undefined);
-				}
-			}
-		}
-
-		throw error;
-	}
-}
-
-async function ensureMigrationsTable(client) {
 	await client.query(`
 		create schema if not exists supabase_migrations;
 		create table if not exists supabase_migrations.schema_migrations (
@@ -106,54 +81,26 @@ async function ensureMigrationsTable(client) {
 			applied_at timestamptz not null default now()
 		);
 	`);
-}
-
-async function isApplied(client, version) {
-	const result = await client.query(
-		'select 1 from supabase_migrations.schema_migrations where version = $1',
-		[version]
-	);
-	return result.rowCount > 0;
-}
-
-async function markApplied(client, version) {
-	await client.query(
-		'insert into supabase_migrations.schema_migrations (version) values ($1) on conflict do nothing',
-		[version]
-	);
-}
-
-async function main() {
-	const env = { ...loadEnvFile(), ...process.env };
-	const databaseUrl = resolveDatabaseUrl(env);
-	const migrationsDir = join(process.cwd(), 'supabase', 'migrations');
-
-	const files = readdirSync(migrationsDir)
-		.filter((file) => file.endsWith('.sql'))
-		.sort();
-
-	if (files.length === 0) {
-		console.log('적용할 migration 파일이 없습니다.');
-		return;
-	}
-
-	const client = await connectClient(databaseUrl, env);
-	await ensureMigrationsTable(client);
 
 	for (const file of files) {
 		const version = file.replace(/\.sql$/, '');
-		if (await isApplied(client, version)) {
+		const exists = await client.query(
+			'select 1 from supabase_migrations.schema_migrations where version = $1',
+			[version]
+		);
+		if (exists.rowCount > 0) {
 			console.log(`skip  ${file} (already applied)`);
 			continue;
 		}
-
 		const sql = readFileSync(join(migrationsDir, file), 'utf8');
 		console.log(`apply ${file}`);
-
 		await client.query('begin');
 		try {
 			await client.query(sql);
-			await markApplied(client, version);
+			await client.query(
+				'insert into supabase_migrations.schema_migrations (version) values ($1) on conflict do nothing',
+				[version]
+			);
 			await client.query('commit');
 			console.log(`done  ${file}`);
 		} catch (error) {
@@ -163,7 +110,7 @@ async function main() {
 	}
 
 	await client.end();
-	console.log('Migration 적용 완료.');
+	console.log('Migration 적용 완료 (local only).');
 }
 
 main().catch((error) => {

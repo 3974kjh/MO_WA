@@ -98,7 +98,7 @@ create index journal_instrument_date_idx on public.journal_entries (instrument_i
 create index journal_owner_kind_state_idx on public.journal_entries (owner_id, kind, state);
 create trigger journal_entries_updated_at before update on public.journal_entries
   for each row execute function public.set_updated_at();
--- R-VAL-J02/J03(buy/sell/plan 조건부 필수)는 strict/migration 모드 차이가 있어 domain(zod)에서 검사한다.
+-- R-VAL-J02/J03: buy/sell 조건부 필수(Q-16: plan/thought/review는 instrument 선택). strict/migration 모드 차이는 domain(zod)에서 검사.
 
 -- Q-16 / R-VAL-C04: journal_entries.tickers[]의 모든 코드는 같은 owner의 instruments에 있어야 한다(별칭 런타임 변환 없음, Q-24·R-VAL-C05)
 create or replace function public.journal_tickers_check()

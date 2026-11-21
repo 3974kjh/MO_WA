@@ -67,6 +67,17 @@ create table public.report_revisions (
   unique (report_id, version)
 );
 
+-- M-3: history/evidence rows are immutable (insert via reports_keep_revision only)
+create or replace function public.report_revisions_immutable()
+returns trigger language plpgsql as $$
+begin
+  raise exception '[R-SYS-05] report_revisions is append-only (no update/delete)' using errcode = '42501';
+end;
+$$;
+create trigger report_revisions_immutable before update or delete on public.report_revisions
+  for each row execute function public.report_revisions_immutable();
+revoke truncate on table public.report_revisions from public, anon, authenticated, service_role;
+
 -- R-CLS-03: 같은 키 재작성 = version+1, 이전본 보존
 -- security definer: report_revisions는 사용자에게 읽기 전용(R-PERM-05)이라, 사용자가 리포트를 고칠 때도 이력 insert가 되도록 함수 소유자 권한으로 실행
 create or replace function public.reports_keep_revision()
