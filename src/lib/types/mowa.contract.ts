@@ -1,6 +1,10 @@
 /**
  * Design schema contract for BE-03 (SQL migrations owned by BE-01).
  * display_id is always a server string (e.g. P-0412, R-0001).
+ *
+ * M-2: proposal rows use proposed_by_type / proposed_by / proposed_by_user
+ * (position_proposals naming). Do not use proposer_type, proposed_by_bot_id,
+ * or source_bot_id on proposal contracts.
  */
 
 export type Uuid = string;
@@ -96,8 +100,8 @@ export type PositionProposalRow = {
 	calc_note: string | null;
 	proposed_by_type: 'bot' | 'user';
 	proposed_by: Uuid | null;
+	proposed_by_user: Uuid | null;
 	status: string;
-	source_bot_id: Uuid | null;
 };
 
 export type PrincipleProposalRow = {
@@ -107,6 +111,7 @@ export type PrincipleProposalRow = {
 	/** Server string — e.g. R-0001. */
 	display_id: string;
 	proposed_by_type: 'bot' | 'user';
+	proposed_by: Uuid | null;
+	proposed_by_user: Uuid | null;
 	status: string;
-	source_bot_id: Uuid | null;
 };

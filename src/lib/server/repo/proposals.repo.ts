@@ -1,5 +1,5 @@
 import type { PositionProposalRow, PrincipleProposalRow } from '$lib/types/mowa.contract';
-import { getRepoDb, serverCreateStamps, stripClientIdentity, type RepoClient } from './client';
+import { getRepoDb, stripClientIdentity, type RepoClient } from './client';
 import { isOwnerDisplayId } from './displayId';
 import { requireOwnerId, withOwnerFilter } from './owner';
 import { fromTable } from './supabaseTable';
@@ -23,16 +23,16 @@ export async function listPositionProposals(
 
 /**
  * Insert proposal — display_no/display_id and proposed_by* assigned by DB triggers.
- * M-2: never pass proposed_by* from the client; stripClientIdentity removes them.
+ * M-2: never pass proposed_by* / source_bot_id; table has no source_bot_id column.
  */
 export async function createPositionProposal(
 	repo: RepoClient,
 	input: PositionProposalCreateInput
 ): Promise<{ data: PositionProposalRow | null; error: Error | null }> {
-	const stamps = serverCreateStamps(repo.actor);
+	const ownerId = requireOwnerId(repo);
 	const row = {
 		...stripClientIdentity(input as Record<string, unknown>),
-		...stamps
+		owner_id: ownerId
 	};
 	const { data, error } = await fromTable(getRepoDb(repo), 'position_proposals')
 		.insert(row)

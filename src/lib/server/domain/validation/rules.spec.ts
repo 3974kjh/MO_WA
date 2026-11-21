@@ -91,7 +91,11 @@ describe('domain validation rules', () => {
 		expect(first(ruleM03, { qty: 1.5, asset_type: 'stock' })?.level).toBe('ERROR');
 		expect(first(ruleM03, { qty: 1000.5, asset_type: 'cash' })).toBeNull();
 		expect(first(ruleM03, { qty: 1000.505, asset_type: 'cash' })?.level).toBe('ERROR');
-		expect(first(ruleM03, { qty: 0, asset_type: 'cash' })?.level).toBe('ERROR');
+		// status omitted: cash 0 matches DB (no ERROR from repo/validation hard-fail)
+		expect(first(ruleM03, { qty: 0, asset_type: 'cash' })).toBeNull();
+		expect(first(ruleM03, { qty: 0, asset_type: 'cash', status: 'holding' })?.level).toBe(
+			'ERROR'
+		);
 		// L1: planned null / closed 0 are not false positives
 		expect(first(ruleM03, { qty: null, asset_type: 'stock', status: 'planned' })).toBeNull();
 		expect(first(ruleM03, { qty: 0, asset_type: 'stock', status: 'closed' })).toBeNull();
@@ -250,9 +254,13 @@ describe('domain validation rules', () => {
 	it('buy_plan meta stub (Q-33) never uses R-VAL-R15', () => {
 		expect(validateBuyPlanMeta({ anything: true, nested: { a: 1 } })).toBeNull();
 		expect(validateBuyPlanMeta(null)).toBeNull();
+		expect(validateBuyPlanMeta(undefined)).toBeNull();
+		expect(validateBuyPlanMeta([])).toBeNull();
 		expect(validateBuyPlanMeta(42)).toBeNull();
-		// M-1 fail-path: R15 must be absent from stub results
-		const issues = [validateBuyPlanMeta('not-object')];
-		expect(issues.every((i) => i == null || i.id !== 'R-VAL-R15')).toBe(true);
+		// M-1 fail-path: [] / undefined / non-object never emit R15
+		for (const input of ['not-object', [], undefined] as const) {
+			const issue = validateBuyPlanMeta(input);
+			expect(issue).toBeNull();
+		}
 	});
 });

@@ -56,6 +56,11 @@ export function parseQty(
 	}
 
 	if (assetType === 'cash') {
+		// DB mowa_check_qty allows 0 (decimal check only). When status is omitted,
+		// do not ERROR on 0 — holding still requires >0 in the validation layer.
+		if (qty === 0 && status !== 'holding') {
+			return { success: true, data: 0 };
+		}
 		if (!(qty > 0)) {
 			return { success: false, message: '[R-VAL-M03] cash qty must be > 0' };
 		}

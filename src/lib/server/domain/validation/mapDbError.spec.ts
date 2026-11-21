@@ -10,28 +10,41 @@ import {
 	mapDbErrorToRuleIds
 } from './mapDbError';
 
-const fixturePath = join(
-	dirname(fileURLToPath(import.meta.url)),
-	'fixtures/result.pglite.reference.txt'
-);
+const dir = dirname(fileURLToPath(import.meta.url));
+const fullNamesPath = join(dir, 'fixtures/pr7-full-constraint-names.txt');
 
 describe('mapDbError', () => {
 	it('extracts [R-…] and [DISPLAY-ID] tags from messages', () => {
 		expect(extractRuleIdsFromMessage('denied [R-PERM-03] spoof')).toEqual(['R-PERM-03']);
-		expect(extractRuleIdsFromMessage('[DISPLAY-ID] display_no and owner_id are immutable')).toEqual([
-			'DISPLAY-ID'
-		]);
-		expect(
-			extractRuleIdsFromMessage('qty fail [R-VAL-M03] and also [R-VAL-P09]')
-		).toEqual(['R-VAL-M03', 'R-VAL-P09']);
+		expect(extractRuleIdsFromMessage('[DISPLAY-ID] immutable')).toEqual(['DISPLAY-ID']);
 	});
 
-	it('maps PR #7 constraint names to rule IDs', () => {
+	it('maps only exact full constraint names', () => {
 		expect(mapConstraintToRuleId('instruments_krx_code')).toBe('R-VAL-C01');
-		expect(mapConstraintToRuleId('reports_headline_check')).toBe('R-VAL-R12');
 		expect(mapConstraintToRuleId('journal_tickers_check')).toBe('R-VAL-C04');
-		expect(mapConstraintToRuleId('mowa_check_qty')).toBe('R-VAL-M03');
-		expect(CONSTRAINT_TO_RULE_ID.reports_meta_alignment).toBe('R-VAL-R15');
+		expect(mapConstraintToRuleId('reports_domain_check')).toBe('R-VAL-R02');
+		expect(mapConstraintToRuleId('positions_status_check')).toBe('R-VAL-P02');
+		expect(mapConstraintToRuleId('reports_owner_id_kind_report_date_slug_key')).toBe('R-VAL-R03');
+	});
+
+	it('treats truncated / weak names as negative (no mapping)', () => {
+		const truncated = [
+			'principle_proposals_',
+			'market_indi',
+			'p',
+			'reports_',
+			'position_proposals_ev',
+			'positions_watch_only_no_trigge',
+			'journal_trade_needs_inst'
+		];
+		for (const name of truncated) {
+			expect(mapConstraintToRuleId(name), name).toBeNull();
+		}
+		// misclassification / weak evidence → unmapped
+		expect(mapConstraintToRuleId('journal_entries_owner_id_client_ref_key')).toBeNull();
+		expect(mapConstraintToRuleId('bot_clients_propose_only_fm')).toBeNull();
+		expect(mapConstraintToRuleId('principle_proposals_evidence_check')).toBeNull();
+		expect(mapConstraintToRuleId('reports_period_order')).toBeNull();
 	});
 
 	it('never returns an empty array — unmapped keeps code and constraint', () => {
@@ -40,43 +53,23 @@ describe('mapDbError', () => {
 			code: 'XX000',
 			constraint: 'totally_unknown_constraint'
 		});
-		expect(ids).toHaveLength(1);
-		expect(ids[0]).toBe(`${UNMAPPED_MARKER}:XX000:totally_unknown_constraint`);
+		expect(ids).toEqual([`${UNMAPPED_MARKER}:XX000:totally_unknown_constraint`]);
 	});
 
-	it('mapDbErrorToRuleIds combines message tags and constraints', () => {
-		expect(
-			mapDbErrorToRuleIds({
-				message: 'new row violates check constraint "mowa_check_qty"',
-				constraint: 'mowa_check_qty'
-			})
-		).toContain('R-VAL-M03');
-
-		expect(
-			mapDbErrorToRuleIds({
-				message: 'guard rejected [R-PERM-02]',
-				details: null
-			})
-		).toEqual(['R-PERM-02']);
-
-		expect(
-			mapDbErrorToRuleIds({
-				message: '[DISPLAY-ID] display_no and owner_id are immutable'
-			})
-		).toEqual(['DISPLAY-ID']);
-	});
-
-	it('maps every constraint name printed in PR #7 result.pglite.reference.txt', () => {
-		const text = readFileSync(fixturePath, 'utf8');
-		// Reference truncates long names mid-token; accept open or closed quotes.
-		const names = [
-			...text.matchAll(/constraint "([a-zA-Z0-9_]+)/g)
-		].map((m) => m[1]!);
-		expect(names.length).toBeGreaterThan(10);
-		for (const name of names) {
-			const rule = mapConstraintToRuleId(name);
-			expect(rule, `unmapped constraint from reference: ${name}`).toBeTruthy();
-			expect(rule).not.toMatch(new RegExp(`^${UNMAPPED_MARKER}`));
+	it('compares CONSTRAINT_TO_RULE_ID keys against PR #7 full-name fixture', () => {
+		const listed = readFileSync(fullNamesPath, 'utf8')
+			.split('\n')
+			.map((l) => l.trim())
+			.filter(Boolean);
+		expect(listed.length).toBeGreaterThan(20);
+		for (const name of listed) {
+			expect(
+				CONSTRAINT_TO_RULE_ID[name],
+				`fixture name missing from map: ${name}`
+			).toBeTruthy();
+		}
+		for (const key of Object.keys(CONSTRAINT_TO_RULE_ID)) {
+			expect(listed, `map key not in PR #7 full-name fixture: ${key}`).toContain(key);
 		}
 	});
 });

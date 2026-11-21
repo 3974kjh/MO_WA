@@ -1,9 +1,10 @@
 /**
  * Repository public API.
  *
- * M-4: `RepoClient.db` is not exported — use repo functions only.
- * M-5: Do not call `runRules` from these create/update paths (MCP/web own validation).
- * REPO_DB / getRepoDb stay module-private (not re-exported).
+ * M-4: db lives only in a module-internal WeakMap — never exported.
+ * Do not import repo/client or botIdentityBrand from outside repo/mcp auth
+ * (ESLint). Mint branded bot identity via $lib/server/mcp/auth (BE-04).
+ * M-5: Do not call runRules from create/update paths.
  */
 export {
 	forBot,

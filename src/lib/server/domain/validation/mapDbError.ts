@@ -1,20 +1,27 @@
 /**
  * Map Postgres/PostgREST error messages `[R-…]` / `[DISPLAY-ID]` and constraint
- * names → rule IDs. Constraint names match BE-01 / PR #7 migrations
- * (`supabase/migrations/20261125*`) — do not invent aliases.
+ * names → rule IDs. Constraint names are the **full** names from BE-01 / PR #7 SQL.
  *
- * Unmapped errors never return an empty array: they yield an `UNMAPPED:…` marker
- * that preserves the original SQLSTATE / PostgREST code and constraint name.
+ * `mapConstraintToRuleId` is exact-match only — truncated log fragments must not map.
+ * Unmapped errors never return []: `UNMAPPED:<code>:<constraint>`.
  */
 
-/** Marker prefix when no rule tag / constraint map hit. */
 export const UNMAPPED_MARKER = 'UNMAPPED';
 
 const TAG_IN_MESSAGE = /\[(R-(?:VAL|PERM|SYS|CLS|FMT|SRC|MIG)-[A-Z0-9]+|DISPLAY-ID)\]/g;
 
 /**
- * Named CHECKs / unique indexes / trigger function names from PR #7.
- * `journal_tickers_check` raises `[R-VAL-C04]` (not J08 — J08 is tags WARN in domain).
+ * Full constraint / unique-index / trigger-function names → rule IDs.
+ * Sources: named `constraint …` in PR #7 migrations, PG auto-names for column CHECKs
+ * (`{table}_{column}_check`), and unique keys (`{table}_{cols}_key`) when a SQL
+ * comment cites a rule ID.
+ *
+ * Intentionally **unmapped** (leave UNMAPPED unless a clear rule comment exists):
+ * - truncated log names (`principle_proposals_`, `market_indi`, …)
+ * - `journal_entries_owner_id_client_ref_key` — unique/idempotent (R-PERM-11), not J06 WARN
+ * - `bot_clients_propose_only_fm` — design cites R-PERM-10/15, not R-PERM-04
+ * - `principle_proposals_evidence_check` — no clear rule ID in SQL comment
+ * - `reports_period_order` — no clear T05 comment (weekly period is `reports_weekly_period`)
  */
 export const CONSTRAINT_TO_RULE_ID: Record<string, string> = {
 	// instruments
@@ -22,23 +29,27 @@ export const CONSTRAINT_TO_RULE_ID: Record<string, string> = {
 	instruments_us_ticker: 'R-VAL-C02',
 	instruments_internal_code: 'R-VAL-C03',
 
-	// positions
+	// positions — named + auto column CHECKs (SQL comments)
 	positions_one_active_per_status: 'R-VAL-P03',
 	positions_holding_has_qty: 'R-VAL-P04',
 	positions_watch_only_no_trigger: 'R-VAL-P13',
+	positions_status_check: 'R-VAL-P02', // status ∈ holding|planned|closed
 	positions_trigger_direction_check: 'R-VAL-P15',
+	positions_avg_price_check: 'R-VAL-M02', // avg_price > 0
 
 	// journal
 	journal_trade_needs_instrument: 'R-VAL-J03',
 	journal_price_needs_currency: 'R-VAL-J05',
-	journal_tickers_check: 'R-VAL-C04',
+	journal_tickers_check: 'R-VAL-C04', // trigger raises [R-VAL-C04]
 	journal_tickers_max: 'R-VAL-J08',
-	journal_entries_owner_id_client_ref_key: 'R-VAL-J06',
 	journal_entries_report_fk: 'R-VAL-J04',
+	journal_entries_kind_check: 'R-VAL-J01', // kind ∈ buy|sell|…
+	journal_entries_price_check: 'R-VAL-J05', // price > 0 (comment ties to trade price rules)
 
-	// reports
+	// reports — named + auto column CHECKs / unique (SQL comments)
 	reports_kind_check: 'R-VAL-R01',
 	reports_subtype_check: 'R-VAL-R01',
+	reports_domain_check: 'R-VAL-R02', // domain ∈ stock|realestate|macro
 	reports_domain_matches_kind: 'R-VAL-R02',
 	reports_domain_macro_brief: 'R-VAL-R02',
 	reports_domain_stock_analysis: 'R-VAL-R02',
@@ -47,9 +58,10 @@ export const CONSTRAINT_TO_RULE_ID: Record<string, string> = {
 	reports_meta_alignment: 'R-VAL-R15',
 	reports_weekly_period: 'R-VAL-T05',
 	reports_slug_check: 'R-VAL-S06',
-	reports_period_order: 'R-VAL-T05',
+	reports_status_check: 'R-VAL-R05', // draft|published
+	reports_owner_id_kind_report_date_slug_key: 'R-VAL-R03',
 
-	// proposals (PG auto-names column CHECKs as {table}_{column}_check)
+	// proposals
 	position_proposals_evidence_check: 'R-VAL-P07',
 	position_proposals_calc_note_check: 'R-VAL-P09',
 	position_proposals_target: 'R-VAL-P07',
@@ -57,31 +69,13 @@ export const CONSTRAINT_TO_RULE_ID: Record<string, string> = {
 	position_proposals_owner_display_no_key: 'DISPLAY-ID',
 	principle_proposals_one_proposer: 'R-PERM-15',
 	principle_proposals_owner_display_no_key: 'DISPLAY-ID',
-	principle_proposals_evidence_check: 'R-VAL-P07',
 
-	/**
-	 * Truncated constraint names as printed in PR #7
-	 * `_validate/result.pglite.reference.txt` (fixed-width →).
-	 */
-	position_proposals_ev: 'R-VAL-P07',
-	position_proposals_ca: 'R-VAL-P09',
-	positions_watch_only_no_trigge: 'R-VAL-P13',
-	positions_trigger_direction_ch: 'R-VAL-P15',
-	journal_trade_needs_inst: 'R-VAL-J03',
-	journal_price_needs_curr: 'R-VAL-J05',
-	principle_proposals_: 'R-VAL-P07',
-	re_subscriptions_date_o: 'R-VAL-RE05',
-
-	// bots / realestate / market
-	bot_clients_propose_only_fm: 'R-PERM-04',
+	// bots / realestate / helpers
 	bot_clients_principles_propose_only_fm: 'R-PERM-15',
 	bot_clients_importer_expires: 'R-PERM-10',
 	re_complexes_lat_check: 'R-VAL-M07',
 	re_subscriptions_date_order: 'R-VAL-RE05',
 	market_indicators_key_fkey: 'R-VAL-I03',
-	market_indi: 'R-VAL-I03', // truncated FK name in reference log
-
-	// qty helper (raised as exception text; also used as lookup key)
 	mowa_check_qty: 'R-VAL-M03'
 };
 
@@ -108,17 +102,10 @@ export function extractConstraintName(text: string | null | undefined): string |
 	return m?.[1] ?? null;
 }
 
-/** Exact or longest-prefix match (reference file truncates long names). */
+/** Exact match only against the full-name table. */
 export function mapConstraintToRuleId(constraint: string | null | undefined): string | null {
 	if (!constraint) return null;
-	if (CONSTRAINT_TO_RULE_ID[constraint]) return CONSTRAINT_TO_RULE_ID[constraint]!;
-	let best: { key: string; rule: string } | null = null;
-	for (const [key, rule] of Object.entries(CONSTRAINT_TO_RULE_ID)) {
-		if (constraint.startsWith(key) || key.startsWith(constraint)) {
-			if (!best || key.length > best.key.length) best = { key, rule };
-		}
-	}
-	return best?.rule ?? null;
+	return CONSTRAINT_TO_RULE_ID[constraint] ?? null;
 }
 
 export function unmappedMarker(error: DbErrorLike, constraintName: string | null): string {
@@ -127,11 +114,6 @@ export function unmappedMarker(error: DbErrorLike, constraintName: string | null
 	return `${UNMAPPED_MARKER}:${code}:${constraint}`;
 }
 
-/**
- * Collect rule IDs from a DB/PostgREST error.
- * Prefers explicit `[R-…]` / `[DISPLAY-ID]` tags; falls back to constraint map.
- * Never returns [] — unmapped → `UNMAPPED:<code>:<constraint>`.
- */
 export function mapDbErrorToRuleIds(error: DbErrorLike): string[] {
 	const ids = new Set<string>();
 	for (const field of [error.message, error.details, error.hint]) {
