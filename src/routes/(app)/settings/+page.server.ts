@@ -24,10 +24,10 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
-	/** BE-12: issue bot API key — plaintext in `apiKey` once only. */
-	issue: async ({ request, locals }) => {
+	/** BE-12: issue bot API key — plaintext in `apiKey` once only; Cache-Control: no-store. */
+	issue: async ({ request, locals, setHeaders }) => {
 		const user = requireUser(locals.user);
-		return handleIssueBotKey(locals.supabase, user.id, await request.formData());
+		return handleIssueBotKey(locals.supabase, user.id, await request.formData(), { setHeaders });
 	},
 	/** BE-12: revoke (soft) — no DELETE. */
 	revoke: async ({ request, locals }) => {

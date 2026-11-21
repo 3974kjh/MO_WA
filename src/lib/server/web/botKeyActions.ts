@@ -85,10 +85,16 @@ export type IssueSuccess = {
 	botClient: BotClientPublic;
 };
 
+export type IssueActionOpts = {
+	/** Set on the one-time apiKey success response so caches do not store the plaintext. */
+	setHeaders?: (headers: Record<string, string>) => void;
+};
+
 export async function handleIssueBotKey(
 	supabase: SupabaseClient<Database>,
 	ownerId: string,
-	form: FormData
+	form: FormData,
+	opts: IssueActionOpts = {}
 ) {
 	const pepper = env.MCP_KEY_PEPPER;
 	if (!pepper) {
@@ -168,6 +174,8 @@ export async function handleIssueBotKey(
 			expiresAt
 		});
 		if (!error && data) {
+			// Low-1: never cache the response that carries the one-time plaintext apiKey.
+			opts.setHeaders?.({ 'cache-control': 'no-store' });
 			const success: IssueSuccess = { ok: true, apiKey: generated.key, botClient: data };
 			return success;
 		}

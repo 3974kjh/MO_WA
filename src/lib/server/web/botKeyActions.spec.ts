@@ -2,19 +2,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
 	pepper,
+	envState,
 	issueBotClientRpc,
 	revokeBotClient,
 	setBotClientExpiry,
 	setBotClientRateLimit,
 	listBotClients
-} = vi.hoisted(() => ({
-	pepper: 'be12-test-pepper-not-a-secret-for-prod',
-	issueBotClientRpc: vi.fn(),
-	revokeBotClient: vi.fn(),
-	setBotClientExpiry: vi.fn(),
-	setBotClientRateLimit: vi.fn(),
-	listBotClients: vi.fn()
-}));
+} = vi.hoisted(() => {
+	const pepperValue = 'be12-test-pepper-not-a-secret-for-prod';
+	return {
+		pepper: pepperValue,
+		envState: { MCP_KEY_PEPPER: pepperValue as string | undefined },
+		issueBotClientRpc: vi.fn(),
+		revokeBotClient: vi.fn(),
+		setBotClientExpiry: vi.fn(),
+		setBotClientRateLimit: vi.fn(),
+		listBotClients: vi.fn()
+	};
+});
 
 vi.mock('@sveltejs/kit', async () => {
 	const actual = await vi.importActual<typeof import('@sveltejs/kit')>('@sveltejs/kit');
@@ -25,7 +30,7 @@ vi.mock('@sveltejs/kit', async () => {
 });
 
 vi.mock('$env/dynamic/private', () => ({
-	env: { MCP_KEY_PEPPER: pepper }
+	env: envState
 }));
 
 vi.mock('$lib/server/repo', () => ({
@@ -79,10 +84,12 @@ function fd(entries: Record<string, string>): FormData {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	envState.MCP_KEY_PEPPER = pepper;
 });
 
 describe('handleIssueBotKey', () => {
 	it('returns plaintext apiKey once and persists only prefix+hash via RPC', async () => {
+		const setHeaders = vi.fn();
 		issueBotClientRpc.mockImplementation(
 			async (_repo: unknown, args: { keyHash: string; keyPrefix: string; scopes: string[] }) => {
 				expect(args.keyHash).toMatch(/^[0-9a-f]{64}$/);
@@ -102,7 +109,8 @@ describe('handleIssueBotKey', () => {
 			fd({
 				name: 'preview-finance-manager',
 				profile: 'finance-manager'
-			})
+			}),
+			{ setHeaders }
 		);
 
 		expect(result).toMatchObject({ ok: true });
@@ -110,6 +118,7 @@ describe('handleIssueBotKey', () => {
 		expect(result.apiKey).toMatch(/^mowa_[a-z0-9]{10}_[A-Za-z0-9_-]{43}$/);
 		expect(result.botClient).not.toHaveProperty('key_hash');
 		expect(JSON.stringify(result.botClient)).not.toMatch(/key_hash/);
+		expect(setHeaders).toHaveBeenCalledWith({ 'cache-control': 'no-store' });
 
 		const m = /^mowa_[a-z0-9]{10}_([A-Za-z0-9_-]{43})$/.exec(result.apiKey);
 		expect(m).toBeTruthy();
@@ -122,6 +131,69 @@ describe('handleIssueBotKey', () => {
 		expect(scopes).toContain('reports:equity_analysis');
 		expect(scopes).not.toContain('valuations:write');
 		expect(scopes).not.toContain('principles:write');
+	});
+
+	it('Low-4: missing MCP_KEY_PEPPER → 500 server_misconfigured (fails if guard removed)', async () => {
+		envState.MCP_KEY_PEPPER = undefined;
+		const setHeaders = vi.fn();
+		const result = await handleIssueBotKey(
+			{} as never,
+			ownerId,
+			fd({ name: 'preview-finance-manager', profile: 'finance-manager' }),
+			{ setHeaders }
+		);
+		expect(result).toMatchObject({
+			status: 500,
+			data: expect.objectContaining({
+				ok: false,
+				code: 'server_misconfigured',
+				message: 'server_misconfigured'
+			})
+		});
+		expect(issueBotClientRpc).not.toHaveBeenCalled();
+		expect(setHeaders).not.toHaveBeenCalled();
+	});
+
+	it('Low-4: finance-manager + valuations:write is rejected', async () => {
+		const result = await handleIssueBotKey(
+			{} as never,
+			ownerId,
+			fd({
+				name: 'preview-fm-val',
+				profile: 'finance-manager',
+				scopes: JSON.stringify(['read', 'reports:equity_analysis', 'valuations:write'])
+			})
+		);
+		expect(result).toMatchObject({
+			status: 400,
+			data: expect.objectContaining({
+				ok: false,
+				ruleIds: ['R-PERM-10'],
+				message: expect.stringMatching(/valuations:write|principles:write/)
+			})
+		});
+		expect(issueBotClientRpc).not.toHaveBeenCalled();
+	});
+
+	it('Low-4: finance-manager + principles:write is rejected', async () => {
+		const result = await handleIssueBotKey(
+			{} as never,
+			ownerId,
+			fd({
+				name: 'preview-fm-pwrite',
+				profile: 'finance-manager',
+				scopes: JSON.stringify(['read', 'principles:propose', 'principles:write'])
+			})
+		);
+		expect(result).toMatchObject({
+			status: 400,
+			data: expect.objectContaining({
+				ok: false,
+				ruleIds: ['R-PERM-10'],
+				message: expect.stringMatching(/valuations:write|principles:write/)
+			})
+		});
+		expect(issueBotClientRpc).not.toHaveBeenCalled();
 	});
 
 	it('rejects propose scopes for non-finance-manager profiles', async () => {

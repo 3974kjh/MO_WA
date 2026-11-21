@@ -26,6 +26,42 @@ describe('BE-12 route contracts', () => {
 		expect(repo).toMatch(/issue_bot_client/);
 	});
 
+	it('Low-4: BOT_CLIENT_PUBLIC_COLUMNS parsed list must not include key_hash', () => {
+		const repo = readFileSync(
+			join(process.cwd(), 'src/lib/server/repo/botClients.repo.ts'),
+			'utf8'
+		);
+		const m = /export const BOT_CLIENT_PUBLIC_COLUMNS\s*=\s*'([^']+)'/.exec(repo);
+		expect(m).toBeTruthy();
+		const cols = m![1]!.split(',').map((s) => s.trim());
+		expect(cols.length).toBeGreaterThan(5);
+		expect(cols).toContain('key_prefix');
+		expect(cols).toContain('id');
+		// Must fail if key_hash is added to the constant (regex-only checks can still pass).
+		expect(cols).not.toContain('key_hash');
+		expect(cols.some((c) => c === 'key_hash' || c.endsWith('key_hash'))).toBe(false);
+	});
+
+	it('Low-1: issue wires setHeaders and settings issue form uses enhance', () => {
+		const server = readFileSync(
+			join(process.cwd(), 'src/routes/(app)/settings/+page.server.ts'),
+			'utf8'
+		);
+		const page = readFileSync(
+			join(process.cwd(), 'src/routes/(app)/settings/+page.svelte'),
+			'utf8'
+		);
+		const actions = readFileSync(
+			join(process.cwd(), 'src/lib/server/web/botKeyActions.ts'),
+			'utf8'
+		);
+		expect(server).toMatch(/setHeaders/);
+		expect(server).toMatch(/handleIssueBotKey\([\s\S]*\{\s*setHeaders\s*\}/);
+		expect(actions).toMatch(/cache-control['"]:\s*['"]no-store['"]/);
+		expect(page).toMatch(/from '\$app\/forms'/);
+		expect(page).toMatch(/use:enhance/);
+	});
+
 	it('issue action documents one-time apiKey field', () => {
 		const actions = readFileSync(
 			join(process.cwd(), 'src/lib/server/web/botKeyActions.ts'),

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { enhance } from '$app/forms';
 	import type { ActionData, PageData } from './$types';
 	import Button from '$lib/components/ui/Button.svelte';
 
@@ -38,7 +39,8 @@
 	<section class="block" aria-labelledby="bots-heading">
 		<h2 id="bots-heading">봇 클라이언트</h2>
 
-		<form method="POST" action="?/issue" class="issue" data-testid="bot-issue-form">
+		<!-- use:enhance: progressive enhancement so refresh does not resubmit the issue POST -->
+		<form method="POST" action="?/issue" class="issue" data-testid="bot-issue-form" use:enhance>
 			<label>
 				이름
 				<input name="name" required maxlength="120" placeholder="preview-finance-manager" />

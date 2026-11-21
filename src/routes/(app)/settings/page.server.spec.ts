@@ -93,8 +93,15 @@ describe('settings actions (BE-12)', () => {
 		body.set('name', 'preview-fm');
 		body.set('profile', 'finance-manager');
 		const request = new Request('http://x/settings?/issue', { method: 'POST', body });
-		await actions.issue!({ request, locals: { user: { id: 'u1' }, supabase: {} } } as never);
-		expect(handleIssueBotKey).toHaveBeenCalled();
+		const setHeaders = vi.fn();
+		await actions.issue!({
+			request,
+			locals: { user: { id: 'u1' }, supabase: {} },
+			setHeaders
+		} as never);
+		expect(handleIssueBotKey).toHaveBeenCalledWith(expect.anything(), 'u1', expect.any(FormData), {
+			setHeaders
+		});
 
 		handleRevokeBotKey.mockResolvedValue({ ok: true });
 		await actions.revoke!({
