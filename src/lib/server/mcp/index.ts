@@ -1,5 +1,16 @@
-/** BE-05: MCP audit log + response contract. Auth DB mode is BE-04 (not included). */
+/** BE-05 audit + BE-04 auth helpers (auth implementation lives in ./auth). */
 
+export {
+	assertToolScope,
+	filterToolsByScopes,
+	hasScope,
+	importAllUnlocksTool,
+	PRINCIPLES_WRITE_TOOLS,
+	PROPOSAL_TOOLS,
+	requiredScopeForTool,
+	SPIKE_TOOL_NAMES,
+	TOOL_REQUIRED_SCOPE
+} from './scopes';
 export {
 	assertPreviewHasNoRawBody,
 	BEARER_SECRET_RE,
@@ -50,15 +61,6 @@ export {
 	type ImpersonationKey,
 	type SanitizeIdentityResult
 } from './identity';
-export {
-	assertToolScope,
-	hasScope,
-	importAllUnlocksTool,
-	PRINCIPLES_WRITE_TOOLS,
-	PROPOSAL_TOOLS,
-	requiredScopeForTool,
-	TOOL_REQUIRED_SCOPE
-} from './scopes';
 export {
 	createDefaultToolAudit,
 	recordRateLimited,

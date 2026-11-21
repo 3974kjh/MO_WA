@@ -73,8 +73,7 @@ export const JWT_VALUE_RE = /\beyJ[\w-]+\.[\w-]+\.[\w-]+/g;
 /**
  * Bearer only when followed by MCP key or JWT — not "Bearer market…".
  */
-export const BEARER_SECRET_RE =
-	/Bearer\s+(?:mowa_[a-z0-9]{10}_\S+|eyJ[\w-]+\.[\w-]+\.[\w-]+)/gi;
+export const BEARER_SECRET_RE = /Bearer\s+(?:mowa_[a-z0-9]{10}_\S+|eyJ[\w-]+\.[\w-]+\.[\w-]+)/gi;
 
 export type BuildArgsPreviewOptions = {
 	maxBytes?: number;
@@ -134,9 +133,7 @@ export function looksLikeSecretValue(value: unknown): boolean {
 	MCP_KEY_VALUE_RE.lastIndex = 0;
 	JWT_VALUE_RE.lastIndex = 0;
 	BEARER_SECRET_RE.lastIndex = 0;
-	return (
-		MCP_KEY_VALUE_RE.test(value) || JWT_VALUE_RE.test(value) || BEARER_SECRET_RE.test(value)
-	);
+	return MCP_KEY_VALUE_RE.test(value) || JWT_VALUE_RE.test(value) || BEARER_SECRET_RE.test(value);
 }
 
 export function stableStringify(value: unknown): string {
@@ -301,11 +298,7 @@ async function writeAuditRow(
 ): Promise<void> {
 	if (!input.ctx?.ownerId) {
 		// No authenticated owner — Workers log only (design §5-6 auth-fail path).
-		onError?.(
-			new Error(
-				`mcp_audit_skip: no ctx for tool=${input.tool} result=${input.result}`
-			)
-		);
+		onError?.(new Error(`mcp_audit_skip: no ctx for tool=${input.tool} result=${input.result}`));
 		return;
 	}
 
@@ -377,9 +370,7 @@ export function assertPreviewHasNoRawBody(
 			const lower = toSnakeLower(key);
 			if (
 				value.length >= 24 &&
-				(BODY_LENGTH_ONLY_KEYS.has(lower) ||
-					lower.endsWith('_md') ||
-					lower.endsWith('_body')) &&
+				(BODY_LENGTH_ONLY_KEYS.has(lower) || lower.endsWith('_md') || lower.endsWith('_body')) &&
 				serialized.includes(value)
 			) {
 				throw new Error('args_preview must not contain raw body content');
