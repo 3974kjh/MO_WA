@@ -132,6 +132,9 @@ describe('FE-09 설정 화면', () => {
 		});
 		expect(text(issued.container.querySelector('[data-testid="issued-api-key"]'))).toContain(KEY);
 		expect(btn('복사')).toBeTruthy();
+		// L-2: 원문은 화면 전체 마크업에서 정확히 한 번(표시 영역)만. data-*·value 등 속성 사본도 잡는다.
+		expect(document.body.innerHTML.split(KEY).length - 1).toBe(1);
+		expect(document.documentElement.outerHTML.split(KEY).length - 1).toBe(1);
 		issued.unmount();
 
 		// 새로고침 = form 없이 다시 렌더
