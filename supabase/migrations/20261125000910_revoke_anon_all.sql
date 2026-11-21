@@ -1,6 +1,12 @@
 -- BE-01 acceptance: anon key must be denied select on every public table.
 -- Rebuild drafts revoke anon on new objects; legacy finance tables still had
 -- default grants until GATED drop. Close that gap without enabling anon RLS bypass.
+--
+-- Privilege RULE (repeat in every new migration that creates functions/tables):
+--   * New functions must not grant PUBLIC/anon EXECUTE; grant only roles that need it.
+--   * New tables must REVOKE TRUNCATE from service_role (and anon/PUBLIC as needed).
+-- ALTER DEFAULT PRIVILEGES below (and in 000100) prevent defaults from reappearing.
+
 do $$
 declare
   t text;
@@ -14,6 +20,11 @@ $$;
 alter default privileges in schema public revoke all on tables from anon;
 alter default privileges in schema public revoke all on sequences from anon;
 alter default privileges in schema public revoke all on functions from anon;
+alter default privileges in schema public revoke execute on functions from public;
+alter default privileges in schema public revoke execute on functions from anon;
+alter default privileges in schema public grant execute on functions to authenticated;
+alter default privileges in schema public grant execute on functions to service_role;
+alter default privileges in schema public revoke truncate on tables from service_role;
 
 -- L-3: revoke EXECUTE from PUBLIC as well as anon; keep authenticated / service_role / needed roles
 do $$
@@ -63,12 +74,43 @@ revoke all on function public.expire_stale_proposals() from public, anon, authen
 revoke all on function public.mowa_next_display_no(uuid, text) from public, anon, authenticated, service_role;
 revoke all on function public.mowa_setting(uuid, text, jsonb) from public, anon;
 
--- Revoke service_role TRUNCATE on sensitive tables (row triggers do not fire on TRUNCATE)
+-- Revoke service_role TRUNCATE on every public table (owned-data + catalog helpers).
+-- Explicit list kept for review clarity; loop ensures none are left out.
 revoke truncate on table
+  public.instruments,
   public.positions,
-  public.position_proposals,
+  public.journal_entries,
+  public.reports,
+  public.report_revisions,
   public.report_sources,
+  public.report_instruments,
   public.attachments,
+  public.price_snapshots,
+  public.portfolio_snapshots,
+  public.targets_valuation,
+  public.market_indicator_keys,
+  public.market_indicators,
+  public.decisions,
+  public.events,
+  public.re_complexes,
+  public.re_complex_snapshots,
+  public.re_market_stats,
+  public.re_subscriptions,
   public.app_settings,
-  public.bot_clients
+  public.bot_clients,
+  public.mcp_rate_buckets,
+  public.mcp_audit_log,
+  public.display_sequences,
+  public.position_proposals,
+  public.principle_proposals,
+  public.mowa_backup_log
 from service_role;
+
+do $$
+declare t text;
+begin
+  for t in select tablename from pg_tables where schemaname = 'public' loop
+    execute format('revoke truncate on table public.%I from service_role', t);
+  end loop;
+end
+$$;

@@ -1,5 +1,10 @@
 -- MO_WA rebuild M1 · DRAFT (미적용) · 공용 확장/헬퍼
 -- 규칙 기준: /workspace/mo_wa/rules.md v0.1 (규칙 ID를 주석에 표기)
+--
+-- Privilege RULE (every new migration must follow):
+--   * New functions: no PUBLIC/anon EXECUTE by default; grant only roles that need it (usually authenticated and/or service_role).
+--   * New tables: no service_role TRUNCATE by default; include matching REVOKE TRUNCATE (and anon/PUBLIC as needed).
+--   Reinforced in 000910; ALTER DEFAULT PRIVILEGES below covers objects created after this file.
 
 create schema if not exists extensions;
 -- Match Supabase: pgcrypto/pg_trgm live in extensions (call as extensions.digest).
@@ -7,6 +12,15 @@ create extension if not exists "pgcrypto" with schema extensions;
 create extension if not exists "pg_trgm" with schema extensions;
 grant usage on schema extensions to anon, authenticated, service_role;
 grant execute on all functions in schema extensions to anon, authenticated, service_role;
+
+-- Default privileges for objects created by the migration role going forward
+alter default privileges in schema public revoke execute on functions from public;
+alter default privileges in schema public revoke execute on functions from anon;
+alter default privileges in schema public grant execute on functions to authenticated;
+alter default privileges in schema public grant execute on functions to service_role;
+alter default privileges in schema public revoke all on tables from anon;
+alter default privileges in schema public revoke truncate on tables from service_role;
+alter default privileges in schema public revoke all on sequences from anon;
 
 create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$

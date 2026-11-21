@@ -20,9 +20,9 @@ create table public.principle_proposals (
   proposed_body_md text not null check (char_length(btrim(proposed_body_md)) > 0 and octet_length(proposed_body_md) <= 1048576),  -- 제안문 = 새 본문 전체(R-VAL-S02 한도)
   reason_md text not null check (char_length(reason_md) between 1 and 4000),          -- 이유
   evidence jsonb not null check (jsonb_typeof(evidence) = 'array' and jsonb_array_length(evidence) >= 1),  -- 근거 필수(사용자 진술 가능)
-  proposer_type text not null check (proposer_type in ('bot','user')),                 -- 서버가 채움
-  proposed_by_bot_id uuid references public.bot_clients(id) on delete set null,
-  proposed_by_user_id uuid,
+  proposed_by_type text not null check (proposed_by_type in ('bot','user')),                 -- 서버가 채움
+  proposed_by uuid references public.bot_clients(id) on delete set null,
+  proposed_by_user uuid,
   client_ref text,                                                                      -- 멱등(R-PERM-11)
   status text not null default 'pending'
     check (status in ('pending','on_hold','approved','rejected','superseded','cancelled','expired','conflict')),
@@ -40,8 +40,8 @@ create table public.principle_proposals (
   updated_at timestamptz not null default now(),
   unique (owner_id, client_ref),
   constraint principle_proposals_one_proposer check (
-    (proposer_type = 'bot'  and proposed_by_bot_id is not null and proposed_by_user_id is null) or
-    (proposer_type = 'user' and proposed_by_user_id is not null and proposed_by_bot_id is null)),
+    (proposed_by_type = 'bot'  and proposed_by is not null and proposed_by_user is null) or
+    (proposed_by_type = 'user' and proposed_by_user is not null and proposed_by is null)),
   constraint principle_proposals_owner_display_no_key unique (owner_id, display_no)
 );
 create index principle_proposals_owner_status_idx on public.principle_proposals (owner_id, status, created_at desc);
@@ -59,13 +59,13 @@ declare
 begin
   if tg_op = 'INSERT' then
     if public.mowa_is_service() then
-      new.proposer_type := 'bot';
-      new.proposed_by_bot_id := public.mowa_current_bot();
-      new.proposed_by_user_id := null;
-      if new.proposed_by_bot_id is null then raise exception '[R-PERM-03] missing bot identity' using errcode = '42501'; end if;
+      new.proposed_by_type := 'bot';
+      new.proposed_by := public.mowa_current_bot();
+      new.proposed_by_user := null;
+      if new.proposed_by is null then raise exception '[R-PERM-03] missing bot identity' using errcode = '42501'; end if;
       -- M-4: revoked/expired/other-owner rejected
       perform public.mowa_assert_bot_tenant(new.owner_id);
-      if not exists (select 1 from public.bot_clients b where b.id = new.proposed_by_bot_id and b.owner_id = new.owner_id
+      if not exists (select 1 from public.bot_clients b where b.id = new.proposed_by and b.owner_id = new.owner_id
                        and b.profile = 'finance-manager' and 'principles:propose' = any(b.scopes)
                        and b.revoked_at is null
                        and (b.expires_at is null or b.expires_at > now())) then
@@ -73,9 +73,9 @@ begin
       end if;
     elsif auth.uid() is not null and coalesce(auth.role(), '') = 'authenticated' then
       if new.owner_id <> auth.uid() then raise exception 'owner mismatch' using errcode = '42501'; end if;
-      new.proposer_type := 'user';
-      new.proposed_by_user_id := auth.uid();
-      new.proposed_by_bot_id := null;
+      new.proposed_by_type := 'user';
+      new.proposed_by_user := auth.uid();
+      new.proposed_by := null;
     else
       raise exception '[R-PERM-15] proposals come from finance-manager (MCP) or a user session only' using errcode = '42501';
     end if;
@@ -118,8 +118,8 @@ begin
     end if;
     if new.status <> 'cancelled'
        or old.status not in ('pending','on_hold')
-       or old.proposer_type <> 'bot'
-       or old.proposed_by_bot_id is distinct from public.mowa_current_bot()
+       or old.proposed_by_type <> 'bot'
+       or old.proposed_by is distinct from public.mowa_current_bot()
        or new.owner_id is distinct from old.owner_id
        or (new.proposed_body_md, new.reason_md, new.base_version, new.base_body_hash, new.evidence, new.display_no, new.principle_id)
           is distinct from (old.proposed_body_md, old.reason_md, old.base_version, old.base_body_hash, old.evidence, old.display_no, old.principle_id)
@@ -248,11 +248,11 @@ begin
     update public.principle_proposals set acknowledged_at = now(), acknowledged_by = v_uid
      where id = p_id and owner_id = v_uid and status in ('conflict','expired') and acknowledged_at is null returning * into v_p;
   elsif p_action = 'cancel' then
-    if exists (select 1 from public.principle_proposals where id = p_id and owner_id = v_uid and proposer_type <> 'user') then
+    if exists (select 1 from public.principle_proposals where id = p_id and owner_id = v_uid and proposed_by_type <> 'user') then
       raise exception '[R-PERM-05] users reject bot proposals instead of cancelling them (Q-29)' using errcode = '42501';
     end if;
     update public.principle_proposals set status = 'cancelled', decided_at = now(), decided_by = v_uid, decision_note = p_note
-     where id = p_id and owner_id = v_uid and proposer_type = 'user' and proposed_by_user_id = v_uid
+     where id = p_id and owner_id = v_uid and proposed_by_type = 'user' and proposed_by_user = v_uid
        and status in ('pending','on_hold') returning * into v_p;
   else
     raise exception 'unknown action %', p_action using errcode = '22023';

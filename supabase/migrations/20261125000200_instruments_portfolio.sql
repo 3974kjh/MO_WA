@@ -29,6 +29,38 @@ create index instruments_name_trgm_idx on public.instruments using gin (name ext
 create trigger instruments_updated_at before update on public.instruments
   for each row execute function public.set_updated_at();
 
+-- Cross-tenant instrument_id hole: any row with instrument_id must share owner_id with that instrument.
+-- Unique keys alone are not enough. RULE: every new table with instrument_id attaches mowa_instrument_owner_guard
+-- (or calls mowa_assert_instrument_owner). Nullable instrument_id is allowed when null.
+create or replace function public.mowa_assert_instrument_owner(p_owner uuid, p_instrument uuid)
+returns void
+language plpgsql
+stable
+set search_path = public, pg_temp
+as $$
+begin
+  if p_instrument is null then
+    return;
+  end if;
+  if not exists (
+    select 1 from public.instruments i where i.id = p_instrument and i.owner_id = p_owner
+  ) then
+    raise exception '[R-PERM-01] instrument_id must belong to the same owner' using errcode = '42501';
+  end if;
+end;
+$$;
+
+create or replace function public.mowa_instrument_owner_guard()
+returns trigger language plpgsql as $$
+begin
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+  perform public.mowa_assert_instrument_owner(new.owner_id, new.instrument_id);
+  return new;
+end;
+$$;
+
 -- D3 보유·매수계획. qty·avg_price·status·currency는 승인 큐로만(R-PERM-02). trigger_price·breakeven은 finance-manager 직접 W(R-PERM-17, Q-13 확정)
 create table public.positions (
   id uuid primary key default gen_random_uuid(),
@@ -63,6 +95,8 @@ create unique index positions_one_active_per_status
 create index positions_owner_status_idx on public.positions (owner_id, status) where archived_at is null;
 create trigger positions_updated_at before update on public.positions
   for each row execute function public.set_updated_at();
+create trigger positions_instrument_owner before insert or update of owner_id, instrument_id on public.positions
+  for each row execute function public.mowa_instrument_owner_guard();
 
 -- D4 매매일지
 create table public.journal_entries (
@@ -98,6 +132,8 @@ create index journal_instrument_date_idx on public.journal_entries (instrument_i
 create index journal_owner_kind_state_idx on public.journal_entries (owner_id, kind, state);
 create trigger journal_entries_updated_at before update on public.journal_entries
   for each row execute function public.set_updated_at();
+create trigger journal_entries_instrument_owner before insert or update of owner_id, instrument_id on public.journal_entries
+  for each row execute function public.mowa_instrument_owner_guard();
 -- R-VAL-J02/J03: buy/sell 조건부 필수(Q-16: plan/thought/review는 instrument 선택). strict/migration 모드 차이는 domain(zod)에서 검사.
 
 -- Q-16 / R-VAL-C04: journal_entries.tickers[]의 모든 코드는 같은 owner의 instruments에 있어야 한다(별칭 런타임 변환 없음, Q-24·R-VAL-C05)

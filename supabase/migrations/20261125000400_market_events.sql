@@ -16,9 +16,11 @@ create table public.price_snapshots (
   extra jsonb not null default '{}'::jsonb,
   source_bot_id uuid,
   created_at timestamptz not null default now(),
-  unique (instrument_id, as_of)        -- R-VAL-I02 중복=덮어쓰기
+  unique (instrument_id, as_of)        -- R-VAL-I02 중복=덮어쓰기 (keep; owner match is via mowa_instrument_owner_guard)
 );
 create index price_snapshots_owner_date_idx on public.price_snapshots (owner_id, as_of desc);
+create trigger price_snapshots_instrument_owner before insert or update of owner_id, instrument_id on public.price_snapshots
+  for each row execute function public.mowa_instrument_owner_guard();
 
 create table public.portfolio_snapshots (
   id bigint generated always as identity primary key,
@@ -51,6 +53,8 @@ create table public.targets_valuation (                -- 이름은 plan §3 / r
   unique (owner_id, instrument_id, as_of, source, source_name)
 );
 create index targets_valuation_instr_idx on public.targets_valuation (instrument_id, as_of desc);
+create trigger targets_valuation_instrument_owner before insert or update of owner_id, instrument_id on public.targets_valuation
+  for each row execute function public.mowa_instrument_owner_guard();
 
 -- R-VAL-I03: 등록된 지표 키만 (목록 확정은 '확인 필요' → 테이블로 두고 마이그레이션 없이 추가)
 create table public.market_indicator_keys (
@@ -99,6 +103,8 @@ create table public.decisions (
 create index decisions_owner_status_idx on public.decisions (owner_id, status, due_date) where archived_at is null;
 create trigger decisions_updated_at before update on public.decisions
   for each row execute function public.set_updated_at();
+create trigger decisions_instrument_owner before insert or update of owner_id, instrument_id on public.decisions
+  for each row execute function public.mowa_instrument_owner_guard();
 
 create table public.events (
   id uuid primary key default gen_random_uuid(),
@@ -125,3 +131,5 @@ create table public.events (
 create index events_owner_date_idx on public.events (owner_id, event_date) where archived_at is null;
 create trigger events_updated_at before update on public.events
   for each row execute function public.set_updated_at();
+create trigger events_instrument_owner before insert or update of owner_id, instrument_id on public.events
+  for each row execute function public.mowa_instrument_owner_guard();

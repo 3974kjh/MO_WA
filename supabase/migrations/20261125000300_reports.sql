@@ -123,6 +123,8 @@ create table public.report_instruments (
   primary key (report_id, instrument_id)
 );
 create index report_instruments_instr_idx on public.report_instruments (instrument_id);
+create trigger report_instruments_instrument_owner before insert or update of owner_id, instrument_id on public.report_instruments
+  for each row execute function public.mowa_instrument_owner_guard();
 
 create table public.attachments (
   id uuid primary key default gen_random_uuid(),

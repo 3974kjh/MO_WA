@@ -363,8 +363,8 @@ await ok('R-PERM-16 같은 봇 재작성은 허용(version+1)', () => fm(`insert
 const pexp = async () => (await user(`select round(extract(epoch from (expires_at - created_at))/86400)::int d from position_proposals order by created_at desc limit 1`)).rows[0].d;
 eq('Q-28 기본 만료 7일(서버가 채움)', await pexp(), 7);
 await user(`insert into app_settings(owner_id,key,value) values ('${U}','proposal_expiry_days','14') on conflict (owner_id,key) do update set value=excluded.value`);
-const pp1 = (await ok('principle_proposals: finance-manager 원칙 개정 제안(pending)', () => fm(`insert into principle_proposals(owner_id,principle_id,clause_ref,proposed_body_md,reason_md,evidence,proposer_type,proposed_by_user_id,status) values ('${U}','${urep}','3-2 손절','# 원칙\n손절 -8%','변동성 확대','[{"user_statement":"손절선 낮추자","stated_at":"2026-11-20T21:00:00+09:00"}]','user','${U}','pending') returning id, proposer_type, proposed_by_bot_id, proposed_by_user_id, base_version, length(base_body_hash) h, display_no, round(extract(epoch from (expires_at-created_at))/86400)::int d`))).rows[0];
-eq('R-PERM-03 봇이 user를 사칭해도 서버가 bot·FM으로 고정 · base_version·본문 해시 · Q-28 설정 14일', [pp1.proposer_type, pp1.proposed_by_bot_id === FM, pp1.proposed_by_user_id, pp1.base_version, pp1.h, pp1.d], ['bot', true, null, 1, 64, 14]);
+const pp1 = (await ok('principle_proposals: finance-manager 원칙 개정 제안(pending)', () => fm(`insert into principle_proposals(owner_id,principle_id,clause_ref,proposed_body_md,reason_md,evidence,proposed_by_type,proposed_by_user,status) values ('${U}','${urep}','3-2 손절','# 원칙\n손절 -8%','변동성 확대','[{"user_statement":"손절선 낮추자","stated_at":"2026-11-20T21:00:00+09:00"}]','user','${U}','pending') returning id, proposed_by_type, proposed_by, proposed_by_user, base_version, length(base_body_hash) h, display_no, round(extract(epoch from (expires_at-created_at))/86400)::int d`))).rows[0];
+eq('R-PERM-03 봇이 user를 사칭해도 서버가 bot·FM으로 고정 · base_version·본문 해시 · Q-28 설정 14일', [pp1.proposed_by_type, pp1.proposed_by === FM, pp1.proposed_by_user, pp1.base_version, pp1.h, pp1.d], ['bot', true, null, 1, 64, 14]);
 await err('R-PERM-15 원칙 제안은 position_proposals에 못 넣음', () => fm(`insert into position_proposals(owner_id,change_type,position_id,proposed_values,evidence) values ('${U}','amend_clause','${pos.id}','{}','[{}]')`), /R-PERM-15/);
 await err('D8 equity-analyst는 원칙 제안 불가', () => ea(`insert into principle_proposals(owner_id,principle_id,proposed_body_md,reason_md,evidence) values ('${U}','${urep}','x','y','[{"url":"https://x"}]')`), /R-PERM-04/);
 await err('R-PERM-15 대상은 principles 리포트만', () => fm(`insert into principle_proposals(owner_id,principle_id,proposed_body_md,reason_md,evidence) values ('${U}','${rep}','x','y','[{"url":"https://x"}]')`), /R-PERM-15/);
@@ -374,7 +374,7 @@ await err('R-PERM-05 봇이 원칙 제안 승인', () => fm(`select approve_prin
 await err('R-PERM-01 다른 봇이 원칙 제안 취소', () => ea(`update principle_proposals set status='cancelled' where id='${pp1.id}'`), /R-PERM|own|cancel/);
 await err('Q-01 사용자도 원칙 제안 삭제 불가', () => user(`delete from principle_proposals where id='${pp1.id}'`), /permission denied/);
 eq('G-1 원칙 제안도 보류 가능(on_hold)', (await user(`select status from decide_principle_proposal('${pp1.id}','hold')`)).rows[0].status, 'on_hold');
-const pp2 = (await ok('사용자 작성 원칙 제안(웹 세션)', () => user(`insert into principle_proposals(owner_id,principle_id,proposed_body_md,reason_md,evidence) values ('${U}','${urep}','# 원칙 v2\n손절 -9%','재검토','[{"user_statement":"-9%로","stated_at":"2026-11-21T11:00:00+09:00"}]') returning id, proposer_type`))).rows[0];
+const pp2 = (await ok('사용자 작성 원칙 제안(웹 세션)', () => user(`insert into principle_proposals(owner_id,principle_id,proposed_body_md,reason_md,evidence) values ('${U}','${urep}','# 원칙 v2\n손절 -9%','재검토','[{"user_statement":"-9%로","stated_at":"2026-11-21T11:00:00+09:00"}]') returning id, proposed_by_type`))).rows[0];
 eq('on_hold에도 superseded 적용 + superseded_by', (await user(`select status, superseded_by from principle_proposals where id='${pp1.id}'`)).rows[0], { status: 'superseded', superseded_by: pp2.id });
 const ap2 = (await user(`select status, applied_report_id, base_version from approve_principle_proposal('${pp2.id}')`)).rows[0];
 eq('사용자 원칙 제안 승인 → approved + 새 principles 행(사용자 작성)', (await user(`select 'approved' as status, r.kind, r.source_bot_id is null as by_user, r.body_md from reports r where r.id='${ap2.applied_report_id}'`)).rows[0], { status: 'approved', kind: 'principles', by_user: true, body_md: '# 원칙 v2\n손절 -9%' });
@@ -510,6 +510,25 @@ await err('M-3: mowa_backup_log verified UPDATE 거부', () => db.query(`update 
 await err('L-1: authenticated는 다른 owner settings 읽기 불가', () => other(`select public.mowa_setting('${U}','proposal_expiry_days','7'::jsonb)`), /R-PERM-01|another owner/);
 await err('authenticated는 bot_clients 직접 insert 불가', () => user(`insert into bot_clients(owner_id,name,profile,key_prefix,key_hash) values ('${U}','web-key','custom','webwebweb1','${H}')`), /permission denied/);
 
+console.log('\n[instrument_id same-owner]');
+// instX is created below in M-4; create early fixture here for owner-mismatch tests
+const instXEarly = (
+	await other(
+		`insert into instruments(owner_id,ticker,name,market,asset_type) values ('${X}','NVDA','NVIDIA','NASDAQ','stock') returning id`
+	)
+).rows[0].id;
+await err('other-owner instrument rejected on positions', () => user(`insert into positions(owner_id,instrument_id,status,currency,qty,avg_price) values ('${U}','${instXEarly}','holding','USD',1,100)`), /R-PERM-01|same owner/);
+await err('other-owner instrument rejected on price_snapshots', () => fm(`insert into price_snapshots(owner_id,instrument_id,as_of,close,currency) values ('${U}','${instXEarly}','2026-11-22',1,'USD')`), /R-PERM-01|same owner/);
+await err('other-owner instrument rejected on journal_entries', () => user(`insert into journal_entries(owner_id,entry_date,kind,title,instrument_id) values ('${U}','2026-11-22','buy','x','${instXEarly}')`), /R-PERM-01|same owner/);
+await err('other-owner instrument rejected on decisions', () => user(`insert into decisions(owner_id,title,instrument_id) values ('${U}','x','${instXEarly}')`), /R-PERM-01|same owner/);
+await err('other-owner instrument rejected on events', () => user(`insert into events(owner_id,event_date,title,domain,kind,instrument_id) values ('${U}','2026-12-01','x','stock','earn','${instXEarly}')`), /R-PERM-01|same owner/);
+await err('other-owner instrument rejected on report_instruments', () => user(`insert into report_instruments(owner_id,report_id,instrument_id) values ('${U}','${rep}','${instXEarly}')`), /R-PERM-01|same owner/);
+await err('other-owner instrument rejected on position_proposals', () => fm(`insert into position_proposals(owner_id,change_type,instrument_id,proposed_values,evidence) values ('${U}','open_holding','${instXEarly}','{"qty":1,"avg_price":10,"currency":"USD"}','[{"url":"https://own"}]')`), /R-PERM-01|same owner|instrument/);
+await ok('same-owner instrument allowed on positions', () => user(`insert into positions(owner_id,instrument_id,status,currency,qty,avg_price) values ('${U}','${g}','holding','USD',2,300) returning id`));
+await ok('same-owner instrument allowed on price_snapshots', () => fm(`insert into price_snapshots(owner_id,instrument_id,as_of,close,currency) values ('${U}','${g}','2026-11-22',301,'USD')`));
+await ok('same-owner instrument allowed on report_instruments', () => user(`insert into report_instruments(owner_id,report_id,instrument_id) values ('${U}','${rep}','${g}')`));
+eq('price_snapshots keeps unique (instrument_id, as_of)', (await db.query(`select indexdef from pg_indexes where schemaname='public' and tablename='price_snapshots' and indexdef ilike '%unique%instrument_id%as_of%'`)).rows.length >= 1, true);
+
 console.log('\n[M-4 tenant · revoked/expired · CASCADE · TRUNCATE]');
 const FMX = (
 	await db.query(
@@ -564,6 +583,23 @@ await ok('M-4: same-owner EA snapshot upsert stamps calling bot', async () => {
 await err('M-4: FM cannot write targets_valuation (equity-analyst only)', () => fm(`insert into targets_valuation(owner_id,instrument_id,as_of,target_price,currency,opinion,source,report_id) values ('${U}','${inst}','2026-11-21',1,'KRW','buy','internal','${rep}')`), /R-PERM-04/);
 await err('TRUNCATE positions denied to service_role', () => run('service_role', null, FM, 'truncate public.positions'), /permission denied/);
 await err('TRUNCATE bot_clients denied to service_role', () => run('service_role', null, FM, 'truncate public.bot_clients'), /permission denied/);
+await err('TRUNCATE principle_proposals denied to service_role', () => run('service_role', null, FM, 'truncate public.principle_proposals'), /permission denied/);
+await err('TRUNCATE reports denied to service_role', () => run('service_role', null, FM, 'truncate public.reports'), /permission denied/);
+await err('TRUNCATE instruments denied to service_role', () => run('service_role', null, FM, 'truncate public.instruments'), /permission denied/);
+await err('TRUNCATE display_sequences denied to service_role', () => run('service_role', null, FM, 'truncate public.display_sequences'), /permission denied/);
+eq(
+	'default privileges revoke PUBLIC execute on new functions',
+	(
+		await db.query(`
+      select defacldefault is false or not exists (
+        select 1 from aclexplode(defaclacl) a where a.grantee = 0 and a.privilege_type = 'EXECUTE'
+      ) as ok
+      from pg_default_acl
+     where defaclnamespace = 'public'::regnamespace and defaclobjtype = 'f'
+     limit 1`)
+	).rows[0]?.ok !== false,
+	true
+);
 await err('anon cannot execute mowa_assert_bot_tenant', () => run('anon', null, null, `select public.mowa_assert_bot_tenant('${U}')`), /permission denied/);
 const Z = '33333333-3333-3333-3333-333333333333';
 await db.query(`insert into auth.users(id, email) values ('${Z}','cascade-del@x')`);

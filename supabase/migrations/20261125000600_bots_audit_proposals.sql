@@ -632,6 +632,8 @@ create trigger a0_position_proposals_display_no before insert or update on publi
   for each row execute function public.mowa_display_no_assign('position_proposal');
 create trigger a_position_proposals_prepare before insert or update or delete on public.position_proposals
   for each row execute function public.position_proposals_prepare();
+create trigger position_proposals_instrument_owner before insert or update of owner_id, instrument_id on public.position_proposals
+  for each row execute function public.mowa_instrument_owner_guard();
 
 -- 같은 대상의 이전 pending은 superseded (R-PERM-13)
 -- security definer: 사용자 작성 제안(G-4)도 이전 제안을 superseded로 바꿀 수 있게(사용자는 update 권한 없음)
