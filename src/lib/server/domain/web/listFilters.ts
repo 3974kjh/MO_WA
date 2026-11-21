@@ -4,7 +4,7 @@
  * `q`는 `.or()` 문자열에 들어가므로 PostgREST 예약 문자(`,` `(` `)` `"` `:` `\`)와
  * LIKE 와일드카드(`%` `_` `*`), 따옴표를 공백으로 바꾼 뒤 큰따옴표로 감싼다.
  * FE-04: 브리핑 q는 `reports.search_tsv` 전문 검색 + title(pg_trgm)/headline 부분 일치(briefingTextFilter).
- * 일지 q는 journal_entries에 tsvector 컬럼이 없어(마이그레이션 필요) title/memo_md ilike를 유지한다.
+ * 일지 q는 `journal_entries.search_tsv` 전문 검색 + title/memo_md 부분 일치(journalTextFilter).
  *
  * `tag`는 허용 문자(문자·숫자·공백·`._-`)만 통과시키고, 배열 원소를 큰따옴표로 감싼
  * `{"tag"}` 리터럴로 보낸다(postgrest-js `contains(string[])`는 원소를 따옴표 없이 잇는다).
@@ -46,6 +46,19 @@ export function briefingTextFilter(q: string): string | null {
 	if (!v) return null;
 	const term = v.slice(2, -2);
 	return [`search_tsv.wfts(simple)."${term}"`, `title.ilike.${v}`, `headline.ilike.${v}`].join(',');
+}
+
+/**
+ * 일지 검색어: `journal_entries.search_tsv`(title·memo_md, 'simple' 설정, GIN `journal_search_gin`) 전문 검색과
+ * 부분 일치(`title`, `memo_md`)를 함께 건다. 하나라도 맞으면 통과.
+ * 'simple' 사전은 한국어 조사를 떼지 않아 붙은 단어는 전문 검색에 안 잡히므로 부분 일치를 남긴다.
+ * 값은 ilikeValue()와 같은 규칙으로 예약 문자를 지운 뒤 큰따옴표로 감싼다(or() 주입 방지).
+ */
+export function journalTextFilter(q: string): string | null {
+	const v = ilikeValue(q);
+	if (!v) return null;
+	const term = v.slice(2, -2);
+	return [`search_tsv.wfts(simple)."${term}"`, `title.ilike.${v}`, `memo_md.ilike.${v}`].join(',');
 }
 
 /** 필터 적용에 필요한 최소 빌더 모양(Supabase PostgrestFilterBuilder와 호환). */
@@ -90,7 +103,7 @@ export function applyJournalFilter<Q extends FilterableQuery<Q>>(
 	let out = q;
 	if (f.type) out = out.eq('kind', f.type);
 	if (f.ticker) out = out.contains('tickers', [f.ticker]);
-	const text = f.q ? ilikeAnyOf(['title', 'memo_md'], f.q) : null;
+	const text = f.q ? journalTextFilter(f.q) : null;
 	if (text) out = out.or(text);
 	return out;
 }
