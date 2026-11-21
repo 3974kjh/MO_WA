@@ -14,8 +14,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// MCP uses Bearer keys; skip cookie Auth round-trips (BE-02 / M-3).
 	if (isMcpApiPath(event.url.pathname)) {
 		event.locals.user = null;
-		// OPTIONS may be unauthenticated; POST must not bypass Bearer auth.
-		if (event.request.method === 'OPTIONS') {
+		// OPTIONS: unauthenticated preflight. Non-POST (GET/DELETE): reach route → 405.
+		// POST without Authorization: early 401; +server.ts still authenticates when a Bearer is present.
+		if (event.request.method === 'OPTIONS' || event.request.method !== 'POST') {
 			return resolve(event);
 		}
 		if (!event.request.headers.get('authorization')) {
