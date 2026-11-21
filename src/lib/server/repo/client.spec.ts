@@ -84,6 +84,13 @@ describe('repo identity / M-4', () => {
 		expect(fromCalled).toBe(false);
 	});
 
+	it('bindRepoDb refuses to overwrite an already-bound RepoClient', async () => {
+		const { bindRepoDb } = await import('./db');
+		const fakeDb = { from: () => ({}) } as never;
+		const repo = forUser(fakeDb, 'owner-1');
+		expect(() => bindRepoDb(repo, fakeDb)).toThrow(/already bound/i);
+	});
+
 	it('rejects plain objects, Symbol brands, spreads, and post-mint mutation for forBot', () => {
 		expect(() =>
 			forBot({ ownerId: 'o', botClientId: 'b' } as never)

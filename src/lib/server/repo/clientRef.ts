@@ -4,11 +4,15 @@
  * Same client_ref + same content → return the existing row.
  * Same client_ref + different content → CONFLICT (do not map to J06).
  * J06 is the WARN for same-day/same-title rewrite when there is no client_ref.
+ *
+ * Comparison uses attempted (input) keys only, excluding server-filled columns.
+ * Nested values are compared via recursively key-sorted canonical JSON —
+ * never `JSON.stringify` with a replacer key array (that filters nested keys).
  */
 import { mapDbErrorToRuleIds } from '$lib/server/domain/validation/mapDbError';
 import type { RepoClient } from './client';
 import { fromRepo } from './db';
-import { requireOwnerId, withOwnerFilter } from './owner';
+import { requireOwnerId } from './owner';
 
 export const CLIENT_REF_UNIQUE_KEYS = [
 	'journal_entries_owner_id_client_ref_key',
@@ -25,32 +29,79 @@ export type ClientRefTable =
 	| 'position_proposals'
 	| 'principle_proposals';
 
-function isClientRefUniqueViolation(error: { message?: string | null; code?: string | null }): boolean {
-	const ids = mapDbErrorToRuleIds(error);
-	return ids.includes('R-PERM-11');
-}
-
-function stablePayload(row: Record<string, unknown>, ignore: readonly string[]): string {
-	const out: Record<string, unknown> = {};
-	for (const [k, v] of Object.entries(row)) {
-		if (ignore.includes(k)) continue;
-		out[k] = v;
-	}
-	return JSON.stringify(out, Object.keys(out).sort());
-}
-
-const COMPARE_IGNORE = [
+const SERVER_FILLED_KEYS = new Set([
 	'id',
+	'owner_id',
+	'display_id',
+	'display_no',
 	'created_at',
 	'updated_at',
+	'status',
+	'source_bot_id',
 	'archived_at',
 	'version',
 	'approval_version',
-	'display_no',
-	'display_id',
-	'source_bot_id',
-	'owner_id'
-] as const;
+	'attention_started_at',
+	'acknowledged_at',
+	'decided_at',
+	'expires_at',
+	'proposed_by_type',
+	'proposed_by',
+	'proposed_by_user',
+	'proposed_by_user_id',
+	'proposed_by_bot_id',
+	'proposer_type'
+]);
+
+function isServerFilledKey(key: string): boolean {
+	if (SERVER_FILLED_KEYS.has(key)) return true;
+	if (key.startsWith('proposed_by')) return true;
+	return false;
+}
+
+/** Recursively sort object keys for stable JSON — no replacer array. */
+export function canonicalize(value: unknown): unknown {
+	if (value === null || typeof value !== 'object') return value;
+	if (Array.isArray(value)) return value.map(canonicalize);
+	const obj = value as Record<string, unknown>;
+	const sorted: Record<string, unknown> = {};
+	for (const key of Object.keys(obj).sort()) {
+		sorted[key] = canonicalize(obj[key]);
+	}
+	return sorted;
+}
+
+export function canonicalJson(value: unknown): string {
+	return JSON.stringify(canonicalize(value));
+}
+
+/**
+ * Pick attempted keys (minus server-filled) from both sides and compare.
+ * Nested-only differences (e.g. proposed_values.qty) must yield inequality.
+ */
+export function clientRefContentMatches(
+	attempted: Record<string, unknown>,
+	existing: Record<string, unknown>
+): boolean {
+	const keys = Object.keys(attempted).filter((k) => !isServerFilledKey(k));
+	const slice = (row: Record<string, unknown>): Record<string, unknown> => {
+		const out: Record<string, unknown> = {};
+		for (const key of keys) {
+			out[key] = key in row ? row[key] : null;
+		}
+		return out;
+	};
+	return canonicalJson(slice(attempted)) === canonicalJson(slice(existing));
+}
+
+function isClientRefUniqueViolation(error: {
+	message?: string | null;
+	code?: string | null;
+	details?: string | null;
+}): boolean {
+	const ids = mapDbErrorToRuleIds(error);
+	return ids.includes('R-PERM-11');
+}
 
 /**
  * After a unique violation on owner_id+client_ref, resolve idempotently.
@@ -62,10 +113,11 @@ export async function resolveClientRefConflict<T extends Record<string, unknown>
 	clientRef: string,
 	attempted: Record<string, unknown>
 ): Promise<{ data: T | null; error: Error | null }> {
-	const ownerId = requireOwnerId(repo);
-	let q = fromRepo(repo, table).select('*').eq('client_ref', clientRef);
-	q = withOwnerFilter(q, ownerId);
-	const { data, error } = await q.maybeSingle();
+	requireOwnerId(repo);
+	const { data, error } = await fromRepo(repo, table)
+		.select('*')
+		.eq('client_ref', clientRef)
+		.maybeSingle();
 	if (error) return { data: null, error: error as Error };
 	if (!data) {
 		return {
@@ -74,7 +126,7 @@ export async function resolveClientRefConflict<T extends Record<string, unknown>
 		};
 	}
 	const existing = data as Record<string, unknown>;
-	if (stablePayload(existing, COMPARE_IGNORE) === stablePayload(attempted, COMPARE_IGNORE)) {
+	if (clientRefContentMatches(attempted, existing)) {
 		return { data: existing as T, error: null };
 	}
 	return {
