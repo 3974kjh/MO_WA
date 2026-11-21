@@ -9,7 +9,6 @@ import {
 	validateOverrides,
 	type ProposalChangeType
 } from '$lib/server/domain/proposals';
-import { mapDbErrorToRuleIds } from '$lib/server/domain/validation/mapDbError';
 import {
 	acknowledgePrincipleProposalRpc,
 	acknowledgeProposalRpc,
@@ -245,14 +244,7 @@ export async function handleCorrect(
 		baseVersion: validated.base_version
 	});
 	if (error) {
-		const status = isConflictDbError(error) ? 409 : 400;
-		const ruleIds = mapDbErrorToRuleIds(error);
-		return fail(status, {
-			ok: false as const,
-			message: error.message,
-			ruleIds,
-			code: isConflictDbError(error) ? 'CONFLICT' : undefined
-		});
+		return failFromDbError(isConflictDbError(error) ? 409 : 400, error);
 	}
 	return { ok: true as const, proposal: data };
 }

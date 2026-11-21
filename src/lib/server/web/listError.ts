@@ -4,6 +4,9 @@
  */
 export const LIST_LOAD_ERROR = '목록을 불러오지 못했어요.';
 
+/** 목록이 아닌 load(홈 valuation, 설정)용 일반 문구. */
+export const INFO_LOAD_ERROR = '정보를 불러오지 못했어요.';
+
 export function publicListError(
 	scope: string,
 	error: unknown,

@@ -35,18 +35,18 @@ afterEach(() => vi.clearAllMocks());
 
 describe('app load 오류는 페이지 데이터에 원문·code를 싣지 않는다', () => {
 	it.each([
-		['home', homeLoad],
-		['portfolio', portfolioLoad],
-		['settings', settingsLoad],
-		['archive', archiveLoad]
-	])('%s', async (_n, fn) => {
+		['home', homeLoad, '정보를 불러오지 못했어요.'],
+		['portfolio', portfolioLoad, '목록을 불러오지 못했어요.'],
+		['settings', settingsLoad, '정보를 불러오지 못했어요.'],
+		['archive', archiveLoad, '목록을 불러오지 못했어요.']
+	])('%s', async (_n, fn, msg) => {
 		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
 		const out = await call(fn);
 		const json = JSON.stringify(out);
 		expect(json).not.toContain('permission denied');
 		expect(json).not.toContain('secret_tbl');
 		expect(json).not.toContain('42501');
-		expect(json).toContain('목록을 불러오지 못했어요.');
+		expect(json).toContain(msg);
 		expect(log).toHaveBeenCalled();
 		log.mockRestore();
 	});

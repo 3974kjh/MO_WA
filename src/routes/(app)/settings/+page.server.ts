@@ -1,7 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { countAuditRuleIds, forUser } from '$lib/server/repo';
 import { requireUser } from '$lib/server/web/requireUser';
-import { publicListError } from '$lib/server/web/listError';
+import { INFO_LOAD_ERROR, publicListError } from '$lib/server/web/listError';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const user = requireUser(locals.user);
@@ -10,6 +10,6 @@ export const load: PageServerLoad = async ({ locals }) => {
 	return {
 		title: '설정',
 		ruleIdCounts,
-		error: publicListError('settings', error)
+		error: publicListError('settings', error, INFO_LOAD_ERROR)
 	};
 };
