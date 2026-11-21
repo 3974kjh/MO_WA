@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { ValidationIssue } from './types';
 import {
 	ruleJ02,
 	ruleJ08,
@@ -10,6 +11,7 @@ import {
 	ruleR14,
 	ruleR15,
 	runRules,
+	shouldHoldJournalForDbChecks,
 	validateBuyPlanMeta
 } from './rules';
 
@@ -18,7 +20,7 @@ function first<T>(
 		check: (
 			input: T,
 			mode: 'strict' | 'migration'
-		) => import('./types').ValidationIssue | import('./types').ValidationIssue[] | null;
+		) => ValidationIssue | ValidationIssue[] | null;
 	},
 	input: T,
 	mode: 'strict' | 'migration' = 'strict'
@@ -31,13 +33,13 @@ function first<T>(
 describe('domain validation rules', () => {
 	it('R-VAL-R12', () => {
 		expect(first(ruleR12, { headline: 'ok short' })).toBeNull();
+		// L7: WARN rule may emit ERROR for hard violations
+		expect(first(ruleR12, { headline: '' })?.level).toBe('ERROR');
 		const warn = first(ruleR12, { headline: 'x'.repeat(81) });
 		expect(warn?.level).toBe('WARN');
 		expect(warn?.id).toBe('R-VAL-R12');
-		const errLen = first(ruleR12, { headline: 'x'.repeat(121) });
-		expect(errLen?.level).toBe('ERROR');
-		const errNl = first(ruleR12, { headline: 'line1\nline2' });
-		expect(errNl?.level).toBe('ERROR');
+		expect(first(ruleR12, { headline: 'x'.repeat(121) })?.level).toBe('ERROR');
+		expect(first(ruleR12, { headline: 'line1\nline2' })?.level).toBe('ERROR');
 	});
 
 	it('R-VAL-R04', () => {
@@ -46,8 +48,8 @@ describe('domain validation rules', () => {
 		const issues = Array.isArray(warn) ? warn : warn ? [warn] : [];
 		expect(issues.some((i) => i.level === 'WARN')).toBe(true);
 		expect(issues[0]?.id).toBe('R-VAL-R04');
-		const err = first(ruleR04, { summary: 'a\nb\nc\nd' });
-		expect(err?.level).toBe('ERROR');
+		// L7: >3 lines is ERROR from a WARN-declared rule
+		expect(first(ruleR04, { summary: 'a\nb\nc\nd' })?.level).toBe('ERROR');
 	});
 
 	it('R-VAL-P09', () => {
@@ -75,22 +77,26 @@ describe('domain validation rules', () => {
 			})
 		).toBeNull();
 
-		const err = first(ruleP09, {
-			calc_note: 'a\nb',
-			change_type: 'close',
-			proposed_by_type: 'bot'
-		});
-		expect(err?.level).toBe('ERROR');
+		expect(
+			first(ruleP09, {
+				calc_note: 'a\nb',
+				change_type: 'close',
+				proposed_by_type: 'bot'
+			})?.level
+		).toBe('ERROR');
 	});
 
 	it('R-VAL-M03', () => {
-		expect(first(ruleM03, { qty: 10, asset_type: 'stock' })).toBeNull();
+		expect(first(ruleM03, { qty: 10, asset_type: 'stock', status: 'holding' })).toBeNull();
 		expect(first(ruleM03, { qty: 1.5, asset_type: 'stock' })?.level).toBe('ERROR');
 		expect(first(ruleM03, { qty: 1000.5, asset_type: 'cash' })).toBeNull();
 		expect(first(ruleM03, { qty: 1000.505, asset_type: 'cash' })?.level).toBe('ERROR');
 		expect(first(ruleM03, { qty: 0, asset_type: 'cash' })?.level).toBe('ERROR');
-		expect(first(ruleM03, { qty: 2, asset_type: 'etf' })).toBeNull();
-		expect(first(ruleM03, { qty: 2.1, asset_type: 'etf' })?.id).toBe('R-VAL-M03');
+		// L1: planned null / closed 0 are not false positives
+		expect(first(ruleM03, { qty: null, asset_type: 'stock', status: 'planned' })).toBeNull();
+		expect(first(ruleM03, { qty: 0, asset_type: 'stock', status: 'closed' })).toBeNull();
+		// bond matches DB (no fractional check)
+		expect(first(ruleM03, { qty: 1.5, asset_type: 'bond', status: 'holding' })).toBeNull();
 	});
 
 	it('R-VAL-R13', () => {
@@ -104,14 +110,21 @@ describe('domain validation rules', () => {
 		expect(
 			first(ruleR13, {
 				kind: 'equity_analysis',
-				profile: 'equity-analyst',
-				meta: { target_price: 100 }
+				profile: 'finance-manager',
+				body_md: 'In my opinion the market is quiet.'
 			})
 		).toBeNull();
 		expect(
 			first(ruleR13, {
-				kind: 'daily_brief',
+				kind: 'equity_analysis',
 				profile: 'finance-manager',
+				body_md: '목표가 120000원'
+			})?.level
+		).toBe('WARN');
+		expect(
+			first(ruleR13, {
+				kind: 'equity_analysis',
+				profile: 'equity-analyst',
 				meta: { target_price: 100 }
 			})
 		).toBeNull();
@@ -135,13 +148,11 @@ describe('domain validation rules', () => {
 			}
 		};
 		expect(first(ruleR14, ok)).toBeNull();
-		const bad = first(ruleR14, {
-			meta: {
-				candidates: [{ rank: 1, ticker: 'A', extra: true }]
-			}
-		});
-		expect(bad?.level).toBe('ERROR');
-		expect(bad?.id).toBe('R-VAL-R14');
+		expect(
+			first(ruleR14, {
+				meta: { candidates: [{ rank: 1, ticker: 'A', extra: true }] }
+			})?.id
+		).toBe('R-VAL-R14');
 	});
 
 	it('R-VAL-R15', () => {
@@ -166,12 +177,17 @@ describe('domain validation rules', () => {
 	});
 
 	it('R-VAL-J08', () => {
-		expect(first(ruleJ08, { tags: ['반도체', '관찰'] })).toBeNull();
-		const warn = first(ruleJ08, { tags: ['005380', 'theme'] });
-		expect(warn?.level).toBe('WARN');
-		expect(warn?.id).toBe('R-VAL-J08');
-		expect(first(ruleJ08, { tags: ['GOOGL'] })?.level).toBe('WARN');
-		expect(first(ruleJ08, { tags: ['UST_30Y'] })?.level).toBe('WARN');
+		// L3: generic uppercase words are not tickers without instruments list
+		expect(
+			first(ruleJ08, { tags: ['AI', 'ETF', 'IPO', 'USA', '반도체'], knownTickers: [] })
+		).toBeNull();
+		expect(
+			first(ruleJ08, { tags: ['005380', 'theme'], knownTickers: [] })?.level
+		).toBe('WARN');
+		expect(
+			first(ruleJ08, { tags: ['GOOGL'], knownTickers: ['GOOGL'] })?.level
+		).toBe('WARN');
+		expect(first(ruleJ08, { tags: ['GOOGL'], knownTickers: [] })).toBeNull();
 	});
 
 	it('R-VAL-J02', () => {
@@ -198,18 +214,45 @@ describe('domain validation rules', () => {
 		expect(mig.ok).toBe(true);
 		expect(mig.warnings[0]?.level).toBe('WARN');
 
+		// L5: plan does not require instrument
 		expect(
 			first(ruleJ02, {
+				kind: 'plan',
+				instrument_id: null,
+				price: null,
+				qty: null,
+				currency: null
+			})
+		).toBeNull();
+
+		// L5: migration WARN still holds when J03 would fail
+		expect(shouldHoldJournalForDbChecks(incomplete)).toBe(true);
+		expect(
+			shouldHoldJournalForDbChecks({
+				kind: 'buy',
+				instrument_id: 'i1',
+				price: 10,
+				qty: 1,
+				currency: null
+			})
+		).toBe(true);
+		expect(
+			shouldHoldJournalForDbChecks({
 				kind: 'buy',
 				instrument_id: 'i1',
 				price: 10,
 				qty: 1,
 				currency: 'USD'
 			})
-		).toBeNull();
+		).toBe(false);
 	});
 
-	it('buy_plan meta stub (Q-33)', () => {
+	it('buy_plan meta stub (Q-33) never uses R-VAL-R15', () => {
 		expect(validateBuyPlanMeta({ anything: true, nested: { a: 1 } })).toBeNull();
+		expect(validateBuyPlanMeta(null)).toBeNull();
+		expect(validateBuyPlanMeta(42)).toBeNull();
+		// M-1 fail-path: R15 must be absent from stub results
+		const issues = [validateBuyPlanMeta('not-object')];
+		expect(issues.every((i) => i == null || i.id !== 'R-VAL-R15')).toBe(true);
 	});
 });

@@ -1,12 +1,21 @@
 /**
  * R-VAL domain rules — design §3-4, rules.md §4.
  * Each rule: `{ id, level, check }` with modes `strict` | `migration`.
+ *
+ * ## Call boundary (M-5)
+ * `runRules` belongs to MCP tools (BE-06+) and web form/RPC paths — **not** repo
+ * create/update. Mode: general API keys use `strict`; `import:all` uses `migration`.
+ *
+ * ## Level boundary (L7)
+ * A rule whose declared `level` is WARN may still emit ERROR for hard violations
+ * of the same ID (e.g. R-VAL-R12 newline/>120, R-VAL-P09 newline/>200, R-VAL-R04
+ * >3 lines). WARN is the soft/advisory default; ERROR is for CHECK-aligned rejects.
  */
 import {
-	buyPlanMetaSchema,
 	CALC_NOTE_MAX_LEN,
 	calcNoteSchema,
 	candidatesMetaSchema,
+	charLength,
 	equityAnalysisContextSchema,
 	equityContextKeySet,
 	HEADLINE_ERROR_LEN,
@@ -15,10 +24,12 @@ import {
 	parseQty,
 	SUMMARY_LINE_WARN_LEN,
 	SUMMARY_MAX_LINES,
+	summaryLineCharLength,
 	summaryLines,
 	summarySchema,
 	tagsContainingTickerCodes,
 	type AssetType,
+	type PositionStatus,
 	type ProposedByType,
 	type ProposalChangeType
 } from '$lib/schemas';
@@ -54,6 +65,7 @@ export function runRules<T>(
 }
 
 // ——— R-VAL-R12 ———
+// Declared WARN (advisory >80); may emit ERROR for newline / >120 / empty string (L7).
 export type HeadlineInput = { headline?: string | null };
 
 export const ruleR12: ValidationRule<HeadlineInput> = {
@@ -61,8 +73,13 @@ export const ruleR12: ValidationRule<HeadlineInput> = {
 	level: 'WARN',
 	check(input) {
 		const h = input.headline;
-		if (h == null || h.trim() === '') return null;
-		if (/[\r\n]/.test(h) || h.length > HEADLINE_ERROR_LEN) {
+		if (h == null) return null;
+		// L2: empty string fails DB char_length >= 1
+		if (h === '') {
+			return issue('R-VAL-R12', 'ERROR', 'headline must be 1–120 chars');
+		}
+		const len = charLength(h);
+		if (/[\r\n]/.test(h) || len > HEADLINE_ERROR_LEN || len < 1) {
 			const parsed = headlineSchema.safeParse(h);
 			return issue(
 				'R-VAL-R12',
@@ -72,7 +89,7 @@ export const ruleR12: ValidationRule<HeadlineInput> = {
 					: (parsed.error.issues[0]?.message ?? '[R-VAL-R12] invalid headline')
 			);
 		}
-		if (h.length > HEADLINE_WARN_LEN) {
+		if (len > HEADLINE_WARN_LEN) {
 			return issue('R-VAL-R12', 'WARN', 'headline exceeds 80 characters');
 		}
 		return null;
@@ -80,6 +97,7 @@ export const ruleR12: ValidationRule<HeadlineInput> = {
 };
 
 // ——— R-VAL-R04 ———
+// Declared WARN (line length); may emit ERROR for >3 lines (L7).
 export type SummaryInput = { summary?: string | null };
 
 export const ruleR04: ValidationRule<SummaryInput> = {
@@ -96,7 +114,7 @@ export const ruleR04: ValidationRule<SummaryInput> = {
 			}
 		}
 		for (const line of lines) {
-			if (line.length > SUMMARY_LINE_WARN_LEN) {
+			if (summaryLineCharLength(line) > SUMMARY_LINE_WARN_LEN) {
 				out.push(issue('R-VAL-R04', 'WARN', 'summary line exceeds 120 characters'));
 				break;
 			}
@@ -106,6 +124,7 @@ export const ruleR04: ValidationRule<SummaryInput> = {
 };
 
 // ——— R-VAL-P09 ———
+// Declared WARN (missing calc_note for bot); may emit ERROR for format (L7).
 export type CalcNoteInput = {
 	calc_note?: string | null;
 	change_type: ProposalChangeType;
@@ -118,7 +137,7 @@ export const ruleP09: ValidationRule<CalcNoteInput> = {
 	check(input) {
 		const note = input.calc_note;
 		if (note != null && note !== '') {
-			if (/[\r\n]/.test(note) || note.length > CALC_NOTE_MAX_LEN) {
+			if (/[\r\n]/.test(note) || charLength(note) > CALC_NOTE_MAX_LEN) {
 				const parsed = calcNoteSchema.safeParse(note);
 				return issue(
 					'R-VAL-P09',
@@ -130,7 +149,6 @@ export const ruleP09: ValidationRule<CalcNoteInput> = {
 			}
 			return null;
 		}
-		// empty: WARN only for bot open_holding / set_qty_avg (Q-30); user → no warning
 		if (
 			input.proposed_by_type === 'bot' &&
 			(input.change_type === 'open_holding' || input.change_type === 'set_qty_avg')
@@ -142,19 +160,19 @@ export const ruleP09: ValidationRule<CalcNoteInput> = {
 };
 
 // ——— R-VAL-M03 ———
-export type QtyInput = { qty: number; asset_type: AssetType };
+export type QtyInput = {
+	qty: number | null | undefined;
+	asset_type: AssetType;
+	status?: PositionStatus;
+};
 
 export const ruleM03: ValidationRule<QtyInput> = {
 	id: 'R-VAL-M03',
 	level: 'ERROR',
 	check(input) {
-		const parsed = parseQty(input.asset_type, input.qty);
+		const parsed = parseQty(input.asset_type, input.qty, input.status);
 		if (parsed.success) return null;
-		return issue(
-			'R-VAL-M03',
-			'ERROR',
-			parsed.error.issues[0]?.message ?? '[R-VAL-M03] invalid qty'
-		);
+		return issue('R-VAL-M03', 'ERROR', parsed.message);
 	}
 };
 
@@ -174,11 +192,10 @@ export const ruleR13: ValidationRule<R13Input> = {
 			input.profile === 'finance-manager' || input.profile === 'finance-manager-boot';
 		if (!isFm || input.kind !== 'equity_analysis') return null;
 		const meta = input.meta ?? {};
-		const hasMetaTarget =
-			meta.target_price != null || meta.opinion != null;
+		const hasMetaTarget = meta.target_price != null || meta.opinion != null;
 		const body = input.body_md ?? '';
-		const hasBodyTarget =
-			/목표가|투자의견|target\s*price|opinion/i.test(body);
+		// L4: do not match bare English "opinion" in ordinary sentences.
+		const hasBodyTarget = /목표가|투자의견|target[_\s-]?price/i.test(body);
 		if (hasMetaTarget || hasBodyTarget) {
 			return issue(
 				'R-VAL-R13',
@@ -210,7 +227,7 @@ export const ruleR14: ValidationRule<R14Input> = {
 	}
 };
 
-// ——— R-VAL-R15 ———
+// ——— R-VAL-R15 (Q-20 context keys only — not buy_plan meta) ———
 export type R15Input = {
 	kind: string;
 	meta?: Record<string, unknown> | null;
@@ -260,13 +277,17 @@ export const ruleR15: ValidationRule<R15Input> = {
 };
 
 // ——— R-VAL-J08 ———
-export type J08Input = { tags?: string[] | null };
+export type J08Input = {
+	tags?: string[] | null;
+	/** Instrument tickers for this owner — required to avoid AI/ETF/IPO false positives (L3). */
+	knownTickers?: string[] | null;
+};
 
 export const ruleJ08: ValidationRule<J08Input> = {
 	id: 'R-VAL-J08',
 	level: 'WARN',
 	check(input) {
-		const hits = tagsContainingTickerCodes(input.tags);
+		const hits = tagsContainingTickerCodes(input.tags, input.knownTickers);
 		if (hits.length === 0) return null;
 		return issue(
 			'R-VAL-J08',
@@ -276,7 +297,12 @@ export const ruleJ08: ValidationRule<J08Input> = {
 	}
 };
 
-// ——— R-VAL-J02 (strict ERROR / migration WARN) ———
+/**
+ * R-VAL-J02 — buy/sell require instrument_id, price, qty, currency.
+ * L5: instrument is required only for buy/sell (Q-16); never for plan/thought/review.
+ * strict → ERROR; migration → WARN (importer). DB CHECKs J03/J05 are not loosened:
+ * use `shouldHoldJournalForDbChecks` and do not insert rows that would fail them.
+ */
 export type J02Input = {
 	kind: string;
 	instrument_id?: string | null;
@@ -305,11 +331,26 @@ export const ruleJ02: ValidationRule<J02Input> = {
 	}
 };
 
-/** buy_plan meta stub (Q-33) — accepts free-form until keys are designed. */
-export function validateBuyPlanMeta(meta: unknown): ValidationIssue | null {
-	const parsed = buyPlanMetaSchema.safeParse(meta ?? {});
-	if (parsed.success) return null;
-	return issue('R-VAL-R15', 'ERROR', 'buy_plan meta stub rejected non-object');
+/**
+ * L5: Even in migration WARN mode, if a row would fail DB CHECK J03
+ * (`journal_trade_needs_instrument`) or J05 (`journal_price_needs_currency`),
+ * do not insert — hold it. Domain WARN does not loosen CHECKs.
+ */
+export function shouldHoldJournalForDbChecks(input: J02Input): boolean {
+	if (input.kind === 'buy' || input.kind === 'sell') {
+		if (!input.instrument_id) return true; // J03
+	}
+	if (input.price != null && !input.currency) return true; // J05
+	return false;
+}
+
+/**
+ * M-1: buy_plan meta stub until Q-33 — always null (no check).
+ * Must not use R-VAL-R15 (that ID is Q-20 equity_analysis context only).
+ */
+export function validateBuyPlanMeta(meta: unknown): null {
+	void meta; // Q-33 stub: intentionally ignore until keys are designed
+	return null;
 }
 
 export const domainRules = {

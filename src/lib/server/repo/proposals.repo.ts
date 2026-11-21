@@ -1,6 +1,6 @@
 import type { PositionProposalRow, PrincipleProposalRow } from '$lib/types/mowa.contract';
+import { getRepoDb, serverCreateStamps, stripClientIdentity, type RepoClient } from './client';
 import { isOwnerDisplayId } from './displayId';
-import { serverCreateStamps, stripClientIdentity, type RepoClient } from './client';
 import { requireOwnerId, withOwnerFilter } from './owner';
 import { fromTable } from './supabaseTable';
 
@@ -15,19 +15,16 @@ export async function listPositionProposals(
 	repo: RepoClient
 ): Promise<{ data: PositionProposalRow[]; error: Error | null }> {
 	const ownerId = requireOwnerId(repo);
-	let q = fromTable(repo.db, 'position_proposals').select('*');
+	let q = fromTable(getRepoDb(repo), 'position_proposals').select('*');
 	q = withOwnerFilter(q, ownerId);
 	const { data, error } = await q;
-	const rows = ((data ?? []) as PositionProposalRow[]).map((row) => {
-		if (row.display_id && !isOwnerDisplayId(row.display_id)) {
-			// Defensive: still return the server value; callers must not invent IDs.
-		}
-		return row;
-	});
-	return { data: rows, error: error as Error | null };
+	return { data: (data ?? []) as PositionProposalRow[], error: error as Error | null };
 }
 
-/** Insert proposal — display_no/display_id assigned by DB trigger; client values stripped. */
+/**
+ * Insert proposal — display_no/display_id and proposed_by* assigned by DB triggers.
+ * M-2: never pass proposed_by* from the client; stripClientIdentity removes them.
+ */
 export async function createPositionProposal(
 	repo: RepoClient,
 	input: PositionProposalCreateInput
@@ -35,11 +32,9 @@ export async function createPositionProposal(
 	const stamps = serverCreateStamps(repo.actor);
 	const row = {
 		...stripClientIdentity(input as Record<string, unknown>),
-		...stamps,
-		proposed_by_type: repo.actor.kind === 'bot' ? 'bot' : 'user',
-		proposed_by: repo.actor.botClientId
+		...stamps
 	};
-	const { data, error } = await fromTable(repo.db, 'position_proposals')
+	const { data, error } = await fromTable(getRepoDb(repo), 'position_proposals')
 		.insert(row)
 		.select('*')
 		.single();
@@ -50,7 +45,7 @@ export async function listPrincipleProposals(
 	repo: RepoClient
 ): Promise<{ data: PrincipleProposalRow[]; error: Error | null }> {
 	const ownerId = requireOwnerId(repo);
-	let q = fromTable(repo.db, 'principle_proposals').select('*');
+	let q = fromTable(getRepoDb(repo), 'principle_proposals').select('*');
 	q = withOwnerFilter(q, ownerId);
 	const { data, error } = await q;
 	return { data: (data ?? []) as PrincipleProposalRow[], error: error as Error | null };
@@ -65,7 +60,7 @@ export async function getPositionProposalByDisplayId(
 		return { data: null, error: new Error('display_id must be a server P-… string') };
 	}
 	const ownerId = requireOwnerId(repo);
-	let q = fromTable(repo.db, 'position_proposals').select('*').eq('display_id', displayId);
+	let q = fromTable(getRepoDb(repo), 'position_proposals').select('*').eq('display_id', displayId);
 	q = withOwnerFilter(q, ownerId);
 	const { data, error } = await q.maybeSingle();
 	return { data: (data as PositionProposalRow | null) ?? null, error: error as Error | null };

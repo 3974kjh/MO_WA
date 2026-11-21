@@ -42,6 +42,16 @@ export default defineConfig(
 						}
 					]
 				}
+			],
+			// L6: block practical dynamic-import bypasses of the admin client.
+			'no-restricted-syntax': [
+				'error',
+				{
+					selector:
+						"ImportExpression[source.value=/supabase\\/admin/], ImportExpression[source.value=/\\$lib\\/supabase\\/admin/]",
+					message:
+						'Dynamic import of supabase admin is forbidden outside src/lib/server/repo/** or mcp/auth.ts (R-SYS-01).'
+				}
 			]
 		}
 	},
@@ -60,7 +70,8 @@ export default defineConfig(
 		// Override: admin import allowed only in repo + mcp auth (design ADR-001).
 		files: ['src/lib/server/repo/**/*.{js,ts}', 'src/lib/server/mcp/auth.ts'],
 		rules: {
-			'no-restricted-imports': 'off'
+			'no-restricted-imports': 'off',
+			'no-restricted-syntax': 'off'
 		}
 	}
 );

@@ -1,6 +1,8 @@
 import type { ReportRow } from '$lib/types/mowa.contract';
-import { serverCreateStamps, stripClientIdentity, type RepoClient } from './client';
+import { archiveRow, restoreRow } from './archive';
+import { getRepoDb, serverCreateStamps, stripClientIdentity, type RepoClient } from './client';
 import { requireOwnerId, withOwnerFilter } from './owner';
+import { pickPatchable, REPORT_PATCHABLE } from './patch';
 import { fromTable } from './supabaseTable';
 
 export type ReportCreateInput = Partial<ReportRow> &
@@ -12,7 +14,7 @@ export async function listReports(
 	opts: { includeArchived?: boolean } = {}
 ): Promise<{ data: ReportRow[]; error: Error | null }> {
 	const ownerId = requireOwnerId(repo);
-	let q = fromTable(repo.db, 'reports').select('*');
+	let q = fromTable(getRepoDb(repo), 'reports').select('*');
 	q = withOwnerFilter(q, ownerId);
 	if (!opts.includeArchived) q = q.is('archived_at', null);
 	const { data, error } = await q;
@@ -24,13 +26,13 @@ export async function getReportById(
 	id: string
 ): Promise<{ data: ReportRow | null; error: Error | null }> {
 	const ownerId = requireOwnerId(repo);
-	let q = fromTable(repo.db, 'reports').select('*').eq('id', id);
+	let q = fromTable(getRepoDb(repo), 'reports').select('*').eq('id', id);
 	q = withOwnerFilter(q, ownerId);
 	const { data, error } = await q.maybeSingle();
 	return { data: (data as ReportRow | null) ?? null, error: error as Error | null };
 }
 
-/** Create report — server fills owner_id + source_bot_id (R-PERM-03). */
+/** Create report — server fills owner_id + source_bot_id (R-PERM-03). No runRules here (M-5). */
 export async function createReport(
 	repo: RepoClient,
 	input: ReportCreateInput
@@ -40,19 +42,31 @@ export async function createReport(
 		...stripClientIdentity(input as Record<string, unknown>),
 		...stamps
 	};
-	const { data, error } = await fromTable(repo.db, 'reports').insert(row).select('*').single();
+	const { data, error } = await fromTable(getRepoDb(repo), 'reports')
+		.insert(row)
+		.select('*')
+		.single();
 	return { data: (data as ReportRow | null) ?? null, error: error as Error | null };
 }
 
+/** Update only report patchable fields (M-3). */
 export async function updateReport(
 	repo: RepoClient,
 	id: string,
 	patch: Partial<ReportRow>
 ): Promise<{ data: ReportRow | null; error: Error | null }> {
 	const ownerId = requireOwnerId(repo);
-	const safe = stripClientIdentity(patch as Record<string, unknown>);
-	let q = fromTable(repo.db, 'reports').update(safe).eq('id', id);
+	const safe = pickPatchable(patch as Record<string, unknown>, REPORT_PATCHABLE);
+	let q = fromTable(getRepoDb(repo), 'reports').update(safe).eq('id', id);
 	q = withOwnerFilter(q, ownerId);
 	const { data, error } = await q.select('*').single();
 	return { data: (data as ReportRow | null) ?? null, error: error as Error | null };
+}
+
+export function archiveReport(repo: RepoClient, id: string) {
+	return archiveRow(repo, 'reports', id);
+}
+
+export function restoreReport(repo: RepoClient, id: string) {
+	return restoreRow(repo, 'reports', id);
 }

@@ -1,6 +1,8 @@
 import type { PositionRow } from '$lib/types/mowa.contract';
-import { serverCreateStamps, stripClientIdentity, type RepoClient } from './client';
+import { archiveRow, restoreRow } from './archive';
+import { getRepoDb, serverCreateStamps, stripClientIdentity, type RepoClient } from './client';
 import { requireOwnerId, withOwnerFilter } from './owner';
+import { pickPatchable, POSITION_PATCHABLE } from './patch';
 import { fromTable } from './supabaseTable';
 
 export type PositionCreateInput = Partial<PositionRow> &
@@ -11,13 +13,14 @@ export async function listPositions(
 	opts: { includeArchived?: boolean } = {}
 ): Promise<{ data: PositionRow[]; error: Error | null }> {
 	const ownerId = requireOwnerId(repo);
-	let q = fromTable(repo.db, 'positions').select('*');
+	let q = fromTable(getRepoDb(repo), 'positions').select('*');
 	q = withOwnerFilter(q, ownerId);
 	if (!opts.includeArchived) q = q.is('archived_at', null);
 	const { data, error } = await q;
 	return { data: (data ?? []) as PositionRow[], error: error as Error | null };
 }
 
+/** Create — no runRules (M-5). */
 export async function createPosition(
 	repo: RepoClient,
 	input: PositionCreateInput
@@ -27,7 +30,10 @@ export async function createPosition(
 		...stripClientIdentity(input as Record<string, unknown>),
 		...stamps
 	};
-	const { data, error } = await fromTable(repo.db, 'positions').insert(row).select('*').single();
+	const { data, error } = await fromTable(getRepoDb(repo), 'positions')
+		.insert(row)
+		.select('*')
+		.single();
 	return { data: (data as PositionRow | null) ?? null, error: error as Error | null };
 }
 
@@ -37,9 +43,17 @@ export async function updatePosition(
 	patch: Partial<PositionRow>
 ): Promise<{ data: PositionRow | null; error: Error | null }> {
 	const ownerId = requireOwnerId(repo);
-	const safe = stripClientIdentity(patch as Record<string, unknown>);
-	let q = fromTable(repo.db, 'positions').update(safe).eq('id', id);
+	const safe = pickPatchable(patch as Record<string, unknown>, POSITION_PATCHABLE);
+	let q = fromTable(getRepoDb(repo), 'positions').update(safe).eq('id', id);
 	q = withOwnerFilter(q, ownerId);
 	const { data, error } = await q.select('*').single();
 	return { data: (data as PositionRow | null) ?? null, error: error as Error | null };
+}
+
+export function archivePosition(repo: RepoClient, id: string) {
+	return archiveRow(repo, 'positions', id);
+}
+
+export function restorePosition(repo: RepoClient, id: string) {
+	return restoreRow(repo, 'positions', id);
 }

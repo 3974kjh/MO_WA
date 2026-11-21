@@ -1,0 +1,199 @@
+draft ok  20261125000050_backup_log.sql
+draft ok  20261125000100_core_helpers.sql
+draft ok  20261125000200_instruments_portfolio.sql
+draft ok  20261125000300_reports.sql
+draft ok  20261125000400_market_events.sql
+draft ok  20261125000500_realestate.sql
+draft ok  20261125000600_bots_audit_proposals.sql
+draft ok  20261125000650_principle_proposals.sql
+draft ok  20261125000700_rls.sql
+draft ok  20261125000800_functions.sql
+draft ok  20261125000900_profiles_hardening.sql
+
+[권한·승인 큐]
+  ✓ PM확정: positions:propose 스코프는 finance-manager 프로필만 → new row for relation "bot_clients" violates check constraint "bot_clients_propose_only_fm"
+  ✓ user inserts instrument KRX 035420
+  ✓ R-VAL-C01 KRX 코드 6자리 → new row for relation "instruments" violates check constraint "instruments_krx_code"
+  ✓ R-VAL-C03 내부 코드 형식 → new row for relation "instruments" violates check constraint "instruments_internal_code"
+  ✓ user creates holding (migration-equivalent)
+  ✓ PM확정 Q-07: 같은 종목 holding + planned 동시 허용
+  ✓ R-VAL-P03: 같은 종목 planned 2개는 금지 → duplicate key value violates unique constraint "positions_one_active_per_status"
+  ✓ R-VAL-P01: 봇이 qty 직접 수정 → [R-VAL-P01] bots cannot change positions.qty (use position_proposals)
+  ✓ R-PERM-02: 봇이 holding 새 행 생성 → [R-VAL-P01] bots may only create planned positions without qty/avg_price
+  ✓ R-PERM-17 (Q-13 확정): finance-manager가 planned 행에 trigger_price 직접 기입
+  ✓ R-VAL-P12: equity-analyst의 positions 쓰기 → 403 → [R-VAL-P12][R-PERM-04] only finance-manager may write positions
+  ✓ R-VAL-M03 (Q-15 확정): 주식 소수 수량은 사용자 직접 쓰기도 ERROR → [R-VAL-M03] fractional qty not allowed for stock
+  ✓ R-PERM 표: 봇이 base_price/base_at/memo 직접 수정
+  ✓ base_price 수정은 version 불변(대기 제안 충돌 없음)
+  ✓ R-PERM-17: finance-manager가 holding 행 trigger_price·breakeven 직접 수정
+  ✓ R-PERM-17: version은 +1, approval_version은 그대로(대기 제안 conflict 안 됨)
+  ✓ R-PERM-17: 감사 로그에 이전/새 값
+  ✓ R-PERM-01: 봇이 positions 삭제 → [R-PERM-01] bots cannot delete positions
+  ✓ R-PERM-03: 봇 신원 헤더 없음 → [R-PERM-03] missing bot identity
+  ✓ R-VAL-P07: 근거 없는 제안 → new row for relation "position_proposals" violates check constraint "position_proposals_ev
+  ✓ R-VAL-P07: 현재값과 같은 제안 → [R-VAL-P07] proposed values equal current approved values
+  ✓ R-PERM-13: change_type 허용 밖 필드 → [R-PERM-13] field owner_id not allowed for set_qty_avg
+  ✓ finance-manager 제안 생성(pending, current_values 서버 채움)
+  ✓ R-PERM-03: proposed_by는 봇이 보낸 값 무시하고 서버가 채움
+  ✓ current_values.qty = 승인값 27
+  ✓ R-PERM-13: 같은 대상 새 제안 → 이전 pending superseded
+  ✓ R-PERM-13: 승인 전 positions 값 불변
+  ✓ R-PERM-05: 봇이 approve 호출 → permission denied for function approve_proposal
+  ✓ R-PERM-05: 봇이 상태를 approved로 위조 → [R-PERM-05] bots cannot approve/reject/hold proposals
+  ✓ R-PERM-01: 다른 봇이 제안 취소 → [R-PERM-01] bots can only cancel their own proposals
+  ✓ 타 사용자 승인 불가 → proposal not found
+  ✓ 사용자도 제안 행 직접 수정 불가 → permission denied for table position_proposals
+  ✓ R-VAL-M03/Q-15: 소수 수량 override 거부(기본) → [R-VAL-M03] fractional qty not allowed for stock
+  ✓ 사용자 승인(+평단 수정) → approved
+  ✓ 승인 후 반영 qty=33 avg=208400 version=3
+  ✓ 사용자 직접 수정 후 이전 제안 승인 → conflict
+  ✓ open_holding 제안(instrument_id 기준 신규 보유)
+  ✓ open_holding 승인 → holding 행 생성
+  ✓ GOOGL holding USD 5주
+  ✓ R-VAL-P07 (Q-13 확정): set_trigger 제안 유형 거부 → [R-VAL-P07] set_trigger is not allowed (Q-13: trigger_price/breakeven are written directly
+  ✓ R-VAL-M03: 제안 단계에서도 주식 소수 수량 거부 → [R-VAL-M03] fractional qty not allowed for stock
+  ✓ R-VAL-P10: 없는 report_id 근거 거부 → [R-VAL-P10] evidence references a missing report/journal entry
+  ✓ R-VAL-P09: calc_note 개행·200자 초과 거부 → new row for relation "position_proposals" violates check constraint "position_proposals_ca
+
+[G-1 on_hold · G-4 사용자 제안 · G-7 표시 ID]
+  ✓ finance-manager 제안 + calc_note(G-7)
+  ✓ 표시 ID: 서버가 insert 때 발급한 문자열 = P- + 4자리
+  ✓ 표시 ID 포맷: 4자리 0채움, 10000부터 자릿수 증가(lpad 잘림 없음)
+  ✓ 표시 ID 불변(update 거부) → [DISPLAY-ID] display_no and owner_id are immutable
+  ✓ display_sequences는 사용자·봇 직접 접근 불가 → permission denied for table display_sequences
+  ✓ display_sequences는 봇도 직접 접근 불가 → permission denied for table display_sequences
+  ✓ G-1: 봇은 on_hold 설정 불가 → [R-PERM-05] bots cannot approve/reject/hold proposals
+  ✓ G-1: 사용자 보류 → on_hold
+  ✓ G-1: on_hold는 만료 제외
+  ✓ Q-29 사용자는 봇 제안을 철회(cancel) 못 함 → 거절만 → [R-PERM-05] users reject bot proposals instead of cancelling them (Q-29)
+  ✓ Q-29 다른 봇은 on_hold 제안 취소 불가 → [R-PERM-01] bots can only cancel their own proposals
+  ✓ G-1: 보류 해제 → pending, 만료 재계산
+  ✓ G-1: on_hold에서 바로 거절 가능
+  ✓ PM 2026-11-21: 사용자 정정은 직접 insert 불가(큐에 pending으로 쌓지 않음) → permission denied for table position_proposals
+  ✓ G-4/R-VAL-P11: 사용자 정정(Q-21 SGOV USD 평단) → 한 번에 생성·승인·반영
+  ✓ 사용자 정정: status=approved, proposed_by_type=user, 봇 신원 없음
+  ✓ SGOV avg_price USD 반영
+  ✓ 사용자 정정 감사 로그 before/after
+  ✓ 사용자 정정: 화면이 본 approval_version과 다르면 CONFLICT → [R-PERM-13] CONFLICT: position changed since the sheet was opened (approval_version 2)
+  ✓ 사용자 정정: 사유는 한 줄 → [R-VAL-P11] reason must be one line, 1-120 chars
+  ✓ 사용자 정정: ETF 소수 수량 → R-VAL-M03 → [R-VAL-M03] fractional qty not allowed for etf
+  ✓ 봇은 apply_user_correction 실행 불가(R-VAL-P11) → permission denied for function apply_user_correction
+  ✓ 다른 사용자는 남의 포지션 정정 불가 → position not found
+  ✓ PM: 사용자 정정 사유 121자 → ERROR → [R-VAL-P11] reason must be one line, 1-120 chars
+  ✓ PM: 사용자 정정 사유 120자 → 통과
+  ✓ 사용자는 다른 사람 명의 제안 불가 → permission denied for table position_proposals
+  ✓ Q-29 제안한 봇은 자기 on_hold 제안을 cancelled로
+  ✓ Q-29 사용자 정정 행(approved)은 철회 대상 아님 → proposal is already approved
+  ✓ Q-29 봇은 사용자 제안 취소 불가 → [R-PERM-05] bots cannot approve/reject/hold proposals
+  ✓ Q-32 watch_only=true면 trigger_price 금지 → new row for relation "positions" violates check constraint "positions_watch_only_no_trigge
+  ✓ Q-32 현대차 이전: watch_only=true, trigger_price=null, status 그대로
+  ✓ Q-32 watch_only 변경도 감사 로그 before/after
+  ✓ Q-31 cash 수량 소수 2자리 허용
+  ✓ Q-31 cash 수량 소수 3자리 → ERROR → [R-VAL-M03] cash qty allows at most 2 decimal places (Q-31)
+  ✓ R-VAL-M03 주식 소수 수량(사용자도) → ERROR → [R-VAL-M03] fractional qty not allowed for stock
+  ✓ Q-16 review는 instrument 없이 tickers[] 다종목
+  ✓ Q-16/R-VAL-C04 tickers[]에 없는 코드 → [R-VAL-C04] unknown ticker NAVER in journal_entries.tickers
+  ✓ Q-16 buy/sell은 instrument_id 필수 → new row for relation "journal_entries" violates check constraint "journal_trade_needs_inst
+  ✓ Q-22 daily_brief는 domain=macro → new row for relation "reports" violates check constraint "reports_domain_macro_brief"
+  ✓ Q-22 equity_analysis는 domain=stock → new row for relation "reports" violates check constraint "reports_domain_stock_analysis"
+  ✓ Q-14 KRX 영숫자 코드는 아직 거부(^\d{6}$) → new row for relation "instruments" violates check constraint "instruments_krx_code"
+  ✓ R-VAL-R15 alignment 허용값 밖 → ERROR → new row for relation "reports" violates check constraint "reports_meta_alignment"
+  ✓ R-VAL-R15 equity_analysis 외 kind에 alignment 금지 → new row for relation "reports" violates check constraint "reports_meta_alignment"
+  ✓ R-VAL-P13 다른 봇의 watch_only 쓰기 → 403 → [R-VAL-P12][R-PERM-04] only finance-manager may write positions
+
+[리포트]
+  ✓ R-CLS-03 봇 upsert daily_brief + headline
+  ✓ R-CLS-03 같은 키 두 번 → version 2, revision 1
+  ✓ R-VAL-R01 intraday 비활성(PM 확정) → new row for relation "reports" violates check constraint "reports_kind_check"
+  ✓ R-VAL-R02 domain·kind 불일치 → new row for relation "reports" violates check constraint "reports_domain_matches_kind"
+  ✓ R-VAL-T05 주간 리포트 기간·일요일 → new row for relation "reports" violates check constraint "reports_weekly_period"
+  ✓ R-VAL-T05 정상 주간(11/09~11/15 일)
+  ✓ R-VAL-R04 summary 4줄 → new row for relation "reports" violates check constraint "reports_summary_check"
+  ✓ headline은 한 줄(개행 금지) → new row for relation "reports" violates check constraint "reports_headline_check"
+  ✓ R-VAL-S06 slug 형식 → new row for relation "reports" violates check constraint "reports_slug_check"
+  ✓ PM확정 buy_plan: 봇은 draft만 → [R-PERM-04] buy_plan can be published only by the user
+  ✓ buy_plan draft 작성(equity_analysis/subtype=buy_plan)
+  ✓ subtype=buy_plan은 equity_analysis에만 → new row for relation "reports" violates check constraint "reports_subtype_check"
+  ✓ R-PERM-01 다른 봇 리포트 수정·보관 불가 → [R-PERM-01] bots can only modify/archive rows they created
+  ✓ R-PERM-01 자기 리포트 보관
+  ✓ R-SYS-03 봇은 보관 해제(복원) 불가 → [R-PERM-01] archived rows can only be restored by the user
+  ✓ R-SYS-03 사용자는 복원 가능
+  ✓ PM확정 Q-01: 사용자도 영구 삭제 불가 → permission denied for table reports
+  ✓ R-PERM 표 D8: 봇은 principles 쓰기 금지 → [R-PERM-04] bots cannot write principles; use principle_proposals (R-PERM-15)
+  ✓ R-CLS-05/R-PERM-16 사용자 작성 리포트 내용은 봇이 수정 불가(CONFLICT) → [R-PERM-16][R-VAL-R11] CONFLICT: report key (principles, 2026-10-12, main) belongs to anot
+  ✓ R-PERM-01 사용자 작성 리포트 보관 불가 → [R-PERM-01] bots can only modify/archive rows they created
+
+[R-PERM-16 같은 키 · Q-28 만료 설정 · R-PERM-15 원칙 제안]
+  ✓ Q-02 finance-manager equity_analysis 작성
+  ✓ R-PERM-16/R-VAL-R11 다른 봇이 같은 키 upsert → CONFLICT → [R-PERM-16][R-VAL-R11] CONFLICT: report key (equity_analysis, 2026-10-08, naver-deep) belo
+  ✓ R-PERM-16 같은 봇 재작성은 허용(version+1)
+  ✓ Q-28 기본 만료 7일(서버가 채움)
+  ✓ principle_proposals: finance-manager 원칙 개정 제안(pending)
+  ✓ R-PERM-03 봇이 user를 사칭해도 서버가 bot·FM으로 고정 · base_version·본문 해시 · Q-28 설정 14일
+  ✓ R-PERM-15 원칙 제안은 position_proposals에 못 넣음 → [R-PERM-13][R-PERM-15] position_proposals accepts position change types only (principles →
+  ✓ D8 equity-analyst는 원칙 제안 불가 → [R-PERM-04] only finance-manager with principles:propose can propose (D8)
+  ✓ R-PERM-15 대상은 principles 리포트만 → [R-PERM-15] target must be an active principles report
+  ✓ 근거 없는 원칙 제안 → new row for relation "principle_proposals" violates check constraint "principle_proposals_
+  ✓ R-VAL-P10 원칙 제안의 없는 report_id 근거 → [R-VAL-P10] evidence references a missing report/journal entry
+  ✓ R-PERM-05 봇이 원칙 제안 승인 → permission denied for function approve_principle_proposal
+  ✓ R-PERM-01 다른 봇이 원칙 제안 취소 → [R-PERM-01] bots can only cancel their own proposals
+  ✓ Q-01 사용자도 원칙 제안 삭제 불가 → permission denied for table principle_proposals
+  ✓ G-1 원칙 제안도 보류 가능(on_hold)
+  ✓ 사용자 작성 원칙 제안(웹 세션)
+  ✓ on_hold에도 superseded 적용 + superseded_by
+  ✓ 사용자 원칙 제안 승인 → approved + 새 principles 행(사용자 작성)
+  ✓ R-PERM-13 conflict(on_hold에도): 대상이 바뀐 뒤 승인 → conflict
+  ✓ Q-25: finance-manager의 targets_valuation 쓰기 → 403 → [R-PERM-04] targets_valuation is equity-analyst only (Q-25)
+  ✓ 원칙: 사용자는 봇 제안을 cancel 못 함(R-VAL-P14) → [R-PERM-05] users reject bot proposals instead of cancelling them (Q-29)
+  ✓ 원칙 conflict 확인(ack): 상태 유지 + acknowledged_at
+  ✓ 원칙: 사용자는 자기 제안 cancel
+  ✓ 봇은 확인(ack) 필드를 쓸 수 없음 → [R-PERM-05] bots cannot approve/reject/hold proposals
+  ✓ attention_started_at은 conflict 진입 시 자동 기록
+  ✓ 확인 필요 그룹 포함(ack 전)
+  ✓ acknowledge_proposal: 상태 유지 + 그룹에서 빠짐
+  ✓ 14일 지나면 그룹에서 빠지고 행은 이력에 남음
+  ✓ 취소·거절·만료 뒤에도 번호 재사용 없음(카운터 = 최대값+1, 중복 없음)
+  ✓ 원칙 제안은 별도 카운터 R-0001부터
+  ✓ owner 단위 카운터: 다른 사용자는 1부터, scope도 따로
+  ✓ R-PERM-18 서버 되돌리기 RPC 없음(revert_proposal 부재)
+  ✓ expired·conflict 행은 모두 attention_started_at 보유(경로 무관)
+  ✓ pending 제안은 ack 불가 → proposal not found in conflict/expired (or already acknowledged)
+  ✓ trigger_direction 기본 below
+  ✓ trigger_direction 변경 감사 before/after
+  ✓ R-VAL-P07 제안 values에 trigger_direction → ERROR → [R-VAL-P07] trigger_direction is a direct-write field and cannot be proposed (R-PERM-17)
+  ✓ R-VAL-P07 제안 values에 breakeven → ERROR → [R-VAL-P07] breakeven is a direct-write field and cannot be proposed (R-PERM-17)
+  ✓ R-VAL-P07 제안 values에 watch_only → ERROR → [R-VAL-P07] watch_only is a direct-write field and cannot be proposed (R-PERM-17)
+  ✓ R-VAL-P15 trigger_direction=sideways → ERROR → new row for relation "positions" violates check constraint "positions_trigger_direction_ch
+  ✓ R-VAL-P15 쓰기에서 생략하면 기존 값 유지
+  ✓ trigger_direction 허용값 밖 → new row for relation "positions" violates check constraint "positions_trigger_direction_ch
+  ✓ equity-analyst의 trigger_direction 쓰기 → 403 → [R-VAL-P12][R-PERM-04] only finance-manager may write positions
+
+[매매일지·기타]
+  ✓ 일지 client_ref 멱등(PM확정 Q-08)
+  ✓ 같은 client_ref 재삽입 → unique → duplicate key value violates unique constraint "journal_entries_owner_id_client_ref_key"
+  ✓ R-VAL-J05 price에는 currency 필수 → new row for relation "journal_entries" violates check constraint "journal_price_needs_curr
+  ✓ R-PERM-03 source_bot_id 사칭 → [R-PERM-03] source_bot_id must be the calling bot
+  ✓ R-VAL-I03 미등록 지표 키 → insert or update on table "market_indicators" violates foreign key constraint "market_indi
+  ✓ 스냅샷 upsert 덮어쓰기 허용(R-VAL-I02)
+  ✓ R-VAL-I04 targets_valuation report_id 필수 → null value in column "report_id" of relation "targets_valuation" violates not-null constra
+  ✓ R-VAL-RE05 청약 날짜 순서 → new row for relation "re_subscriptions" violates check constraint "re_subscriptions_date_o
+  ✓ R-VAL-M07 좌표 범위 → new row for relation "re_complexes" violates check constraint "re_complexes_lat_check"
+  ✓ re_complexes external_source+external_id(PM확정 Q-09)
+
+[인증·감사]
+  ✓ R-SYS-05 감사 로그 append-only → [R-SYS-05] mcp_audit_log is append-only
+  ✓ R-PERM-10 mcp_authenticate ok + profile
+  ✓ 오답 해시 → 빈 결과
+  ✓ authenticated는 mcp_authenticate 실행 불가 → permission denied for function mcp_authenticate
+  ✓ 사용자 브라우저로 key_hash 조회 불가 → permission denied for table bot_clients
+  ✓ 레이트리밋 초과 → allowed=false
+  ✓ 폐기 키 → 빈 결과
+  ✓ importer 키는 만료 필수 → new row for relation "bot_clients" violates check constraint "bot_clients_importer_expires
+  ✓ 승인/거절 감사 행 존재
+
+[GATED drop]
+  ✓ 백업 검증 기록 없으면 drop 중단 → legacy backup not verified; abort drop
+  ✓ 검증 기록 후 drop 실행
+  ✓ 레거시 테이블 제거·profiles 유지
+
+RESULT pass=172 fail=0

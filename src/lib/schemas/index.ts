@@ -1,6 +1,7 @@
 export * from './buyPlanMeta';
 export * from './calcNote';
 export * from './candidates';
+export * from './charLength';
 export * from './equityMeta';
 export * from './headline';
 export * from './journalTags';
