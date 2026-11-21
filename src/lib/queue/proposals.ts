@@ -30,6 +30,8 @@ export type EvidenceView = {
 
 /** 화면용 변경 요청 한 건(서버 load가 ProposalCard + 종목·보유 값으로 만든다). */
 export type QueueItem = {
+	/** position_proposals(P-) 또는 principle_proposals(R-) */
+	kind: 'position' | 'principle';
 	id: string;
 	display_id: string;
 	change_type: string;
@@ -58,12 +60,18 @@ export type QueueItem = {
 	ticker: string | null;
 	asset_type: string | null;
 	currency: Ccy;
+	/** 원칙 개정: 주로 바뀌는 조항(선택) */
+	clause_ref: string | null;
+	/** 원칙 개정: 새 본문 평문 미리보기(앞부분). 마크다운으로 렌더하지 않는다 */
+	body_preview: string | null;
+	body_truncated: boolean;
 };
 
 export const CHANGE_TYPE_LABEL: Record<string, string> = {
 	open_holding: '신규 매수',
 	set_qty_avg: '수량·평균 단가 변경',
-	close: '보유 종료'
+	close: '보유 종료',
+	principle: '투자 원칙 개정'
 };
 
 export function changeTypeLabel(t: string): string {
@@ -270,7 +278,16 @@ export function sortHistory<T extends { status: string }>(rows: readonly T[]): T
 		.map((x) => x.r);
 }
 
-export function itemTitle(item: Pick<QueueItem, 'name' | 'ticker' | 'change_type'>): string {
+export function itemTitle(
+	item: Pick<QueueItem, 'name' | 'ticker' | 'change_type'> & {
+		kind?: QueueItem['kind'];
+		clause_ref?: string | null;
+	}
+): string {
+	if (item.kind === 'principle') {
+		const c = item.clause_ref?.trim();
+		return c ? `투자 원칙 개정 · ${c}` : '투자 원칙 개정';
+	}
 	const who = item.name?.trim() || item.ticker?.trim() || '이름 없는 종목';
 	return `${who} ${changeTypeLabel(item.change_type)}`;
 }

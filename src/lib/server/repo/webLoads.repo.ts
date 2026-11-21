@@ -254,6 +254,121 @@ export async function listProposalHistory(
 	return { data: toPageResult(cards, count ?? 0, params), error: null };
 }
 
+/** FE-07: 원칙 개정 요청 카드(principle_proposals). 본문은 평문 미리보기만(앞부분). */
+export type PrincipleCard = {
+	id: string;
+	display_id: string;
+	status: string;
+	clause_ref: string | null;
+	body_preview: string;
+	body_truncated: boolean;
+	reason_md: string | null;
+	decision_note: string | null;
+	proposed_by_type: string;
+	proposer_name: string;
+	evidence_chips: ReturnType<typeof evidenceChips>;
+	attention_started_at: string | null;
+	acknowledged_at: string | null;
+	base_version: number | null;
+	created_at: string;
+	held_at: string | null;
+	decided_at: string | null;
+};
+
+/** 화면으로 보내는 원칙 본문 미리보기 최대 글자 수(본문은 최대 1MB라 전부 싣지 않는다). */
+export const PRINCIPLE_BODY_PREVIEW_MAX = 2000;
+
+const PRINCIPLE_LIST_COLUMNS =
+	'id, display_id, status, clause_ref, proposed_body_md, reason_md, decision_note, proposed_by_type, proposed_by, evidence, attention_started_at, acknowledged_at, base_version, created_at, held_at, decided_at';
+
+type RawPrinciple = {
+	id: string;
+	display_id: string | null;
+	status: string;
+	clause_ref: string | null;
+	proposed_body_md: string | null;
+	reason_md: string | null;
+	decision_note: string | null;
+	proposed_by_type: string;
+	proposed_by: string | null;
+	evidence?: unknown;
+	attention_started_at: string | null;
+	acknowledged_at: string | null;
+	base_version: number | null;
+	created_at: string;
+	held_at: string | null;
+	decided_at: string | null;
+};
+
+async function principleCards(repo: RepoClient, rows: RawPrinciple[]): Promise<PrincipleCard[]> {
+	const botNames = await botNameMap(
+		repo,
+		rows.filter((r) => r.proposed_by_type === 'bot' && r.proposed_by).map((r) => r.proposed_by!)
+	);
+	return rows.map((r) => {
+		const body = r.proposed_body_md ?? '';
+		const chars = [...body];
+		return {
+			id: r.id,
+			display_id: r.display_id ?? '',
+			status: r.status,
+			clause_ref: r.clause_ref,
+			body_preview: chars.slice(0, PRINCIPLE_BODY_PREVIEW_MAX).join(''),
+			body_truncated: chars.length > PRINCIPLE_BODY_PREVIEW_MAX,
+			reason_md: r.reason_md,
+			decision_note: r.decision_note,
+			proposed_by_type: r.proposed_by_type,
+			proposer_name: proposerDisplayName({
+				proposed_by_type: r.proposed_by_type,
+				botName: r.proposed_by ? botNames.get(r.proposed_by) : null
+			}),
+			evidence_chips: evidenceChips(r.evidence ?? []),
+			attention_started_at: r.attention_started_at,
+			acknowledged_at: r.acknowledged_at,
+			base_version: r.base_version,
+			created_at: r.created_at,
+			held_at: r.held_at,
+			decided_at: r.decided_at
+		};
+	});
+}
+
+async function listPrinciplesByStatus(
+	repo: RepoClient,
+	statuses: readonly string[],
+	params: PageParams,
+	orderByDecided: boolean
+): Promise<{ data: PageResult<PrincipleCard>; error: Error | null }> {
+	const ownerId = requireOwnerId(repo);
+	let countQ = fromRepo(repo, 'principle_proposals').select('id', { count: 'exact', head: true });
+	countQ = withOwnerFilter(countQ, ownerId).in('status', [...statuses]);
+	const { count, error: countErr } = await countQ;
+	if (countErr) return { data: toPageResult([], 0, params), error: countErr as Error };
+
+	let q = fromRepo(repo, 'principle_proposals')
+		.select(PRINCIPLE_LIST_COLUMNS)
+		.in('status', [...statuses]);
+	if (orderByDecided) q = q.order('decided_at', { ascending: false, nullsFirst: false });
+	q = q
+		.order('created_at', { ascending: false })
+		.range(params.offset, params.offset + params.limit - 1);
+	q = withOwnerFilter(q, ownerId);
+	const { data, error } = await q;
+	if (error) return { data: toPageResult([], 0, params), error: error as Error };
+	const cards = await principleCards(repo, (data ?? []) as unknown as RawPrinciple[]);
+	return { data: toPageResult(cards, count ?? 0, params), error: null };
+}
+
+/** FE-07 확인 대기 — 원칙 개정 요청 pending + on_hold. 읽기 전용. */
+export function listPrincipleQueue(repo: RepoClient, params: PageParams) {
+	return listPrinciplesByStatus(repo, ['pending', 'on_hold'], params, false);
+}
+
+/** FE-07 지난 내역 — 원칙 개정 요청 종결 상태, 결정 시각 최신순. 읽기 전용. */
+export function listPrincipleHistory(repo: RepoClient, params: PageParams) {
+	return listPrinciplesByStatus(repo, PROPOSAL_HISTORY_STATUSES, params, true);
+}
+
 /**
  * BE-19 '확인 필요' list — attention_started_at window only (R-PERM-13).
  * Also returns principle_proposals with the same filter.
@@ -322,8 +437,8 @@ export async function listAttentionNeeded(
 		change_type: 'principle',
 		status: r.status,
 		calc_note: null,
-		reason_md: null,
-		decision_note: null,
+		reason_md: (r as { reason_md?: string | null }).reason_md ?? null,
+		decision_note: (r as { decision_note?: string | null }).decision_note ?? null,
 		proposed_by_type: r.proposed_by_type,
 		proposer_name: proposerDisplayName({
 			proposed_by_type: r.proposed_by_type,

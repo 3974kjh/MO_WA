@@ -13,7 +13,9 @@ const repo = vi.hoisted(() => ({
 	listPositionCards: vi.fn(),
 	listAttentionNeeded: vi.fn(),
 	listProposalHistory: vi.fn(),
-	listInstrumentMeta: vi.fn()
+	listInstrumentMeta: vi.fn(),
+	listPrincipleQueue: vi.fn(),
+	listPrincipleHistory: vi.fn()
 }));
 vi.mock('$lib/server/repo', () => repo);
 
@@ -70,9 +72,119 @@ const call = () =>
 		parent: async () => ({})
 	});
 
+const principle = (over: Record<string, unknown>) => ({
+	id: 'r1',
+	display_id: 'R-0009',
+	status: 'pending',
+	clause_ref: '2-1',
+	body_preview: '원칙 본문',
+	body_truncated: false,
+	reason_md: '원칙 이유',
+	decision_note: null,
+	proposed_by_type: 'bot',
+	proposer_name: '투자 관리 봇',
+	evidence_chips: [],
+	attention_started_at: null,
+	acknowledged_at: null,
+	base_version: 4,
+	created_at: '2026-11-20T00:00:00Z',
+	held_at: null,
+	decided_at: null,
+	...over
+});
+
+const emptyPage = { data: { items: [], total: 0 }, error: null };
+
 afterEach(() => vi.clearAllMocks());
 
 describe('FE-07 portfolio load', () => {
+	it('원칙 개정 요청(R-)을 확인 대기·지난 내역·확인 필요에 같이 싣는다', async () => {
+		repo.listQueueProposals.mockResolvedValue({
+			data: { items: [card({ created_at: '2026-11-19T00:00:00Z' })], total: 30 },
+			error: null
+		});
+		repo.listPositionCards.mockResolvedValue({ data: [position], error: null });
+		repo.listAttentionNeeded.mockResolvedValue({
+			data: {
+				positions: [],
+				principles: [
+					card({
+						id: 'ra',
+						display_id: 'R-0008',
+						change_type: 'principle',
+						status: 'expired',
+						position_id: null,
+						proposed_values: {},
+						current_values: {},
+						attention_started_at: '2026-11-21T00:00:00Z'
+					})
+				]
+			},
+			error: null
+		});
+		repo.listProposalHistory.mockResolvedValue(emptyPage);
+		repo.listPrincipleQueue.mockResolvedValue({
+			data: { items: [principle({})], total: 2 },
+			error: null
+		});
+		repo.listPrincipleHistory.mockResolvedValue({
+			data: {
+				items: [principle({ id: 'rh', status: 'rejected', decided_at: '2026-11-21T02:00:00Z' })],
+				total: 1
+			},
+			error: null
+		});
+		repo.listInstrumentMeta.mockResolvedValue({ data: [], error: null });
+
+		const out = (await call()) as {
+			queue: { items: Array<Record<string, unknown>>; total: number };
+			history: { items: Array<Record<string, unknown>>; total: number };
+			attentionNeeded: Array<Record<string, unknown>>;
+		};
+		expect(repo.listPrincipleQueue).toHaveBeenCalledWith(expect.anything(), {
+			page: 1,
+			pageSize: 20,
+			offset: 0,
+			limit: 20
+		});
+		expect(repo.listPrincipleHistory).toHaveBeenCalledTimes(1);
+		// 최신순 병합: 원칙(11-20) → 포지션(11-19)
+		expect(out.queue.items.map((i) => [i.kind, i.display_id])).toEqual([
+			['principle', 'R-0009'],
+			['position', 'P-0031']
+		]);
+		expect(out.queue.total).toBe(32);
+		expect(out.queue.items[0]).toMatchObject({
+			change_type: 'principle',
+			clause_ref: '2-1',
+			body_preview: '원칙 본문',
+			reason: '원칙 이유',
+			approval_version: null
+		});
+		expect(out.history.items).toMatchObject([{ id: 'rh', kind: 'principle', status: 'rejected' }]);
+		expect(out.attentionNeeded).toMatchObject([
+			{ id: 'ra', kind: 'principle', display_id: 'R-0008', status: 'expired' }
+		]);
+	});
+
+	it('원칙 목록 오류는 publicListError 문구만 보인다', async () => {
+		repo.listQueueProposals.mockResolvedValue(emptyPage);
+		repo.listPositionCards.mockResolvedValue({ data: [], error: null });
+		repo.listAttentionNeeded.mockResolvedValue({
+			data: { positions: [], principles: [] },
+			error: null
+		});
+		repo.listProposalHistory.mockResolvedValue(emptyPage);
+		const raw = new Error('permission denied for table principle_proposals');
+		repo.listPrincipleQueue.mockResolvedValue({ data: { items: [], total: 0 }, error: raw });
+		repo.listPrincipleHistory.mockResolvedValue({ data: { items: [], total: 0 }, error: raw });
+		repo.listInstrumentMeta.mockResolvedValue({ data: [], error: null });
+		const out = (await call()) as Record<string, unknown>;
+		expect(typeof out.queueError).toBe('string');
+		expect(typeof out.historyError).toBe('string');
+		expect(JSON.stringify(out)).not.toMatch(/permission denied|principle_proposals/);
+	});
+
 	it('실제 로더 4개 + 종목 정보를 부르고 화면용 항목으로 바꾼다', async () => {
 		repo.listQueueProposals.mockResolvedValue({
 			data: { items: [card({})], total: 1 },
@@ -99,6 +211,8 @@ describe('FE-07 portfolio load', () => {
 			data: [{ id: 'i1', name: '실데이터종목', ticker: 'RD', asset_type: 'stock' }],
 			error: null
 		});
+		repo.listPrincipleQueue.mockResolvedValue(emptyPage);
+		repo.listPrincipleHistory.mockResolvedValue(emptyPage);
 
 		const out = (await call()) as {
 			queue: { items: Array<Record<string, unknown>>; total: number };
@@ -198,10 +312,16 @@ describe('FE-07 화면 소스 계약', () => {
 	it('page는 G-2 유예 전송(deferred)과 기존 폼 액션을 쓰고, 그대로 반영에는 overrides를 보내지 않는다', () => {
 		const src = read('src/routes/(app)/portfolio/+page.svelte');
 		expect(src).toMatch(/createDeferredSender/);
-		expect(src).toMatch(/postAction\('approve'/);
-		expect(src).toMatch(/postAction\('reject'/);
-		expect(src).toMatch(/postAction\('hold'/);
-		expect(src).toMatch(/postAction\('ack'/);
+		for (const action of [
+			'approve',
+			'reject',
+			'hold',
+			'ack',
+			'approvePrinciple',
+			'decidePrinciple'
+		]) {
+			expect(src, action).toContain(`'${action}'`);
+		}
 		expect(src).toMatch(/postAction\('correct'/);
 		expect(src).toMatch(/if \(overrides\) fields\.overrides = JSON\.stringify\(overrides\)/);
 		expect(src).not.toMatch(/overrides:\s*''/);
@@ -211,6 +331,13 @@ describe('FE-07 화면 소스 계약', () => {
 		const src = read('src/lib/components/queue/OverrideSheet.svelte');
 		expect(src).not.toMatch(/bind:value=\{inputs\.(trigger|breakeven|watch)/);
 		expect(src).not.toMatch(/inputs\.trigger_price|inputs\.breakeven|inputs\.watch_only/);
+	});
+
+	it('원칙 폼 액션은 기존 핸들러만 잇는다(새 쓰기 API 없음)', () => {
+		const src = read('src/routes/(app)/portfolio/+page.server.ts');
+		expect(src).toMatch(/approvePrinciple:[\s\S]*?handleApprovePrinciple\(/);
+		expect(src).toMatch(/decidePrinciple:[\s\S]*?handleDecidePrinciple\(/);
+		expect(src).not.toMatch(/\.rpc\(|fromRepo|\.from\(/);
 	});
 
 	it('/approvals는 /portfolio#queue로 보낸다(G-3)', () => {

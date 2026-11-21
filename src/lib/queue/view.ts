@@ -102,6 +102,7 @@ export function toQueueItem(
 		card.current_values?.currency ??
 		pos?.currency;
 	return {
+		kind: card.change_type === 'principle' ? 'principle' : 'position',
 		id: card.id,
 		display_id: card.display_id,
 		change_type: card.change_type,
@@ -129,6 +130,78 @@ export function toQueueItem(
 		name: inst?.name ?? null,
 		ticker: inst?.ticker ?? null,
 		asset_type: inst?.asset_type ?? null,
-		currency: c === 'USD' ? 'USD' : 'KRW'
+		currency: c === 'USD' ? 'USD' : 'KRW',
+		clause_ref: null,
+		body_preview: null,
+		body_truncated: false
 	};
+}
+
+export type PrincipleLike = {
+	id: string;
+	display_id: string;
+	status: string;
+	clause_ref: string | null;
+	body_preview: string;
+	body_truncated: boolean;
+	reason_md: string | null;
+	decision_note: string | null;
+	proposed_by_type: string;
+	proposer_name: string;
+	evidence_chips: CardLike['evidence_chips'];
+	attention_started_at: string | null;
+	acknowledged_at: string | null;
+	base_version: number | null;
+	created_at: string;
+	held_at: string | null;
+	decided_at: string | null;
+};
+
+/** 원칙 개정 요청(R-) → 화면 항목. 값 diff·고쳐서 반영·미리 막힘이 없다(허용 키·approval_version 없음). */
+export function principleToQueueItem(p: PrincipleLike): QueueItem {
+	return {
+		kind: 'principle',
+		id: p.id,
+		display_id: p.display_id,
+		change_type: 'principle',
+		status: asStatus(p.status),
+		proposed_by_type: p.proposed_by_type,
+		proposer_name: p.proposer_name,
+		calc_note: null,
+		reason: p.reason_md?.trim() || null,
+		decision_note: p.decision_note?.trim() || null,
+		evidence: evidenceView(p.evidence_chips ?? []),
+		created_at: p.created_at,
+		held_at: p.held_at,
+		decided_at: p.decided_at,
+		attention_started_at: p.attention_started_at,
+		acknowledged_at: p.acknowledged_at,
+		base_version: p.base_version,
+		approval_version: null,
+		proposed_values: {},
+		applied_values: null,
+		request_values: null,
+		live_values: null,
+		position_id: null,
+		name: null,
+		ticker: null,
+		asset_type: null,
+		currency: 'KRW',
+		clause_ref: p.clause_ref?.trim() || null,
+		body_preview: p.body_preview,
+		body_truncated: p.body_truncated
+	};
+}
+
+/** 최신순 병합(확인 대기 목록에서 포지션·원칙을 한 줄로). */
+export function byCreatedDesc(a: { created_at: string }, b: { created_at: string }): number {
+	return Date.parse(b.created_at) - Date.parse(a.created_at);
+}
+
+/** 결정 시각 최신순(없으면 만든 시각). */
+export function byDecidedDesc(
+	a: { decided_at: string | null; created_at: string },
+	b: { decided_at: string | null; created_at: string }
+): number {
+	return Date.parse(b.decided_at ?? b.created_at) - Date.parse(a.decided_at ?? a.created_at);
 }

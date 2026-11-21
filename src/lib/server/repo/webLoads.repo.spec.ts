@@ -11,7 +11,10 @@ import {
 	listInstrumentLabels,
 	listInstrumentMeta,
 	listJournalPage,
-	listProposalHistory
+	listPrincipleHistory,
+	listPrincipleQueue,
+	listProposalHistory,
+	PRINCIPLE_BODY_PREVIEW_MAX
 } from './webLoads.repo';
 import { listIndicatorSeries } from './market.repo';
 
@@ -255,5 +258,64 @@ describe('FE-07 변경 요청 보조 load', () => {
 		expect(data).toEqual([{ id: 'a', name: '가', ticker: 'A', asset_type: 'etf' }]);
 		expectOwnerOnly(requests[0].params);
 		expect(requests[0].params.get('select')).toBe('id,name,ticker,asset_type');
+	});
+
+	it('listPrincipleQueue: pending·on_hold만, owner 조건, 본문은 앞부분만', async () => {
+		const long = '가'.repeat(PRINCIPLE_BODY_PREVIEW_MAX + 5);
+		const { repo, requests } = stubClient({
+			principle_proposals: [
+				{
+					id: 'r1',
+					display_id: 'R-0002',
+					status: 'pending',
+					clause_ref: null,
+					proposed_body_md: long,
+					reason_md: '이유',
+					decision_note: null,
+					proposed_by_type: 'user',
+					proposed_by: null,
+					evidence: [{ kind: 'user_statement', label: '내 판단' }],
+					attention_started_at: null,
+					acknowledged_at: null,
+					base_version: 3,
+					created_at: '2026-11-21T00:00:00Z',
+					held_at: null,
+					decided_at: null
+				}
+			]
+		});
+		const { data, error } = await listPrincipleQueue(repo, page);
+		expect(error).toBeNull();
+		expect(data.total).toBe(1);
+		expect(data.items[0]).toMatchObject({
+			display_id: 'R-0002',
+			body_truncated: true,
+			reason_md: '이유',
+			proposer_name: '나'
+		});
+		expect([...data.items[0].body_preview]).toHaveLength(PRINCIPLE_BODY_PREVIEW_MAX);
+		const pr = requests.filter((r) => r.table === 'principle_proposals');
+		expect(pr.map((r) => r.method)).toEqual(['HEAD', 'GET']);
+		expect(filterParams(pr[0].params)).toEqual(filterParams(pr[1].params));
+		for (const r of pr) {
+			expectOwnerOnly(r.params);
+			expect(r.params.get('status')).toBe('in.(pending,on_hold)');
+		}
+		expect(requests.every((r) => r.method === 'GET' || r.method === 'HEAD')).toBe(true);
+	});
+
+	it('listPrincipleHistory: 종결 상태, 결정 시각 최신순, owner 조건', async () => {
+		const { repo, requests } = stubClient({ principle_proposals: [] });
+		const { data, error } = await listPrincipleHistory(repo, page);
+		expect(error).toBeNull();
+		expect(data.items).toEqual([]);
+		const pr = requests.filter((r) => r.table === 'principle_proposals');
+		for (const r of pr) {
+			expectOwnerOnly(r.params);
+			expect(r.params.get('status')).toBe(
+				'in.(approved,rejected,superseded,cancelled,expired,conflict)'
+			);
+		}
+		expect(pr[1].params.get('order')).toBe('decided_at.desc.nullslast,created_at.desc');
 	});
 });

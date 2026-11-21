@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { evidenceView, toQueueItem, type CardLike } from './view';
+import {
+	byCreatedDesc,
+	byDecidedDesc,
+	evidenceView,
+	principleToQueueItem,
+	toQueueItem,
+	type CardLike
+} from './view';
+import {
+	canOverride,
+	changeTypeLabel,
+	isPreBlocked,
+	isValueModified,
+	itemTitle
+} from './proposals';
 
 const card: CardLike = {
 	id: 'c1',
@@ -67,5 +81,57 @@ describe('toQueueItem', () => {
 			{ kind: 'report', label: '브리핑', href: null },
 			{ kind: 'journal', label: '매매일지', href: null }
 		]);
+	});
+
+	it('원칙 개정 요청 → 화면 항목: R- 번호, 값 diff·고쳐서 반영·미리 막힘 없음', () => {
+		const item = principleToQueueItem({
+			id: 'r1',
+			display_id: 'R-0011',
+			status: 'approved',
+			clause_ref: '  ',
+			body_preview: '본문',
+			body_truncated: true,
+			reason_md: ' 이유 ',
+			decision_note: null,
+			proposed_by_type: 'bot',
+			proposer_name: '투자 관리 봇',
+			evidence_chips: [{ kind: 'url', url: 'ftp://x.example/a' }],
+			attention_started_at: null,
+			acknowledged_at: null,
+			base_version: 3,
+			created_at: '2026-11-21T00:00:00Z',
+			held_at: null,
+			decided_at: '2026-11-21T01:00:00Z'
+		});
+		expect(item).toMatchObject({
+			kind: 'principle',
+			display_id: 'R-0011',
+			change_type: 'principle',
+			clause_ref: null,
+			body_truncated: true,
+			reason: '이유',
+			approval_version: null
+		});
+		expect(item.evidence).toEqual([]);
+		expect(itemTitle(item)).toBe('투자 원칙 개정');
+		expect(itemTitle({ ...item, clause_ref: '3-2' })).toBe('투자 원칙 개정 · 3-2');
+		expect(changeTypeLabel('principle')).toBe('투자 원칙 개정');
+		expect(canOverride(item)).toBe(false);
+		expect(isPreBlocked({ ...item, status: 'pending' })).toBe(false);
+		expect(isValueModified(item)).toBe(false);
+	});
+
+	it('확인 필요의 원칙 카드(ProposalCard 모양)는 kind=principle', () => {
+		expect(toQueueItem({ ...card, change_type: 'principle' }, new Map(), new Map()).kind).toBe(
+			'principle'
+		);
+		expect(toQueueItem(card, new Map(), new Map()).kind).toBe('position');
+	});
+
+	it('병합 정렬: 만든 시각·결정 시각 최신순', () => {
+		const a = { created_at: '2026-11-20T00:00:00Z', decided_at: null };
+		const b = { created_at: '2026-11-19T00:00:00Z', decided_at: '2026-11-21T00:00:00Z' };
+		expect([b, a].sort(byCreatedDesc)).toEqual([a, b]);
+		expect([a, b].sort(byDecidedDesc)).toEqual([b, a]);
 	});
 });

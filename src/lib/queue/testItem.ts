@@ -6,6 +6,7 @@ import type { QueueItem } from './proposals';
 
 export function makeItem(over: Partial<QueueItem> = {}): QueueItem {
 	return {
+		kind: 'position',
 		id: 'id-1',
 		display_id: 'P-0007',
 		change_type: 'set_qty_avg',
@@ -32,6 +33,9 @@ export function makeItem(over: Partial<QueueItem> = {}): QueueItem {
 		ticker: 'TST',
 		asset_type: 'stock',
 		currency: 'KRW',
+		clause_ref: null,
+		body_preview: null,
+		body_truncated: false,
 		...over
 	};
 }

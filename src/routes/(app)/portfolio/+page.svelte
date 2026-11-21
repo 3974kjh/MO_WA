@@ -5,6 +5,8 @@
 	 * - 보유 표·자산 비중 본문은 FE-05. 여기서는 기록 수정(§7-12) 진입점만 보유 목록에 둔다.
 	 * - G-2: 반영·고쳐서 반영·기록 수정은 확인 → 낙관적 UI → 5초 뒤 요청. 되돌리기·탭 닫기·이동이면 보내지 않는다.
 	 *   거절은 확인 뒤 즉시. 보류·확인했어요는 바로 처리.
+	 * - 원칙 개정 요청(R-)도 같은 목록에 섞여 나온다: 반영은 ?/approvePrinciple(5초 유예 동일),
+	 *   거절·보류·대기로 되돌리기는 ?/decidePrinciple, 확인했어요는 ?/ack kind=principle. 고쳐서 반영은 없다.
 	 * - 서버가 반영 안 됨(기록 달라짐)을 돌려주면 '확인 필요'로 옮긴다(일반 오류 토스트 아님).
 	 *   미리 막힌 카드(approval_version ≠ base_version)는 배지 그대로, 반영 버튼만 aria-disabled.
 	 */
@@ -23,6 +25,7 @@
 	import DiffTable from '$lib/components/queue/DiffTable.svelte';
 	import OverrideSheet from '$lib/components/queue/OverrideSheet.svelte';
 	import CorrectionSheet from '$lib/components/queue/CorrectionSheet.svelte';
+	import PrincipleBody from '$lib/components/queue/PrincipleBody.svelte';
 	import { createDeferredSender, UNDO_GRACE_MS } from '$lib/queue/deferred';
 	import {
 		ACTION_ERROR_TEXT,
@@ -148,7 +151,10 @@
 				// 그대로 반영이면 overrides 필드를 보내지 않는다(빈 문자열 금지).
 				if (overrides) fields.overrides = JSON.stringify(overrides);
 				if (note) fields.note = note;
-				const out = await postAction('approve', fields);
+				const out = await postAction(
+					item.kind === 'principle' ? 'approvePrinciple' : 'approve',
+					item.kind === 'principle' ? { id: item.id } : fields
+				);
 				setBusy(item.id, false);
 				if (out.kind === 'conflict' || (out.kind === 'ok' && out.status === 'conflict')) {
 					delete optimistic[item.id];
@@ -212,7 +218,10 @@
 		rejectTarget = null;
 		rejectNote = '';
 		setBusy(item.id, true);
-		const out = await postAction('reject', note ? { id: item.id, note } : { id: item.id });
+		const base: Record<string, string> =
+			item.kind === 'principle' ? { id: item.id, action: 'reject' } : { id: item.id };
+		if (note) base.note = note;
+		const out = await postAction(item.kind === 'principle' ? 'decidePrinciple' : 'reject', base);
 		setBusy(item.id, false);
 		if (out.kind === 'ok') toast.show('요청을 거절했어요', { tone: 'ok' });
 		else toast.show(out.kind === 'error' ? out.message : ACTION_ERROR_TEXT, { tone: 'err' });
@@ -221,7 +230,10 @@
 
 	async function doHold(item: QueueItem, hold: boolean) {
 		setBusy(item.id, true);
-		const out = await postAction('hold', { id: item.id, hold: String(hold) });
+		const out =
+			item.kind === 'principle'
+				? await postAction('decidePrinciple', { id: item.id, action: hold ? 'hold' : 'unhold' })
+				: await postAction('hold', { id: item.id, hold: String(hold) });
 		setBusy(item.id, false);
 		if (out.kind === 'ok') {
 			toast.show(hold ? '요청을 보류했어요' : '확인 대기로 되돌렸어요', { tone: 'ok' });
@@ -231,7 +243,7 @@
 
 	async function doAck(item: QueueItem) {
 		setBusy(item.id, true);
-		const out = await postAction('ack', { id: item.id, kind: 'position' });
+		const out = await postAction('ack', { id: item.id, kind: item.kind });
 		setBusy(item.id, false);
 		if (out.kind === 'ok') {
 			delete conflicted[item.id];
@@ -487,11 +499,17 @@
 <Sheet open={!!approveTarget} onclose={() => (approveTarget = null)} title="이 요청을 반영할까요?">
 	{#if approveTarget}
 		<div class="sheet-body" data-testid="approve-confirm">
-			<DiffTable rows={diffRows(approveTarget)} />
+			{#if approveTarget.kind === 'principle'}
+				<PrincipleBody text={approveTarget.body_preview} truncated={approveTarget.body_truncated} />
+			{:else}
+				<DiffTable rows={diffRows(approveTarget)} />
+			{/if}
 			<p class="sheet-note">
-				반영하면 보유 기록의 수량·평균 단가가 바로 바뀌고 이력에 남아요. 반영 뒤 <b
-					>5초 안에 되돌릴 수 있어요</b
-				>(5초가 지나야 저장돼요 · 그 전에 탭을 닫으면 저장되지 않아요).
+				{approveTarget.kind === 'principle'
+					? '반영하면 투자 원칙이 이 본문으로 새로 개정되고 이력에 남아요.'
+					: '반영하면 보유 기록의 수량·평균 단가가 바로 바뀌고 이력에 남아요.'} 반영 뒤
+				<b>5초 안에 되돌릴 수 있어요</b>(5초가 지나야 저장돼요 · 그 전에 탭을 닫으면 저장되지
+				않아요).
 			</p>
 		</div>
 	{/if}
@@ -510,7 +528,11 @@
 <Sheet open={!!rejectTarget} onclose={() => (rejectTarget = null)} title="이 요청을 거절할까요?">
 	{#if rejectTarget}
 		<div class="sheet-body" data-testid="reject-confirm">
-			<DiffTable rows={diffRows(rejectTarget)} />
+			{#if rejectTarget.kind === 'principle'}
+				<PrincipleBody text={rejectTarget.body_preview} truncated={rejectTarget.body_truncated} />
+			{:else}
+				<DiffTable rows={diffRows(rejectTarget)} />
+			{/if}
 			<p class="sheet-note">
 				거절 이유를 남기면 봇이 다음 요청에 참고해요. 거절은 바로 처리되며 되돌릴 수 없어요.
 			</p>

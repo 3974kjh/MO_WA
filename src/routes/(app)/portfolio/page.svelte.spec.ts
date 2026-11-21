@@ -372,4 +372,188 @@ describe('FE-07 변경 요청 렌더', () => {
 		expect(body.get('base_version')).toBe('5');
 		expect(String(body.get('client_ref'))).toMatch(/^[0-9a-f-]{36}$/);
 	});
+
+	const principleItem = (over: Parameters<typeof makeItem>[0] = {}) =>
+		makeItem({
+			kind: 'principle',
+			change_type: 'principle',
+			display_id: 'R-0031',
+			base_version: 4,
+			approval_version: null,
+			proposed_values: {},
+			request_values: null,
+			live_values: null,
+			position_id: null,
+			name: null,
+			ticker: null,
+			asset_type: null,
+			clause_ref: '2-1',
+			body_preview: '새 원칙 본문 줄',
+			reason: '원칙 이유 줄',
+			...over
+		});
+
+	it('원칙 개정 요청: R- 번호, 본문은 평문, 고쳐서 반영 없이 반영·보류·거절 3칸', async () => {
+		const { container } = render(Page, {
+			data: {
+				...base,
+				queue: {
+					items: [
+						principleItem({ id: 'p1' }),
+						principleItem({
+							id: 'p2',
+							display_id: 'R-0032',
+							status: 'on_hold',
+							body_preview: '<b>굵게</b>'
+						})
+					],
+					total: 2
+				}
+			} as never
+		});
+		const c = cardOf(container, 'R-0031');
+		expect(c).toBeDefined();
+		expect(c.getAttribute('data-kind')).toBe('principle');
+		expect(text(c)).toContain('투자 원칙 개정 · 2-1');
+		expect(text(c)).toContain('새 원칙 본문 줄');
+		expect(text(c)).toContain('원칙 이유 줄');
+		expect(c.querySelector('[data-action="override"]')).toBeNull();
+		expect(c.querySelector('[data-action="approve"]')?.getAttribute('aria-disabled')).toBeNull();
+		expect(c.querySelectorAll('.acts button')).toHaveLength(3);
+		const held = cardOf(container, 'R-0032');
+		expect(held.querySelector('[data-action="unhold"]')?.textContent).toContain('대기로 되돌리기');
+		// 본문은 평문: 태그가 요소로 만들어지지 않는다
+		expect(held.querySelector('[data-testid="principle-body"] b')).toBeNull();
+		expect(text(held)).toContain('<b>굵게</b>');
+		expect(text(container)).not.toContain('충돌');
+	});
+
+	it('G-2: 원칙 반영도 5초 뒤 ?/approvePrinciple(id만), 되돌리기·pagehide면 보내지 않는다', async () => {
+		vi.useFakeTimers();
+		const { container } = render(Page, {
+			data: {
+				...base,
+				queue: {
+					items: [
+						principleItem({ id: 'pa', display_id: 'R-0041' }),
+						principleItem({ id: 'pb', display_id: 'R-0042' }),
+						principleItem({ id: 'pc', display_id: 'R-0043' })
+					],
+					total: 3
+				}
+			} as never
+		});
+		const approve = (id: string) => {
+			(cardOf(container, id).querySelector('[data-action="approve"]') as HTMLElement).click();
+			flushSync();
+			expect(document.querySelector('[data-testid="principle-body"]')).not.toBeNull();
+			(document.querySelector('[data-action="approve-confirm"]') as HTMLElement).click();
+			flushSync();
+		};
+		approve('R-0041');
+		expect(cardOf(container, 'R-0041')).toBeUndefined();
+		toast.items.findLast((t) => t.action?.label === '되돌리기')!.action!.onclick();
+		flushSync();
+		expect(cardOf(container, 'R-0041')).toBeDefined();
+		await vi.advanceTimersByTimeAsync(6000);
+		expect(fetchSpy).not.toHaveBeenCalled();
+
+		approve('R-0042');
+		window.dispatchEvent(new Event('pagehide'));
+		await vi.advanceTimersByTimeAsync(6000);
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it('G-2: 원칙 반영은 4.9초엔 안 보내고 5초 뒤 한 번 보낸다', async () => {
+		vi.useFakeTimers();
+		const { container } = render(Page, {
+			data: {
+				...base,
+				queue: { items: [principleItem({ id: 'pd', display_id: 'R-0044' })], total: 1 }
+			} as never
+		});
+		(cardOf(container, 'R-0044').querySelector('[data-action="approve"]') as HTMLElement).click();
+		flushSync();
+		(document.querySelector('[data-action="approve-confirm"]') as HTMLElement).click();
+		flushSync();
+		await vi.advanceTimersByTimeAsync(4900);
+		expect(fetchSpy).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(200);
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe('?/approvePrinciple');
+		const body = init.body as FormData;
+		expect([...body.keys()]).toEqual(['id']);
+		expect(body.get('id')).toBe('pd');
+	});
+
+	it('원칙 거절(확인 뒤 즉시)·보류·대기로 되돌리기는 ?/decidePrinciple, 확인했어요는 ?/ack kind=principle', async () => {
+		vi.useFakeTimers();
+		const { container } = render(Page, {
+			data: {
+				...base,
+				queue: {
+					items: [
+						principleItem({ id: 'r1', display_id: 'R-0051' }),
+						principleItem({ id: 'r2', display_id: 'R-0052' }),
+						principleItem({ id: 'r3', display_id: 'R-0053', status: 'on_hold' })
+					],
+					total: 3
+				},
+				attentionNeeded: [principleItem({ id: 'r4', display_id: 'R-0054', status: 'conflict' })]
+			} as never
+		});
+		(cardOf(container, 'R-0051').querySelector('[data-action="reject"]') as HTMLElement).click();
+		flushSync();
+		(document.querySelector('[data-action="reject-confirm"]') as HTMLElement).click();
+		await vi.advanceTimersByTimeAsync(0);
+		(cardOf(container, 'R-0052').querySelector('[data-action="hold"]') as HTMLElement).click();
+		await vi.advanceTimersByTimeAsync(0);
+		(cardOf(container, 'R-0053').querySelector('[data-action="unhold"]') as HTMLElement).click();
+		await vi.advanceTimersByTimeAsync(0);
+		const att = cardOf(container, 'R-0054');
+		expect(text(att)).toContain('반영 안 됨(기록 달라짐)');
+		(att.querySelector('[data-action="ack"]') as HTMLElement).click();
+		await vi.advanceTimersByTimeAsync(0);
+		const calls = (fetchSpy.mock.calls as [string, RequestInit][]).map(([u, i]) => [
+			u,
+			Object.fromEntries((i.body as FormData).entries())
+		]);
+		expect(calls).toEqual([
+			['?/decidePrinciple', { id: 'r1', action: 'reject' }],
+			['?/decidePrinciple', { id: 'r2', action: 'hold' }],
+			['?/decidePrinciple', { id: 'r3', action: 'unhold' }],
+			['?/ack', { id: 'r4', kind: 'principle' }]
+		]);
+	});
+
+	it('원칙 반영 409는 확인 필요로 옮기고 중립 토스트(시트 없음)', async () => {
+		vi.useFakeTimers();
+		fetchSpy.mockImplementation(
+			async () =>
+				new Response(
+					JSON.stringify({
+						type: 'failure',
+						status: 409,
+						data: { ok: false, code: 'CONFLICT', status: 'conflict', message: 'x' }
+					})
+				)
+		);
+		const { container } = render(Page, {
+			data: {
+				...base,
+				queue: { items: [principleItem({ id: 'rc', display_id: 'R-0061' })], total: 1 }
+			} as never
+		});
+		(cardOf(container, 'R-0061').querySelector('[data-action="approve"]') as HTMLElement).click();
+		flushSync();
+		(document.querySelector('[data-action="approve-confirm"]') as HTMLElement).click();
+		flushSync();
+		await vi.advanceTimersByTimeAsync(5100);
+		expect((fetchSpy.mock.calls[0] as [string])[0]).toBe('?/approvePrinciple');
+		await vi.waitFor(() =>
+			expect(toast.items.some((t) => t.message.includes('확인 필요'))).toBe(true)
+		);
+		expect(document.querySelector('[data-testid="override-edit"]')).toBeNull();
+	});
 });

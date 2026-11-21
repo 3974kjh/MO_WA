@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
 	 * 변경 요청 카드 (DS §7-6, §7-6b, handoff §14-4). 왼쪽 색 세로선 없이 상태 배지(아이콘+글자)로만 구분.
-	 * mode=open: 반영 / 고쳐서 반영 / 보류 / 거절(close는 3칸). mode=attention: 확인했어요. mode=history: 결정 시각.
+	 * mode=open: 반영 / 고쳐서 반영 / 보류 / 거절(close·원칙 개정은 3칸). mode=attention: 확인했어요. mode=history: 결정 시각.
 	 */
 	import StatusBadge from '$lib/components/ui/StatusBadge.svelte';
 	import { formatKstShort } from '$lib/format/datetime';
@@ -18,6 +18,7 @@
 	} from '$lib/queue/proposals';
 	import DiffTable from './DiffTable.svelte';
 	import Diff3 from './Diff3.svelte';
+	import PrincipleBody from './PrincipleBody.svelte';
 
 	let {
 		item,
@@ -45,6 +46,7 @@
 	let overridable = $derived(canOverride(item));
 	let noteId = $derived(`why-${item.id}`);
 	let isUser = $derived(item.proposed_by_type === 'user');
+	let isPrinciple = $derived(item.kind === 'principle');
 	let noteEl = $state<HTMLElement>();
 
 	const kst = (d: string | null) => (d ? formatKstShort(d) : '');
@@ -61,7 +63,9 @@
 	let statusNote = $derived.by(() => {
 		switch (item.status) {
 			case 'conflict':
-				return '요청이 가정한 보유 기록과 실제 기록이 달라 반영하지 않았어요. 새 요청이 필요해요.';
+				return item.kind === 'principle'
+					? '요청이 가정한 투자 원칙 본문과 지금 본문이 달라 반영하지 않았어요. 새 요청이 필요해요.'
+					: '요청이 가정한 보유 기록과 실제 기록이 달라 반영하지 않았어요. 새 요청이 필요해요.';
 			case 'expired':
 				return '7일 안에 결정하지 않아 기한이 지났어요.';
 			case 'superseded':
@@ -77,6 +81,7 @@
 <article
 	class="qi"
 	data-status={item.status}
+	data-kind={item.kind}
 	data-testid="queue-card"
 	aria-label="{item.display_id} {itemTitle(item)}"
 >
@@ -97,10 +102,19 @@
 
 	<h3 class="title">{itemTitle(item)}</h3>
 	<p class="by">
-		요청한 봇 {#if isUser}<b>나</b>(직접 수정){:else}<b>{item.proposer_name}</b>{/if}
+		요청한 봇 {#if isUser}<b>나</b>{#if !isPrinciple}(직접 수정){/if}{:else}<b
+				>{item.proposer_name}</b
+			>{/if}
 	</p>
 
-	{#if modified && item.applied_values}
+	{#if isPrinciple}
+		<PrincipleBody text={item.body_preview} truncated={item.body_truncated} />
+		{#if item.reason}<p class="reason"><b>요청 이유</b> {item.reason}</p>{/if}
+		{#if item.status === 'rejected' && item.decision_note}<p class="reason">
+				<b>거절 이유</b>
+				{item.decision_note}
+			</p>{/if}
+	{:else if modified && item.applied_values}
 		<Diff3 rows={diff3Rows(item, item.applied_values)} />
 		{#if item.decision_note}<p class="hist-mod"><b>고친 이유</b> {item.decision_note}</p>{/if}
 		<p class="sub">
