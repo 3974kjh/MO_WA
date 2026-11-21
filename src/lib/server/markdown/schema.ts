@@ -107,25 +107,3 @@ export const reportSchema: Schema = {
 		figcaption: ['figure']
 	}
 };
-
-/**
- * 캐시에 저장했던 **렌더 결과** HTML을 다시 sanitize할 때 쓰는 허용 목록(./cache.ts, Low-4·캐시).
- * reportSchema에 렌더러가 sanitize 뒤에 붙이는 고정 값만 더한다: 헤딩 id(`h-` slug 형식만),
- * 표 래퍼 class, 용어 풀이 span(class·title·role·tabindex·data-gloss). 외부 링크 rel/target과 이미지
- * loading 등은 허용하지 않고 정책 함수가 다시 붙인다. id는 형식을 강제하므로 clobber 접두사를 붙이지 않는다.
- */
-const HEADING_ID = /^h-[\p{L}\p{N}-]{1,120}$/u;
-
-export const renderedSchema: Schema = {
-	...reportSchema,
-	clobber: ['name'],
-	attributes: {
-		...reportSchema.attributes,
-		h2: [['id', HEADING_ID]],
-		h3: [['id', HEADING_ID]],
-		h4: [['id', HEADING_ID]],
-		div: [['className', 'callout', 'warn', 'err', 'info', 'callout-body', 'h1-marker', 'tbl-wrap']],
-		table: [['className', 'tbl']],
-		span: [['className', 'gloss'], 'title', ['role', 'button'], ['tabIndex', 0], 'dataGloss']
-	}
-};

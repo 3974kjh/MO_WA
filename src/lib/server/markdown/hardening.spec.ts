@@ -1,14 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fromHtml } from 'hast-util-from-html';
 import { visit } from 'unist-util-visit';
-import { largeBriefing, sampleBriefing, sampleGlossary } from '$lib/fixtures/report';
 import {
 	MAX_REPORT_BYTES,
 	RENDER_ERROR_MESSAGE,
 	SLUG_MAX,
 	TOO_LARGE_MESSAGE,
 	renderReport,
-	resanitizeRendered,
 	sanitizeFragment,
 	slugify
 } from './render';
@@ -86,39 +84,45 @@ describe('Low-2 slug 충돌·길이·제어 문자', () => {
 	});
 });
 
-describe('Low-3 같은 출처 이미지 경로', () => {
+describe('Low-3 같은 출처 이미지 경로(허용 목록 /img·/report-assets)', () => {
 	const denied = [
 		'/api/mcp',
 		'/api/mcp?x=1',
 		'/API/mcp',
-		'/Api',
-		'/api',
-		'/api;x=1',
 		'/%61pi/mcp',
-		'/x/../api/mcp',
+		'/img/../api/mcp',
 		'/report-assets/../api/mcp',
-		'/x/%2e%2e/api/mcp',
-		'/x/%2E%2E/api',
-		'/x/.%2e/api',
-		'/./api',
+		'/img/%2e%2e/api/mcp',
+		'/img/%2E%2E/api',
+		'/img/.%2e/api',
+		'/./img/a.png',
 		'/img/./a.png',
 		'/logout',
-		'/login'
+		'/login',
+		'/imgx/a.png',
+		'/IMG/a.png',
+		'/img;x/a.png',
+		'/report-assets-x/a.png',
+		'/a.png',
+		'/img%2f..%2fapi',
+		'/img/a b.png'
 	];
 	it.each(denied)('마크다운 이미지 %s 는 제거', (src) => {
-		expect(imgSrcs(renderReport(`![a](${src})`).a)).toEqual([]);
+		expect(imgSrcs(renderReport(`![a](<${src}>)`).a)).toEqual([]);
 	});
 	it.each(denied)('raw img %s 도 제거(2차 방어선)', (src) => {
 		expect(imgSrcs(sanitizeFragment(`<img src="${src}">`))).toEqual([]);
 	});
-	it('일반 같은 출처 이미지는 남는다', () => {
-		expect(imgSrcs(renderReport('![a](/img/a.png) ![b](/report-assets/2026/차트.png)').a)).toEqual([
-			'/img/a.png',
+	it.each(['/img', '/img/a.png', '/report-assets', '/report-assets/2026/a.png?v=1'])(
+		'허용 경로 %s 는 남는다',
+		(src) => {
+			expect(imgSrcs(sanitizeFragment(`<img src="${src}">`))).toEqual([src]);
+			expect(imgSrcs(renderReport(`![a](${src})`).a)).toEqual([src]);
+		}
+	);
+	it('한글 파일명(퍼센트 인코딩)도 허용 경로 안이면 남는다', () => {
+		expect(imgSrcs(renderReport('![b](/report-assets/2026/차트.png)').a)).toEqual([
 			'/report-assets/2026/%EC%B0%A8%ED%8A%B8.png'
-		]);
-		expect(imgSrcs(renderReport('![a](/apis/a.png) ![b](/img/api/a.png)').a)).toEqual([
-			'/apis/a.png',
-			'/img/api/a.png'
 		]);
 	});
 });
@@ -201,29 +205,5 @@ describe('Nit: 빈 class 제거', () => {
 		const r = renderReport('```js" onclick\nx\n```');
 		expect(r.a).not.toContain('class=""');
 		expect(sanitizeFragment('<p class="sr-only">x</p>')).toBe('<p>x</p>');
-	});
-});
-
-describe('resanitizeRendered (캐시 히트 경로)', () => {
-	it('정상 렌더 결과는 그대로(멱등)', () => {
-		const opts = { glossary: sampleGlossary, imageHosts: ['cdn.example.com'] };
-		for (const src of [
-			sampleBriefing,
-			largeBriefing(),
-			'![a](/img/a.png) ![b](https://cdn.example.com/b.png) [x](https://a.example) | a |\n|---|\n| 1 |',
-			':::callout warn\n주의\n:::\n\n:::details 로그\n- a\n:::\n\n```ts\nx\n```'
-		]) {
-			const r = renderReport(src, opts);
-			expect(resanitizeRendered(r.a, opts)).toBe(r.a);
-			expect(resanitizeRendered(r.b, opts)).toBe(r.b);
-		}
-	});
-	it('렌더러 고정 속성 밖은 지운다', () => {
-		const out = resanitizeRendered(
-			'<h2 id="cookie" onclick="x">a</h2><h2 id="h-ok">b</h2><span class="gloss evil" title="t" role="link" tabindex="5" data-x="1" data-gloss="g">c</span><div class="tbl-wrap fixed"><table class="tbl x"></table></div>'
-		);
-		expect(out).toBe(
-			'<h2>a</h2><h2 id="h-ok">b</h2><span class="gloss" title="t" data-gloss="g">c</span><div class="tbl-wrap"><table class="tbl"></table></div>'
-		);
 	});
 });

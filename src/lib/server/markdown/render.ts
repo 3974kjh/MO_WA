@@ -21,7 +21,8 @@ import { toHtml } from 'hast-util-to-html';
 import { toString } from 'hast-util-to-string';
 import { SKIP, visit } from 'unist-util-visit';
 import type { Element, ElementContent, Root, RootContent, Text } from 'hast';
-import { renderedSchema, reportSchema } from './schema';
+import { reportSchema } from './schema';
+import { asSanitized } from './brand';
 
 import type { RenderedReport, ReportPart, SanitizedHtml, TocItem } from '$lib/markdown/types';
 
@@ -36,15 +37,10 @@ export const RENDER_ERROR_MESSAGE = '리포트를 표시할 수 없습니다.';
 /** 입력이 상한을 넘을 때 고정 문구(Low-1) */
 export const TOO_LARGE_MESSAGE = '리포트가 너무 길어 표시할 수 없습니다.';
 /**
- * 같은 출처 이미지로 쓰면 안 되는 경로 첫 세그먼트(Low-3). 이미지 요청에는 쿠키가 따라가므로
- * API·인증 라우트로 GET이 나가지 않게 한다(대소문자 무시, 디코딩·정규화 뒤 판정).
+ * 같은 출처 이미지로 허용하는 경로 첫 세그먼트(Low-3, 허용 목록). `/img`, `/img/…`, `/report-assets`, `/report-assets/…`만.
+ * 이미지 요청에는 쿠키가 따라가므로 API·인증 라우트 등 그 밖의 경로로 GET이 나가지 않게 한다(대소문자 구분, 디코딩·정규화 뒤 판정).
  */
-export const IMAGE_PATH_DENY = ['api', 'login', 'logout'] as const;
-
-/** sanitize를 거친 HTML만 이 타입이 된다. 이 파일 밖에서는 만들지 않는다(ReportView `{@html}` 입력) */
-function asSanitized(html: string): SanitizedHtml {
-	return html as SanitizedHtml;
-}
+export const IMAGE_PATH_ALLOW = ['img', 'report-assets'] as const;
 
 export interface RenderOptions {
 	/** 용어 풀이 사전: 용어 → 설명. 본문(제목·링크·코드 제외)에서 용어마다 처음 한 번만 표시한다 */
@@ -225,7 +221,7 @@ function fixLinks(tree: Root, siteHosts: readonly string[]) {
  * 같은 출처 이미지 경로 검사(Low-3·Low-5).
  * - 원문에 공백·제어 문자·`\\`가 있으면 거부(브라우저가 지우거나 바꿔 해석이 달라질 수 있는 입력)
  * - 퍼센트 디코딩 뒤 `.`·`..` 세그먼트가 있으면 거부(`/x/../api`, `/%2e%2e/api`)
- * - 해석된 경로의 첫 세그먼트가 IMAGE_PATH_DENY(대소문자 무시)면 거부
+ * - 해석된 경로의 첫 세그먼트가 IMAGE_PATH_ALLOW에 정확히 일치할 때만 허용(`/imgx`, `/IMG`, `/img;x`는 거부)
  */
 function sameOriginImageOk(src: string): boolean {
 	if (!src.startsWith('/') || src.startsWith('//')) return false;
@@ -246,11 +242,10 @@ function sameOriginImageOk(src: string): boolean {
 	} catch {
 		return false;
 	}
-	first = first.split(';')[0].toLowerCase();
-	return !(IMAGE_PATH_DENY as readonly string[]).includes(first);
+	return (IMAGE_PATH_ALLOW as readonly string[]).includes(first);
 }
 
-/** 이미지: 같은 출처 상대 경로(`/…`, 금지 경로 제외) 또는 허용 호스트(https)만 남긴다. 나머지는 제거 */
+/** 이미지: 같은 출처 허용 경로(IMAGE_PATH_ALLOW) 또는 허용 호스트(https)만 남긴다. 나머지는 제거 */
 function fixImages(tree: Root, imageHosts: readonly string[]) {
 	visit(tree, 'element', (node, index, parent) => {
 		if (node.tagName !== 'img') return;
@@ -363,17 +358,6 @@ function applyGlossary(tree: Root, glossary: Readonly<Record<string, string>>) {
  */
 export function sanitizeFragment(html: string, opts: RenderOptions = {}): SanitizedHtml {
 	const tree = sanitize(fromHtml(html ?? '', { fragment: true }), reportSchema) as Root;
-	applyPolicies(tree, opts);
-	return asSanitized(toHtml(tree));
-}
-
-/**
- * 캐시에서 읽은 렌더 결과 HTML을 다시 sanitize한다(캐시 히트 경로, ./cache.ts).
- * 렌더러가 붙이는 고정 속성(헤딩 id `h-…`, 표 래퍼, 용어 풀이 span)까지만 허용하는 renderedSchema를 쓰고,
- * 링크·이미지 정책은 다시 계산한다. 정상 렌더 결과는 바뀌지 않는다(멱등, 테스트로 검사).
- */
-export function resanitizeRendered(html: string, opts: RenderOptions = {}): SanitizedHtml {
-	const tree = sanitize(fromHtml(html ?? '', { fragment: true }), renderedSchema) as Root;
 	applyPolicies(tree, opts);
 	return asSanitized(toHtml(tree));
 }
