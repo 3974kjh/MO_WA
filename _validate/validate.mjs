@@ -171,7 +171,9 @@ function signJwt(payload) {
 let postgrestProc = null;
 function startPostgrest() {
 	const conf = join(root, '.local/postgrest.conf');
-	spawnSync('pkill', ['-f', `postgrest ${conf}`], { encoding: 'utf8' });
+	spawnSync('pkill', ['-9', '-f', `postgrest ${conf}`], { encoding: 'utf8' });
+	// Wait briefly so the prior bind on 54321 is released before re-spawn.
+	spawnSync('sleep', ['0.5'], { encoding: 'utf8' });
 	postgrestProc = spawn('postgrest', [conf], { stdio: ['ignore', 'pipe', 'pipe'] });
 	let stderr = '';
 	postgrestProc.stderr.on('data', (buf) => {
