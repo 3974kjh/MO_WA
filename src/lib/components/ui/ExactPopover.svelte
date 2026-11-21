@@ -4,14 +4,17 @@
 	 * role=tooltip, Esc·바깥 클릭·스크롤·포커스 이탈에 닫힘, 화면 밖으로 나가지 않게 보정. 앱에 하나만 둔다.
 	 */
 	import { tick } from 'svelte';
+	import { popoverScrollAction } from './popoverScroll';
 	import { EXACT_POPOVER_ID, EXACT_SHEET_MQ, exactPopover } from './exactValue.svelte';
 
 	let el = $state<HTMLDivElement | null>(null);
 	let pos = $state({ x: 0, y: 0 });
+	let openedAt = 0;
 
 	$effect(() => {
 		const a = exactPopover.anchor;
 		if (!a) return;
+		openedAt = performance.now();
 		tick().then(() => place(a));
 	});
 
@@ -40,6 +43,20 @@
 		if (e.key === 'Escape' && exactPopover.open) exactPopover.hide();
 	}
 
+	/** 캡처로 모든 스크롤을 본다(표 안쪽 스크롤 포함). 포커스 이동으로 생긴 스크롤은 닫지 않고 위치만 맞춘다. */
+	function onScroll(e: Event) {
+		const a = exactPopover.anchor;
+		if (!a) return;
+		const t = e.target;
+		const affectsAnchor = t === document || (t instanceof Node && t.contains(a));
+		const action = popoverScrollAction({
+			affectsAnchor,
+			sinceOpenMs: performance.now() - openedAt
+		});
+		if (action === 'reposition') place(a);
+		else if (action === 'close') exactPopover.hide();
+	}
+
 	function onResize() {
 		if (window.matchMedia(EXACT_SHEET_MQ).matches) exactPopover.hide();
 	}
@@ -48,7 +65,7 @@
 <svelte:window
 	onclick={onDocClick}
 	onkeydown={onKey}
-	onscroll={() => exactPopover.hide()}
+	onscrollcapture={onScroll}
 	onresize={onResize}
 />
 
@@ -62,7 +79,7 @@
 	>
 		<div class="pl">{exactPopover.label || '정확한 금액'}</div>
 		<div class="pv num">{exactPopover.exact}</div>
-		<div class="pn">화면에는 ‘만 원’ 단위로 줄여 보여 줘요 · Esc로 닫기</div>
+		<div class="pn">화면에는 큰 금액을 ‘만’ 단위로 줄여 보여 줘요 · Esc로 닫기</div>
 	</div>
 {/if}
 

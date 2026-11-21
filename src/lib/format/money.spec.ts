@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatMoney, formatUsd, formatWon, formatWonUnit, MINUS } from './money';
+import { exactAriaLabel, formatMoney, formatUsd, formatWon, formatWonUnit, MINUS } from './money';
 
 const won = (v: number, plus = false) => {
 	const f = formatWon(v, { plus });
@@ -105,5 +105,47 @@ describe('D-4: USD 단가는 저장 4자리 유지, 표시만 2자리', () => {
 	it('KRW 단가·금액 규칙은 그대로', () => {
 		expect(formatMoney(161_600, 'KRW', 'unit').text).toBe('161,600');
 		expect(formatMoney(24_141_484, 'KRW', 'amount').text).toBe('2,414');
+	});
+});
+
+describe('예외값 표시 (PR #14 Low-3): 표시만 바꾸고 저장 값은 그대로', () => {
+	it('0으로 반올림되는 음수는 부호 없이 0', () => {
+		expect(formatMoney(-0.004, 'USD', 'unit').text).toBe('$0.00');
+		expect(formatMoney(-0.004, 'USD', 'amount').text).toBe('$0');
+		expect(formatMoney(-0.4, 'KRW', 'amount').text).toBe('0');
+		expect(formatMoney(-0.4, 'KRW', 'unit').text).toBe('0');
+		expect(formatMoney(-0, 'KRW', 'amount').exact).toBe('0원');
+		expect(formatMoney(-0.004, 'USD', 'unit', { plus: true }).text).toBe('$0.00');
+		expect(formatMoney(0.4, 'KRW', 'amount', { plus: true }).text).toBe('0');
+	});
+	it('−0.005는 $0.01로 올림되므로 부호 유지, D-4 유지', () => {
+		expect(formatMoney(-0.005, 'USD', 'unit').text).toBe(`${MINUS}$0.01`);
+		expect(formatMoney(12.3456, 'USD', 'unit').text).toBe('$12.35');
+	});
+	it('NaN·±Infinity는 —', () => {
+		for (const v of [NaN, Infinity, -Infinity]) {
+			for (const c of ['KRW', 'USD'] as const) {
+				for (const k of ['amount', 'unit'] as const) {
+					const f = formatMoney(v, c, k);
+					expect(f.text).toBe('—');
+					expect(f.exact).toBe('—');
+					expect(f.abbreviated).toBe(false);
+				}
+			}
+		}
+	});
+});
+
+describe('exactAriaLabel (WCAG 2.5.3): 보이는 글자가 이름에 포함', () => {
+	it('2,414만 원 → "2,414만 원, 정확한 값 24,141,484원"', () => {
+		const f = formatMoney(24_141_484, 'KRW', 'amount');
+		const name = exactAriaLabel(f);
+		expect(name).toBe('2,414만 원, 정확한 값 24,141,484원');
+		expect(name.startsWith(`${f.text}${f.unit}`)).toBe(true);
+	});
+	it('USD 축약', () => {
+		expect(exactAriaLabel(formatMoney(18_400, 'USD', 'amount'))).toBe(
+			'$1.8만, 정확한 값 $18,400.00'
+		);
 	});
 });

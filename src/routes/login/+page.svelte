@@ -71,9 +71,9 @@
 	.login-form :global(label > span) {
 		color: var(--color-text);
 	}
-	/* 공유 Input의 hairline(다크 값 없음)은 그대로 두고 로그인에서만 border-line(§13-8) */
+	/* 공유 Input의 hairline(다크 값 없음)은 그대로 두고 로그인에서만 line-strong(대비 3:1, 토큰 주석) */
 	.login-form :global(input) {
-		border-color: var(--color-line);
+		border-color: var(--color-line-strong);
 	}
 	/* 공유 Button(primary)의 레거시 파랑 → 공식 틸 bg-accent text-on-accent. 높이(~47px)는 유지 */
 	.login-form :global(button[type='submit']) {
