@@ -8,14 +8,6 @@
 @plugin '@tailwindcss/typography';
 @import './tokens.css' theme(static); /* 컴포넌트 <style>의 var(--color-*)도 쓰므로 모든 토큰 변수를 항상 출력 */
 
-/*
- * 디자인 토큰에 없는 보조 값 1개 (시안 shared/app.css에 하드코딩돼 있던 값을 이름만 붙여 한 곳에 모은다).
- * 디자이너 확인 대기 — FE 보고서의 질문 항목 참고.
- */
-@theme static {
-	--color-on-warn-fill: #1b1100; /* 대기 pill 글자색(warn-fill 위, 라이트·다크 공통) */
-}
-
 /* iOS safe-area (viewport-fit=cover와 함께 사용) */
 :root {
 	--safe-top: env(safe-area-inset-top, 0px);
