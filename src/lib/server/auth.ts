@@ -41,9 +41,13 @@ export function cache<T>(fn: () => T): () => T {
 }
 
 /**
- * Outage / unavailable: do not clear cookies.
+ * Outage / unavailable (do not call clearSupabaseAuthCookies).
  * Includes unreachable Auth (0/5xx/retryable), rate limits (429), AuthUnknownError,
- * and non-numeric status (M-2).
+ * and non-numeric status.
+ *
+ * Note: Auth may still emit setAll clears (value '' / maxAge 0) via _removeSession on
+ * refresh 429 or HTML 500. Those clears are dropped in authUnavailableResponse so the
+ * browser keeps its cookie; only cookie *settings that still have a value* are appended.
  */
 export function isAuthUnavailable(error: { status?: number; name?: string }): boolean {
 	if (error.name === 'AuthRetryableFetchError' || error.name === 'AuthUnknownError') {
@@ -60,7 +64,7 @@ export function isAuthUnavailable(error: { status?: number; name?: string }): bo
 
 /**
  * Map getUser() results for authorization (H-1 + M-2).
- * Unavailable → 503 without clearing cookies.
+ * Unavailable → 503 without clearSupabaseAuthCookies.
  * Confirmed invalid-session 4xx (e.g. refresh_token_not_found, 401/403) → anonymous + clear.
  */
 export function resolveAuthenticatedUser(result: UserResponse): AuthUserResolution {
@@ -75,6 +79,13 @@ export function resolveAuthenticatedUser(result: UserResponse): AuthUserResoluti
 
 	// AuthSessionMissingError (400), refresh_token_not_found (400), 401/403, other confirmed 4xx.
 	return { kind: 'anonymous', user: null, clearCookies: true };
+}
+
+/** Cookie settings that still have a value (not an Auth _removeSession clear). */
+export function isPersistableSetCookie(cookie: PendingSetCookie): boolean {
+	if (cookie.value === '') return false;
+	if (cookie.options.maxAge === 0) return false;
+	return true;
 }
 
 /** Serialize one Set-Cookie header line (option B; no reliance on error(503)). */
@@ -97,15 +108,37 @@ export function serializeSetCookieHeader(cookie: PendingSetCookie): string {
 	return parts.join('; ');
 }
 
+export type AuthUnavailableResponseOptions = {
+	/** When options.secure is unset, use this (typically request is https). */
+	secure?: boolean;
+};
+
 /**
- * Build a 503 and attach any cookies Auth wrote during this request (criterion 3 option B).
- * SvelteKit does not guarantee Set-Cookie when hooks return/throw without resolve().
+ * Build a 503 and attach persistable Auth cookies from this request (criterion 3 option B).
+ * Drops value==='' / maxAge===0 clears so outages do not wipe the browser session cookie.
+ * SvelteKit does not guarantee Set-Cookie when hooks return a Response without resolve().
  */
-export function authUnavailableResponse(pendingCookies: PendingSetCookie[]): Response {
-	const headers = new Headers({ 'content-type': 'text/plain; charset=utf-8' });
+export function authUnavailableResponse(
+	pendingCookies: PendingSetCookie[],
+	opts: AuthUnavailableResponseOptions = {}
+): Response {
+	const headers = new Headers({
+		'content-type': 'text/plain; charset=utf-8',
+		'cache-control': 'private, no-store'
+	});
+
 	for (const cookie of pendingCookies) {
-		headers.append('set-cookie', serializeSetCookieHeader(cookie));
+		if (!isPersistableSetCookie(cookie)) continue;
+		const withSecure: PendingSetCookie = {
+			...cookie,
+			options: {
+				...cookie.options,
+				secure: cookie.options.secure ?? opts.secure ?? false
+			}
+		};
+		headers.append('set-cookie', serializeSetCookieHeader(withSecure));
 	}
+
 	return new Response('Service Unavailable', { status: 503, headers });
 }
 

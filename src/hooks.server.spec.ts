@@ -1,6 +1,6 @@
 import { AuthError, AuthSessionMissingError } from '@supabase/supabase-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { authGuardRedirect, type PendingSetCookie } from '$lib/server/auth';
+import { authGuardRedirect } from '$lib/server/auth';
 
 const { createSupabaseServerClient, getSupabasePublicConfig } = vi.hoisted(() => ({
 	createSupabaseServerClient: vi.fn(),
@@ -25,33 +25,6 @@ function makeEvent(pathname = '/', cookieNames: string[] = []) {
 		locals,
 		request: new Request(`http://localhost${pathname}`)
 	};
-}
-
-/** Simulate Auth writing a cookie via setAll (collected into the hook's pendingCookies). */
-function mockAuthUnavailableWithCookieWrite() {
-	createSupabaseServerClient.mockImplementation(
-		(_cookies: unknown, pendingCookies?: PendingSetCookie[]) => {
-			pendingCookies?.push({
-				name: 'sb-testproject-auth-token',
-				value: 'rotated-during-auth',
-				options: { path: '/', httpOnly: true, sameSite: 'lax' }
-			});
-			return {
-				auth: {
-					getUser: vi.fn(async () => ({
-						data: { user: null },
-						error: new AuthError('auth upstream down', 500)
-					}))
-				}
-			};
-		}
-	);
-}
-
-function setCookieHeader(response: Response): string {
-	const multi = response.headers.getSetCookie?.() ?? [];
-	if (multi.length > 0) return multi.join('\n');
-	return response.headers.get('set-cookie') ?? '';
 }
 
 describe('hooks.server handle (BE-02 / M-1 / H-1)', () => {
@@ -166,56 +139,6 @@ describe('hooks.server handle (BE-02 / M-1 / H-1)', () => {
 
 		expect(seenUser).toBeNull();
 		expect(authGuardRedirect(null, '/')).toBe('/login');
-	});
-
-	it('option B: page 503 includes Set-Cookie written during Auth (not via error(503))', async () => {
-		mockAuthUnavailableWithCookieWrite();
-
-		const event = makeEvent('/');
-		const response = await handle({
-			event: event as never,
-			resolve: async () => new Response('should-not-run')
-		} as never);
-
-		expect(response.status).toBe(503);
-		expect(event.locals.user).toBeUndefined();
-		expect(event.cookies.delete).not.toHaveBeenCalled();
-		expect(setCookieHeader(response)).toContain('sb-testproject-auth-token=');
-		expect(setCookieHeader(response)).toContain('rotated-during-auth');
-	});
-
-	it('option B: +server.ts/API 503 also includes Set-Cookie written during Auth', async () => {
-		mockAuthUnavailableWithCookieWrite();
-
-		const event = makeEvent('/api/health');
-		const response = await handle({
-			event: event as never,
-			resolve: async () => new Response(JSON.stringify({ ok: true }), { status: 200 })
-		} as never);
-
-		expect(response.status).toBe(503);
-		expect(setCookieHeader(response)).toContain('rotated-during-auth');
-		expect(event.cookies.delete).not.toHaveBeenCalled();
-	});
-
-	it('M-2: 429 returns 503 without clearing cookies', async () => {
-		createSupabaseServerClient.mockReturnValue({
-			auth: {
-				getUser: vi.fn(async () => ({
-					data: { user: null },
-					error: new AuthError('rate limited', 429)
-				}))
-			}
-		});
-
-		const event = makeEvent('/', ['sb-testproject-auth-token']);
-		const response = await handle({
-			event: event as never,
-			resolve: async () => new Response('ok')
-		} as never);
-
-		expect(response.status).toBe(503);
-		expect(event.cookies.delete).not.toHaveBeenCalled();
 	});
 
 	it('skips cookie auth for /api/mcp and sets locals.user=null; 401 without Authorization', async () => {

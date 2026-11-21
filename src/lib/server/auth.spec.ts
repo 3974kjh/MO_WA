@@ -130,15 +130,24 @@ describe('BE-02 auth.getUser transition', () => {
 		expect(result.kind).toBe('unavailable');
 	});
 
-	it('option B: 503 response carries Set-Cookie from pending Auth cookie writes', () => {
-		const response = authUnavailableResponse([
-			{
-				name: 'sb-testproject-auth-token',
-				value: 'rotated-session',
-				options: { path: '/', httpOnly: true, sameSite: 'lax' }
-			}
-		]);
+	it('option B / M-2: 503 appends persistable cookies with Secure, skips clears, sets cache-control', () => {
+		const response = authUnavailableResponse(
+			[
+				{
+					name: 'sb-testproject-auth-token',
+					value: 'rotated-session',
+					options: { path: '/', httpOnly: true, sameSite: 'lax' }
+				},
+				{
+					name: 'sb-testproject-auth-token',
+					value: '',
+					options: { path: '/', httpOnly: true, maxAge: 0 }
+				}
+			],
+			{ secure: true }
+		);
 		expect(response.status).toBe(503);
+		expect(response.headers.get('cache-control')).toBe('private, no-store');
 		const setCookie = response.headers.getSetCookie?.() ?? [];
 		const header =
 			setCookie.length > 0
@@ -147,11 +156,48 @@ describe('BE-02 auth.getUser transition', () => {
 		expect(header).toContain('sb-testproject-auth-token=');
 		expect(header).toContain('rotated-session');
 		expect(header).toContain('HttpOnly');
-		expect(serializeSetCookieHeader({
-			name: 'a',
-			value: 'b',
-			options: { path: '/' }
-		})).toContain('a=b');
+		expect(header).toContain('Secure');
+		expect(header).not.toContain('Max-Age=0');
+		expect(
+			serializeSetCookieHeader({
+				name: 'a',
+				value: 'b',
+				options: { path: '/' }
+			})
+		).toContain('a=b');
+	});
+
+	it('M-2: https secure default is applied when cookie.options.secure is unset', () => {
+		const insecure = authUnavailableResponse(
+			[{ name: 'sb-x-auth-token', value: 'v', options: { path: '/' } }],
+			{ secure: false }
+		);
+		const secure = authUnavailableResponse(
+			[{ name: 'sb-x-auth-token', value: 'v', options: { path: '/' } }],
+			{ secure: true }
+		);
+		const insecureHeader = insecure.headers.get('set-cookie') ?? '';
+		const secureHeader = secure.headers.get('set-cookie') ?? '';
+		expect(insecureHeader).not.toContain('Secure');
+		expect(secureHeader).toContain('Secure');
+	});
+
+	it('M-1: authUnavailableResponse drops value="" and maxAge=0 clears', () => {
+		const response = authUnavailableResponse([
+			{
+				name: 'sb-testproject-auth-token',
+				value: '',
+				options: { path: '/', maxAge: 0, httpOnly: true }
+			}
+		]);
+		expect(response.status).toBe(503);
+		expect(response.headers.get('cache-control')).toBe('private, no-store');
+		const setCookie = response.headers.getSetCookie?.() ?? [];
+		const header =
+			setCookie.length > 0
+				? setCookie.join('\n')
+				: (response.headers.get('set-cookie') ?? '');
+		expect(header).toBe('');
 	});
 
 	it('clearSupabaseAuthCookies deletes sb-*-auth-token cookies', () => {
