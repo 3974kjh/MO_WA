@@ -62,6 +62,48 @@
 
 ## Current History
 
+## 2026-11-21 — BE-05 MCP 감사 로그·응답 규약
+
+### Context
+
+- 구현 배경: MCP `tools/call` 감사(`mcp_audit_log`)와 design §5-3 ERROR/WARN 응답 규약을 먼저 두어 BE-06+ 툴이 공통으로 붙일 수 있게 한다.
+- 관련 문서: `docs/rebuild` 예정 design.md v0.6 §5-3·§5-6, work-breakdown BE-05
+- 관련 Phase: M1 BE 재구축
+
+### Scope
+
+- 포함: `src/lib/server/mcp/` audit·errors·scopes·identity·display-id·context stub, waitUntil 비동기 기록, 단위 테스트
+- 제외: BE-04 `mcp_authenticate` DB 모드, mcp-spike 머지, SQL 마이그레이션(BE-01), BE-17/BE-19
+
+### Logic and Flow
+
+- 주요 데이터 흐름: `runAuditedToolCall` → 스코프 검사(R-PERM-04) → 신원 덮어쓰기(R-PERM-03) → handler → `createAuditRecorder`가 `waitUntil`로 sink insert
+- 핵심 상태/계산 로직: `args_preview`는 body/secret 길이·redact만, `warnings[].rule`을 `rule_ids`에 합침, 결과 ok|error|denied|rate_limited
+- 서버/Supabase 연동: sink 인터페이스만(테이블 insert는 BE-01 스키마 이후). Auth는 `McpAuthProvider` stub
+
+### Files
+
+- 생성: `src/lib/server/mcp/*` (types, audit, errors, scopes, identity, display-id, context, tool-gate, specs)
+- 수정: `.cursor/history/feature-history.md`
+
+### Decisions
+
+- 결정: BE-04 없이 테스트 가능한 Auth/Context·AuditSink stub을 둠
+- 이유: 플로우상 BE-05는 BE-04 다음이지만 티켓은 감사·응답 레이어만 범위
+- 대안: mcp-spike 머지 — 금지 제약으로 채택하지 않음
+
+### Verification
+
+- 실행한 검증: `pnpm exec vitest run --project server src/lib/server/mcp`
+- 결과: 28 passed (review follow-up: M-1~M-6, L-1~L-5, display-id nit)
+- 남은 리스크: 실제 `mcp_audit_log` insert는 BE-01 마이그레이션·admin sink 배선 후
+
+### Review follow-up (same PR)
+
+- Pass 1: M-1…M-6, L-1…L-5, display-id nit
+- Pass 2: M-1 regex in free text + key allowlist (no over-mask); digest keeps body text; `recordRateLimited` strip+mask; M-6 remove fake `import_legacy_*`, `import:all` unlocks §5-5 writes except principles (BE-04 auth note); testing.ts prod throw + eslint; identity key normalize + UUID lower + proto skip; no-ctx → onError
+- Pass 3: restore secret key names (token/cookie/bearer/…); eslint blocks testing path/ext/export*/dynamic import; `import:all` forbids all proposal tools; OWNERID not identity; Object.hasOwn
+
 ## 2026-05-29 — Scenario Lab Dashboard Projection
 
 ### Context

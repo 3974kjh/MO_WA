@@ -22,6 +22,65 @@ const brandMessage =
 const dynamicImportBanMessage =
 	'Dynamic imports with interpolated templates or string concatenation are blocked for admin/repo bypass paths (L6).';
 
+const testingImportMessage =
+	'mcp/testing.ts is test/dev only — do not import from production code';
+
+/** Shared testing-ban paths (BE-05 Low / M-4) — spread into global, supabase, and lifted overrides. */
+const testingImportPaths = [
+	{
+		name: './testing',
+		message: testingImportMessage
+	},
+	{
+		name: '../testing',
+		message: testingImportMessage
+	},
+	{
+		name: '../mcp/testing',
+		message: testingImportMessage
+	},
+	{
+		name: '$lib/server/mcp/testing',
+		message: testingImportMessage
+	}
+];
+
+/** Shared testing-ban patterns. */
+const testingImportPatterns = [
+	{
+		group: [
+			'**/mcp/testing',
+			'**/mcp/testing.js',
+			'**/mcp/testing.ts',
+			'**/server/mcp/testing',
+			'**/server/mcp/testing.js',
+			'**/server/mcp/testing.ts',
+			'$lib/server/mcp/testing',
+			'$lib/server/mcp/testing.js',
+			'$lib/server/mcp/testing.ts'
+		],
+		message: testingImportMessage
+	}
+];
+
+/** Shared testing-ban syntax (re-export + dynamic import). */
+const testingRestrictedSyntax = [
+	{
+		selector:
+			"ExportAllDeclaration[source.value='./testing'], ExportAllDeclaration[source.value='./testing.ts'], ExportAllDeclaration[source.value='./testing.js']",
+		message: 'Do not re-export mcp/testing.ts from production barrels'
+	},
+	{
+		selector:
+			"ExportNamedDeclaration[source.value='./testing'], ExportNamedDeclaration[source.value='./testing.ts'], ExportNamedDeclaration[source.value='./testing.js']",
+		message: 'Do not re-export mcp/testing.ts from production barrels'
+	},
+	{
+		selector: "ImportExpression[source.value=/mcp\\/testing|\\/testing(\\.ts|\\.js)?$/]",
+		message: 'Do not dynamically import mcp/testing.ts from production code'
+	}
+];
+
 /** Shared no-restricted-imports paths — spread into overrides so they are not dropped. */
 const restrictedImportPaths = [
 	{
@@ -39,7 +98,8 @@ const restrictedImportPaths = [
 	{
 		name: '$lib/server/repo/botIdentityBrand',
 		message: brandMessage
-	}
+	},
+	...testingImportPaths
 ];
 
 /** Shared no-restricted-imports patterns — spread into overrides so they are not dropped. */
@@ -69,10 +129,11 @@ const restrictedImportPatterns = [
 			'**/repo/botIdentityBrand.*'
 		],
 		message: brandMessage
-	}
+	},
+	...testingImportPatterns
 ];
 
-/** L6 dynamic-import blocks (global + preserved under supabase/**). */
+/** L6 dynamic-import blocks (global + preserved under supabase/**) + testing ban. */
 const dynamicImportRestrictedSyntax = [
 	{
 		selector:
@@ -105,10 +166,10 @@ const dynamicImportRestrictedSyntax = [
 	},
 	// Variable-only / .join() / .concat() / other non-literal sources
 	{
-		selector:
-			'ImportExpression:not([source.type=Literal]):not([source.type=TemplateLiteral])',
+		selector: 'ImportExpression:not([source.type=Literal]):not([source.type=TemplateLiteral])',
 		message: dynamicImportBanMessage
-	}
+	},
+	...testingRestrictedSyntax
 ];
 
 export default defineConfig(
@@ -144,15 +205,21 @@ export default defineConfig(
 		}
 	},
 	{
-		// repo internals + mcp/auth.ts only (not other mcp/* files).
+		// repo internals + mcp/auth.ts: lift admin/repo-client bans, keep testing ban.
 		files: ['src/lib/server/repo/**/*.{js,ts}', 'src/lib/server/mcp/auth.ts'],
 		rules: {
-			'no-restricted-imports': 'off',
-			'no-restricted-syntax': 'off'
+			'no-restricted-imports': [
+				'error',
+				{
+					paths: [...testingImportPaths],
+					patterns: [...testingImportPatterns]
+				}
+			],
+			'no-restricted-syntax': ['error', ...testingRestrictedSyntax]
 		}
 	},
 	{
-		// L6: supabase/ — keep global bans + add static ./admin (do not drop globals).
+		// L6: supabase/ — keep global bans (incl. testing) + add static ./admin.
 		files: ['src/lib/supabase/**/*.{js,ts}'],
 		ignores: ['src/lib/supabase/admin.ts', 'src/lib/supabase/**/*.spec.ts'],
 		rules: {
