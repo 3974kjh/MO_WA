@@ -172,15 +172,22 @@ async function enrichProposals(repo: RepoClient, rows: RawProposal[]): Promise<P
 	return rows.map((r) => toCard(r, botNames, approvalVersions));
 }
 
+/**
+ * Nav 대기 pill 건수: pending 포지션 제안 + pending 원칙 제안. on_hold 등 다른 상태는 세지 않는다.
+ * 어느 한쪽이라도 오류면 과소 집계하지 않고 0과 그 오류를 돌려준다.
+ */
 export async function countPendingProposals(
 	repo: RepoClient
 ): Promise<{ data: number; error: Error | null }> {
 	const ownerId = requireOwnerId(repo);
-	let q = fromRepo(repo, 'position_proposals').select('id', { count: 'exact', head: true });
-	q = withOwnerFilter(q, ownerId).eq('status', 'pending');
-	const { count, error } = await q;
-	if (error) return { data: 0, error: error as Error };
-	return { data: count ?? 0, error: null };
+	let posQ = fromRepo(repo, 'position_proposals').select('id', { count: 'exact', head: true });
+	posQ = withOwnerFilter(posQ, ownerId).eq('status', 'pending');
+	let prinQ = fromRepo(repo, 'principle_proposals').select('id', { count: 'exact', head: true });
+	prinQ = withOwnerFilter(prinQ, ownerId).eq('status', 'pending');
+	const [pos, prin] = await Promise.all([posQ, prinQ]);
+	if (pos.error) return { data: 0, error: pos.error as Error };
+	if (prin.error) return { data: 0, error: prin.error as Error };
+	return { data: (pos.count ?? 0) + (prin.count ?? 0), error: null };
 }
 
 /** pending + on_hold queue (portfolio #queue). Pending pill uses countPendingProposals. */

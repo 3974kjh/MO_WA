@@ -12,6 +12,7 @@ import {
 	listInstrumentMeta,
 	listJournalPage,
 	listAttentionNeeded,
+	countPendingProposals,
 	listPrincipleHistory,
 	listPrincipleQueue,
 	listProposalHistory,
@@ -23,13 +24,19 @@ const OWNER = '00000000-0000-4000-8000-0000000000aa';
 
 type Req = { method: string; table: string; params: URLSearchParams };
 
-function stubClient(rows: Record<string, unknown[]> = {}) {
+function stubClient(rows: Record<string, unknown[]> = {}, failTables: string[] = []) {
 	const requests: Req[] = [];
 	const fetchStub = async (input: RequestInfo | URL, init?: RequestInit) => {
 		const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
 		const method = (init?.method ?? 'GET').toUpperCase();
 		const table = url.pathname.replace(/^\/rest\/v1\//, '');
 		requests.push({ method, table, params: url.searchParams });
+		if (failTables.includes(table)) {
+			return new Response(JSON.stringify({ message: 'stub failure', code: 'XX000' }), {
+				status: 500,
+				headers: { 'content-type': 'application/json' }
+			});
+		}
 		const body = rows[table] ?? [];
 		return new Response(method === 'HEAD' ? null : JSON.stringify(body), {
 			status: 200,
@@ -365,5 +372,52 @@ describe('FE-07 변경 요청 보조 load', () => {
 		expect(pr[0].params.get('select')).toContain('proposed_body_md');
 		expect(pr[0].params.get('select')).toContain('clause_ref');
 		expect(requests.every((r) => r.method === 'GET' || r.method === 'HEAD')).toBe(true);
+	});
+});
+
+describe('FE-07 countPendingProposals: nav 대기 건수 = pending 포지션 + pending 원칙', () => {
+	const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `x${i}` }));
+
+	it('두 테이블을 owner + status=eq.pending 으로, HEAD count로만 조회한다(on_hold 제외)', async () => {
+		const { repo, requests } = stubClient({
+			position_proposals: rows(2),
+			principle_proposals: rows(3)
+		});
+		await countPendingProposals(repo);
+		expect(requests.map((r) => r.table).sort()).toEqual([
+			'position_proposals',
+			'principle_proposals'
+		]);
+		for (const r of requests) {
+			expect(r.method).toBe('HEAD');
+			expectOwnerOnly(r.params);
+			expect(r.params.get('status')).toBe('eq.pending');
+			expect(r.params.get('status')).not.toContain('on_hold');
+			expect(r.params.get('status')).not.toContain('in.(');
+		}
+	});
+
+	it('반환값은 두 테이블 count의 합이다(원칙 쿼리를 빼면 실패하도록 서로 다른 count)', async () => {
+		const { repo } = stubClient({ position_proposals: rows(2), principle_proposals: rows(3) });
+		const { data, error } = await countPendingProposals(repo);
+		expect(error).toBeNull();
+		expect(data).toBe(5);
+		expect(data).not.toBe(2);
+	});
+
+	it('원칙 테이블만 pending이 있어도 센다', async () => {
+		const { repo } = stubClient({ principle_proposals: rows(4) });
+		expect((await countPendingProposals(repo)).data).toBe(4);
+	});
+
+	it('한쪽 쿼리가 오류면 과소 집계하지 않고 data 0 + error', async () => {
+		for (const failing of ['position_proposals', 'principle_proposals']) {
+			const { repo } = stubClient({ position_proposals: rows(2), principle_proposals: rows(3) }, [
+				failing
+			]);
+			const { data, error } = await countPendingProposals(repo);
+			expect(data).toBe(0);
+			expect(error).not.toBeNull();
+		}
 	});
 });
