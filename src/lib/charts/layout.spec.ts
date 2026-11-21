@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	barDomain,
 	barLabelVisible,
+	barShape,
 	barSummary,
 	categoryColor,
 	chartHeight,
@@ -206,5 +207,25 @@ describe('signedNumber · 포인터 인덱스', () => {
 		expect(nearestIndex(300, 50, 500, 11)).toBe(5);
 		expect(bandIndex(50 + 499, 50, 500, 10)).toBe(9);
 		expect(bandIndex(50, 50, 500, 10)).toBe(0);
+	});
+});
+
+describe('barShape (BarChart Low-2)', () => {
+	const y = (v: number) => 100 - v * 2;
+	const y0 = 100;
+	it.each([NaN, Infinity, -Infinity])('비유한 값 %s는 null(rect 생략)', (v) => {
+		expect(barShape(v, y, y0)).toBeNull();
+	});
+	it('유한 0은 up 1px 막대', () => {
+		expect(barShape(0, y, y0)).toEqual({ up: true, y: 100, h: 1, ly: 96 });
+	});
+	it('양수·음수 유한 값', () => {
+		expect(barShape(10, y, y0)).toEqual({ up: true, y: 80, h: 20, ly: 76 });
+		expect(barShape(-10, y, y0)).toEqual({ up: false, y: 100, h: 20, ly: 132 });
+	});
+	it('items.map으로 쓰면 길이·인덱스가 유지된다', () => {
+		const shapes = [1, NaN, -2, Infinity, 0].map((v) => barShape(v, y, y0));
+		expect(shapes).toHaveLength(5);
+		expect(shapes.map((s) => s === null)).toEqual([false, true, false, true, false]);
 	});
 });

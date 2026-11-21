@@ -92,6 +92,26 @@ export function barDomain(values: readonly number[]): [number, number] {
 	return [lo, hi];
 }
 
+export interface BarShape {
+	up: boolean;
+	y: number;
+	h: number;
+	/** 값 라벨 baseline y */
+	ly: number;
+}
+
+/** 막대 한 개의 도형. 비유한 값(NaN·±Infinity)은 null → 호출 쪽은 rect·값 라벨을 그리지 않는다. 유한 0은 1px 막대. */
+export function barShape(value: number, y: (v: number) => number, y0: number): BarShape | null {
+	if (!Number.isFinite(value)) return null;
+	const yv = y(value);
+	return {
+		up: value >= 0,
+		y: Math.min(yv, y0),
+		h: Math.max(Math.abs(yv - y0), 1),
+		ly: value >= 0 ? yv - 4 : yv + 12
+	};
+}
+
 /**
  * 막대 값 라벨을 보일지. PC는 14개 이하면 모두, 넘으면 12개 안팎 간격.
  * 모바일(<480)은 5개 간격(DS §7-4)이고 마지막 막대는 항상 보인다. 숨긴 값은 탭 값 카드·숨김 표로 읽는다.
