@@ -1,16 +1,16 @@
 import { redirect } from '@sveltejs/kit';
-import type { Actions, PageServerLoad } from './$types';
+import type { PageServerLoad } from './$types';
+import { parsePageParams } from '$lib/server/domain/web/pagination';
 import {
 	forUser,
 	getLatestIndicator,
-	loadDashboardValuation,
-	listBriefingsWithKospi
+	listBriefingsWithKospi,
+	loadDashboardValuation
 } from '$lib/server/repo';
-import { parsePageParams } from '$lib/server/domain/web/pagination';
 
 /**
- * Authenticated home / dashboard load (BE-11).
- * FE home-in-shell will move this under AppShell; valuation + recent briefings ship here first.
+ * 홈(`/`) — (app) 셸 안. BE-11 dashboard valuation + kospi + recent briefings.
+ * 로그아웃은 전용 경로 `/logout`(LOGOUT_PATH) — 여기로 action을 옮기지 않는다.
  */
 export const load: PageServerLoad = async ({ locals, parent, url }) => {
 	await parent();
@@ -33,11 +33,4 @@ export const load: PageServerLoad = async ({ locals, parent, url }) => {
 		kospi: kospi.data,
 		recentBriefings: recentBriefings.data.items.slice(0, 5)
 	};
-};
-
-export const actions: Actions = {
-	logout: async ({ locals }) => {
-		await locals.supabase.auth.signOut();
-		redirect(303, '/login');
-	}
 };

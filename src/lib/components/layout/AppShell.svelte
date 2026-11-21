@@ -13,7 +13,14 @@
 	import MoreSheet from './MoreSheet.svelte';
 	import NavItem from './NavItem.svelte';
 	import TopBar from './TopBar.svelte';
-	import { ACCOUNT_NAV, LATER_NAV, PRIMARY_NAV, type NavEntry, type SectionId } from './nav';
+	import {
+		ACCOUNT_NAV,
+		LATER_NAV,
+		LOGOUT_PATH,
+		PRIMARY_NAV,
+		type NavEntry,
+		type SectionId
+	} from './nav';
 
 	let {
 		current,
@@ -50,7 +57,6 @@
 		<span class="brand-mark" aria-hidden="true">M</span><span class="t">MO_WA</span>
 	</a>
 	<nav class="nav" aria-label="섹션">
-		<div class="nav-label">1차 출시</div>
 		{#each PRIMARY_NAV as n (n.id)}
 			<NavItem
 				href={hrefOf(n)}
@@ -77,7 +83,7 @@
 		{/each}
 	</nav>
 	<div class="side-foot">
-		<form method="POST" action="/?/logout">
+		<form method="POST" action={resolve(LOGOUT_PATH)}>
 			<button type="submit" class="logout" aria-label="로그아웃" title="로그아웃">
 				<LogOut size={20} strokeWidth={1.8} aria-hidden="true" /><span class="t">로그아웃</span>
 			</button>
