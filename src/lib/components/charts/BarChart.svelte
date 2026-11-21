@@ -10,6 +10,7 @@
 		bandIndex,
 		barDomain,
 		barLabelVisible,
+		barShape,
 		barSummary,
 		barTickIndices,
 		chartHeight,
@@ -70,18 +71,9 @@
 		// 위·아래 끝 보조선: 0과 너무 가까우면(5% 이하) 생략
 		const ends = [hi, lo].filter((v) => Math.abs(v) > span * 0.05);
 		const bars = items.map((it, i) => {
-			const v = Number.isFinite(it.value) ? it.value : 0;
-			const yv = y(v);
 			const cx = (x(i) ?? 0) + x.bandwidth() / 2;
-			return {
-				cx,
-				up: v >= 0,
-				x: cx - bw / 2,
-				w: bw,
-				y: Math.min(yv, y0),
-				h: Math.max(Math.abs(yv - y0), 1),
-				ly: v >= 0 ? yv - 4 : yv + 12
-			};
+			// 비유한 값은 shape=null(rect·값 라벨 생략). 배열에서 빼지 않아 인덱스·눈금 cx는 items와 맞는다.
+			return { cx, x: cx - bw / 2, w: bw, shape: barShape(it.value, y, y0) };
 		});
 		return { y, y0, iw, ends, bars, ticks: barTickIndices(n, mobile) };
 	});
@@ -136,19 +128,21 @@
 				{/each}
 				<text x={m.l - 6} y={geo.y0 + 4} text-anchor="end">0</text>
 				{#each geo.bars as b, i (i)}
-					<rect
-						x={b.x}
-						y={b.y}
-						width={b.w}
-						height={b.h}
-						rx="2"
-						fill={b.up ? 'var(--color-up)' : 'var(--color-down)'}
-						opacity={active !== null && active !== i ? 0.55 : 1}
-					/>
-					{#if barLabelVisible(i, n, mobile)}
-						<text class="val" x={b.cx} y={b.ly} text-anchor="middle"
-							>{fmtValue(items[i].value)}</text
-						>
+					{#if b.shape}
+						<rect
+							x={b.x}
+							y={b.shape.y}
+							width={b.w}
+							height={b.shape.h}
+							rx="2"
+							fill={b.shape.up ? 'var(--color-up)' : 'var(--color-down)'}
+							opacity={active !== null && active !== i ? 0.55 : 1}
+						/>
+						{#if barLabelVisible(i, n, mobile)}
+							<text class="val" x={b.cx} y={b.shape.ly} text-anchor="middle"
+								>{fmtValue(items[i].value)}</text
+							>
+						{/if}
 					{/if}
 				{/each}
 				{#each geo.ticks as i (i)}
