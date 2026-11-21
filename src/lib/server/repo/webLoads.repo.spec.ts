@@ -6,7 +6,13 @@
 import { createClient } from '@supabase/supabase-js';
 import { describe, expect, it } from 'vitest';
 import { forUser } from './client';
-import { listBriefingsWithKospi, listInstrumentLabels, listJournalPage } from './webLoads.repo';
+import {
+	listBriefingsWithKospi,
+	listInstrumentLabels,
+	listInstrumentMeta,
+	listJournalPage,
+	listProposalHistory
+} from './webLoads.repo';
 import { listIndicatorSeries } from './market.repo';
 
 const OWNER = '00000000-0000-4000-8000-0000000000aa';
@@ -186,5 +192,68 @@ describe('FE-03 홈 보조 load', () => {
 		expectOwnerOnly(requests[0].params);
 		expect(requests[0].params.get('id')).toBe('in.(a,b)');
 		expect(requests[0].params.get('select')).toBe('id,name,ticker');
+	});
+});
+
+describe('FE-07 변경 요청 보조 load', () => {
+	it('listProposalHistory: 종결 상태만, count·page 같은 owner·필터, 결정 시각 최신순', async () => {
+		const { repo, requests } = stubClient({
+			position_proposals: [
+				{
+					id: 'h1',
+					display_id: 'P-0003',
+					change_type: 'set_qty_avg',
+					status: 'approved',
+					proposed_by_type: 'user',
+					proposed_by: null,
+					proposed_values: { qty: 2 },
+					applied_values: { qty: 2 },
+					current_values: null,
+					reason_md: '이유',
+					decision_note: '메모',
+					evidence: [],
+					base_version: 1,
+					position_id: null,
+					instrument_id: 'i1',
+					created_at: '2026-11-21T00:00:00Z',
+					expires_at: '2026-11-28T00:00:00Z',
+					held_at: null,
+					decided_at: '2026-11-21T01:00:00Z'
+				}
+			]
+		});
+		const { data, error } = await listProposalHistory(repo, page);
+		expect(error).toBeNull();
+		expect(data.items).toHaveLength(1);
+		expect(data.items[0]).toMatchObject({
+			reason_md: '이유',
+			decision_note: '메모',
+			proposer_name: '나'
+		});
+		const pp = requests.filter((r) => r.table === 'position_proposals');
+		expect(pp.map((r) => r.method)).toEqual(['HEAD', 'GET']);
+		const [count, list] = pp;
+		expect(filterParams(count.params)).toEqual(filterParams(list.params));
+		for (const r of pp) {
+			expectOwnerOnly(r.params);
+			expect(r.params.get('status')).toBe(
+				'in.(approved,rejected,superseded,cancelled,expired,conflict)'
+			);
+		}
+		expect(list.params.get('order')).toBe('decided_at.desc.nullslast,created_at.desc');
+		expect(requests.every((r) => r.method === 'GET' || r.method === 'HEAD')).toBe(true);
+	});
+
+	it('listInstrumentMeta: asset_type 포함, owner 조건, 빈 목록이면 요청 없음', async () => {
+		const empty = stubClient();
+		expect(await listInstrumentMeta(empty.repo, [])).toEqual({ data: [], error: null });
+		expect(empty.requests).toHaveLength(0);
+		const { repo, requests } = stubClient({
+			instruments: [{ id: 'a', name: '가', ticker: 'A', asset_type: 'etf' }]
+		});
+		const { data } = await listInstrumentMeta(repo, ['a', 'a']);
+		expect(data).toEqual([{ id: 'a', name: '가', ticker: 'A', asset_type: 'etf' }]);
+		expectOwnerOnly(requests[0].params);
+		expect(requests[0].params.get('select')).toBe('id,name,ticker,asset_type');
 	});
 });

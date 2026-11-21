@@ -29,6 +29,10 @@ export type ProposalCard = {
 	change_type: string;
 	status: string;
 	calc_note: string | null;
+	/** FE-07: 요청 이유(평문으로만 표시, 마크다운 렌더 안 함). */
+	reason_md: string | null;
+	/** FE-07: 결정 메모(고친 이유·거절 이유). */
+	decision_note: string | null;
 	proposed_by_type: string;
 	proposer_name: string;
 	evidence_chips: ReturnType<typeof evidenceChips>;
@@ -69,6 +73,8 @@ type RawProposal = AttentionLike & {
 	display_id: string | null;
 	change_type: string;
 	calc_note: string | null;
+	reason_md?: string | null;
+	decision_note?: string | null;
 	proposed_by_type: string;
 	proposed_by: string | null;
 	proposed_values: Record<string, unknown>;
@@ -129,6 +135,8 @@ function toCard(
 		change_type: row.change_type,
 		status: row.status,
 		calc_note: row.calc_note,
+		reason_md: row.reason_md ?? null,
+		decision_note: row.decision_note ?? null,
 		proposed_by_type: row.proposed_by_type,
 		proposer_name: proposerDisplayName({
 			proposed_by_type: row.proposed_by_type,
@@ -206,6 +214,46 @@ export async function listQueueProposals(
 	return { data: toPageResult(cards, count ?? 0, params), error: null };
 }
 
+/** FE-07 '지난 내역' 상태(pending·on_hold가 아닌 종결 상태). */
+export const PROPOSAL_HISTORY_STATUSES = [
+	'approved',
+	'rejected',
+	'superseded',
+	'cancelled',
+	'expired',
+	'conflict'
+] as const;
+
+/**
+ * FE-07 '지난 내역' — 종결된 변경 요청(사용자 기록 수정 포함), 결정 시각 최신순. 읽기 전용.
+ * 정렬(확인 필요 → 새 요청으로 바뀜·봇이 취소 → 반영됨·거절)은 화면에서 한다.
+ */
+export async function listProposalHistory(
+	repo: RepoClient,
+	params: PageParams
+): Promise<{ data: PageResult<ProposalCard>; error: Error | null }> {
+	const ownerId = requireOwnerId(repo);
+	let countQ = fromRepo(repo, 'position_proposals').select('id', {
+		count: 'exact',
+		head: true
+	});
+	countQ = withOwnerFilter(countQ, ownerId).in('status', [...PROPOSAL_HISTORY_STATUSES]);
+	const { count, error: countErr } = await countQ;
+	if (countErr) return { data: toPageResult([], 0, params), error: countErr as Error };
+
+	let q = fromRepo(repo, 'position_proposals')
+		.select('*')
+		.in('status', [...PROPOSAL_HISTORY_STATUSES])
+		.order('decided_at', { ascending: false, nullsFirst: false })
+		.order('created_at', { ascending: false })
+		.range(params.offset, params.offset + params.limit - 1);
+	q = withOwnerFilter(q, ownerId);
+	const { data, error } = await q;
+	if (error) return { data: toPageResult([], 0, params), error: error as Error };
+	const cards = await enrichProposals(repo, (data ?? []) as RawProposal[]);
+	return { data: toPageResult(cards, count ?? 0, params), error: null };
+}
+
 /**
  * BE-19 '확인 필요' list — attention_started_at window only (R-PERM-13).
  * Also returns principle_proposals with the same filter.
@@ -274,6 +322,8 @@ export async function listAttentionNeeded(
 		change_type: 'principle',
 		status: r.status,
 		calc_note: null,
+		reason_md: null,
+		decision_note: null,
 		proposed_by_type: r.proposed_by_type,
 		proposer_name: proposerDisplayName({
 			proposed_by_type: r.proposed_by_type,
@@ -406,6 +456,23 @@ export async function listInstrumentLabels(
 	const { data, error } = await q;
 	if (error) return { data: [], error: error as Error };
 	return { data: (data ?? []) as InstrumentLabel[], error: null };
+}
+
+export type InstrumentMeta = InstrumentLabel & { asset_type: string | null };
+
+/** FE-07 변경 요청·기록 수정용 종목 이름·코드·자산 유형(수량 단위 확인용). 읽기 전용. */
+export async function listInstrumentMeta(
+	repo: RepoClient,
+	instrumentIds: string[]
+): Promise<{ data: InstrumentMeta[]; error: Error | null }> {
+	const ids = [...new Set(instrumentIds.filter(Boolean))];
+	if (ids.length === 0) return { data: [], error: null };
+	const ownerId = requireOwnerId(repo);
+	let q = fromRepo(repo, 'instruments').select('id, name, ticker, asset_type').in('id', ids);
+	q = withOwnerFilter(q, ownerId);
+	const { data, error } = await q;
+	if (error) return { data: [], error: error as Error };
+	return { data: (data ?? []) as InstrumentMeta[], error: null };
 }
 
 export type BriefingListItem = {
