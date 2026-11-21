@@ -4,6 +4,8 @@ export type Debounced<A extends unknown[]> = {
 	cancel(): void;
 	/** 대기 중인 호출을 즉시 실행한다(Enter 등). 대기 중이 아니면 아무것도 하지 않는다. */
 	flush(): void;
+	/** 아직 실행되지 않은 호출이 있으면 true(입력 대기 중). */
+	pending(): boolean;
 };
 
 export function debounce<A extends unknown[]>(fn: (...args: A) => void, ms: number): Debounced<A> {
@@ -30,5 +32,6 @@ export function debounce<A extends unknown[]>(fn: (...args: A) => void, ms: numb
 		clearTimeout(timer);
 		run();
 	};
+	d.pending = () => pending !== null;
 	return d;
 }

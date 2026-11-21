@@ -40,4 +40,18 @@ describe('FE-10 검색 디바운스', () => {
 		vi.advanceTimersByTime(1000);
 		expect(fn).toHaveBeenCalledTimes(1);
 	});
+	it('pending은 대기 중일 때만 true(실행·cancel·flush 뒤 false)', () => {
+		const d = debounce(vi.fn<(v: string) => void>(), 200);
+		expect(d.pending()).toBe(false);
+		d('a');
+		expect(d.pending()).toBe(true);
+		vi.advanceTimersByTime(200);
+		expect(d.pending()).toBe(false);
+		d('b');
+		d.cancel();
+		expect(d.pending()).toBe(false);
+		d('c');
+		d.flush();
+		expect(d.pending()).toBe(false);
+	});
 });
