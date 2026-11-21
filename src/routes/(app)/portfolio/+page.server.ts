@@ -1,9 +1,16 @@
 import type { Actions, PageServerLoad } from './$types';
 import { parsePageParams } from '$lib/server/domain/web/pagination';
-import { forUser, listPositionCards, listQueueProposals } from '$lib/server/repo';
 import {
+	forUser,
+	listAttentionNeeded,
+	listPositionCards,
+	listQueueProposals
+} from '$lib/server/repo';
+import {
+	handleAck,
 	handleApprove,
 	handleArchive,
+	handleCorrect,
 	handleHold,
 	handleReject,
 	handleRestore
@@ -15,9 +22,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const repo = forUser(locals.supabase, user.id);
 	const queueParams = parsePageParams(url, { defaultSize: 20 });
 
-	const [queue, positions] = await Promise.all([
+	const [queue, positions, attention] = await Promise.all([
 		listQueueProposals(repo, queueParams),
-		listPositionCards(repo)
+		listPositionCards(repo),
+		listAttentionNeeded(repo)
 	]);
 
 	return {
@@ -25,7 +33,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		queue: queue.data,
 		queueError: queue.error?.message ?? null,
 		positions: positions.data,
-		positionsError: positions.error?.message ?? null
+		positionsError: positions.error?.message ?? null,
+		attentionNeeded: attention.data,
+		attentionError: attention.error?.message ?? null
 	};
 };
 
@@ -41,6 +51,16 @@ export const actions: Actions = {
 	hold: async ({ request, locals }) => {
 		const user = requireUser(locals.user);
 		return handleHold(locals.supabase, user.id, await request.formData());
+	},
+	/** BE-19: apply_user_correction (R-VAL-P11) */
+	correct: async ({ request, locals }) => {
+		const user = requireUser(locals.user);
+		return handleCorrect(locals.supabase, user.id, await request.formData());
+	},
+	/** BE-19: acknowledge_proposal / decide_principle_proposal('ack') */
+	ack: async ({ request, locals }) => {
+		const user = requireUser(locals.user);
+		return handleAck(locals.supabase, user.id, await request.formData());
 	},
 	archive: async ({ request, locals }) => {
 		const user = requireUser(locals.user);
