@@ -9,13 +9,23 @@ import { spawnSync } from 'node:child_process';
 import { readdirSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertLocalDbTarget, quoteIdent, resolveMowaDbEnv, LOCAL_STACK_DB_RE } from './lib/local-db-guard.mjs';
+import {
+	assertLocalDbTarget,
+	quoteIdent,
+	resolveMowaDbEnv,
+	LOCAL_STACK_DB_RE
+} from './lib/local-db-guard.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 
 const db = resolveMowaDbEnv(process.env, { dbNameRe: LOCAL_STACK_DB_RE, label: 'local-stack-up' });
-assertLocalDbTarget({ host: db.host, dbName: db.dbName, dbNameRe: LOCAL_STACK_DB_RE, label: 'local-stack-up' });
+assertLocalDbTarget({
+	host: db.host,
+	dbName: db.dbName,
+	dbNameRe: LOCAL_STACK_DB_RE,
+	label: 'local-stack-up'
+});
 
 const authPass = process.env.MOWA_AUTHENTICATOR_PASSWORD ?? 'mowa_local_auth';
 const jwtSecret =

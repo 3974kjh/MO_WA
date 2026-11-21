@@ -10,11 +10,7 @@
  * use recursively key-sorted canonical JSON — never a stringify replacer array.
  */
 import { mapDbErrorToRuleIds } from '$lib/server/domain/validation/mapDbError';
-import {
-	serverFilledKeysForTable,
-	type RepoClient,
-	type StripTable
-} from './client';
+import { serverFilledKeysForTable, type RepoClient, type StripTable } from './client';
 import { fromRepo } from './db';
 import { requireOwnerId } from './owner';
 

@@ -56,9 +56,7 @@ export function forUser(supabase: SupabaseClient<Database>, ownerId: string): Re
  */
 export function forBot(identity: BotRepoIdentity): RepoClient {
 	if (!isBotRepoIdentity(identity)) {
-		throw new Error(
-			'[R-PERM-03] forBot requires a minted BotRepoIdentity from mcp/auth (BE-04)'
-		);
+		throw new Error('[R-PERM-03] forBot requires a minted BotRepoIdentity from mcp/auth (BE-04)');
 	}
 	const ownerId = identity.ownerId;
 	const botClientId = identity.botClientId;

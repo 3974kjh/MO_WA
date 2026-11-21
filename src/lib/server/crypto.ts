@@ -6,9 +6,13 @@ export function toHex(buf: ArrayBuffer): string {
 }
 
 export async function hmacSha256Hex(key: string, message: string): Promise<string> {
-	const k = await crypto.subtle.importKey('raw', enc.encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, [
-		'sign'
-	]);
+	const k = await crypto.subtle.importKey(
+		'raw',
+		enc.encode(key),
+		{ name: 'HMAC', hash: 'SHA-256' },
+		false,
+		['sign']
+	);
 	return toHex(await crypto.subtle.sign('HMAC', k, enc.encode(message)));
 }
 

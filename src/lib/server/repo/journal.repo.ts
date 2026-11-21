@@ -1,10 +1,7 @@
 import type { JournalEntryRow } from '$lib/types/mowa.contract';
 import { archiveRow, restoreRow } from './archive';
 import { serverCreateStamps, stripClientIdentity, type RepoClient } from './client';
-import {
-	clientRefConflictFromInsertError,
-	resolveClientRefConflict
-} from './clientRef';
+import { clientRefConflictFromInsertError, resolveClientRefConflict } from './clientRef';
 import { fromRepo } from './db';
 import { requireOwnerId, withOwnerFilter } from './owner';
 import { JOURNAL_PATCHABLE, pickPatchable } from './patch';

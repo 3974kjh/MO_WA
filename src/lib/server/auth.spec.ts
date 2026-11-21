@@ -90,9 +90,7 @@ describe('BE-02 auth.getUser transition', () => {
 	it('M-2: AuthUnknownError is unavailable', () => {
 		const err = new AuthUnknownError('wrapped', new Error('boom'));
 		expect(isAuthUnavailable(err)).toBe(true);
-		expect(
-			resolveAuthenticatedUser({ data: { user: null }, error: err }).kind
-		).toBe('unavailable');
+		expect(resolveAuthenticatedUser({ data: { user: null }, error: err }).kind).toBe('unavailable');
 	});
 
 	it('M-2: non-numeric status is unavailable', () => {
@@ -100,9 +98,7 @@ describe('BE-02 auth.getUser transition', () => {
 		// AuthError may leave status undefined — treat as unavailable.
 		expect(typeof err.status !== 'number' || Number.isNaN(err.status as number)).toBe(true);
 		expect(isAuthUnavailable(err)).toBe(true);
-		expect(
-			resolveAuthenticatedUser({ data: { user: null }, error: err }).kind
-		).toBe('unavailable');
+		expect(resolveAuthenticatedUser({ data: { user: null }, error: err }).kind).toBe('unavailable');
 	});
 
 	it('Auth 5xx does not log the user out (unavailable → 503 path)', () => {
@@ -150,9 +146,7 @@ describe('BE-02 auth.getUser transition', () => {
 		expect(response.headers.get('cache-control')).toBe('private, no-store');
 		const setCookie = response.headers.getSetCookie?.() ?? [];
 		const header =
-			setCookie.length > 0
-				? setCookie.join('\n')
-				: (response.headers.get('set-cookie') ?? '');
+			setCookie.length > 0 ? setCookie.join('\n') : (response.headers.get('set-cookie') ?? '');
 		expect(header).toContain('rotated-session');
 		expect(header).toContain('HttpOnly');
 		expect(header).toContain('Secure');
@@ -193,9 +187,7 @@ describe('BE-02 auth.getUser transition', () => {
 		expect(response.headers.get('cache-control')).toBe('private, no-store');
 		const setCookie = response.headers.getSetCookie?.() ?? [];
 		const header =
-			setCookie.length > 0
-				? setCookie.join('\n')
-				: (response.headers.get('set-cookie') ?? '');
+			setCookie.length > 0 ? setCookie.join('\n') : (response.headers.get('set-cookie') ?? '');
 		expect(header).toBe('');
 	});
 
@@ -260,9 +252,7 @@ describe('BE-02 auth.getUser transition', () => {
 		expect(isUsableSupabasePublicConfig(undefined, undefined)).toBe(false);
 		expect(isUsableSupabasePublicConfig('', 'x')).toBe(false);
 		expect(isUsableSupabasePublicConfig('https://example.supabase.co', 'key')).toBe(false);
-		expect(isUsableSupabasePublicConfig('https://abc.supabase.co', 'public-anon-key')).toBe(
-			false
-		);
+		expect(isUsableSupabasePublicConfig('https://abc.supabase.co', 'public-anon-key')).toBe(false);
 		expect(isUsableSupabasePublicConfig('https://abc.supabase.co', 'test-anon-key')).toBe(true);
 	});
 });

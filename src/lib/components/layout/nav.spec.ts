@@ -3,12 +3,7 @@ import { backHrefFromPath, LATER_NAV, PRIMARY_NAV, sectionFromPath } from './nav
 
 describe('FE-01 내비 정의', () => {
 	it('1차 4개(하단 탭과 같음), 포트폴리오에만 대기 pill', () => {
-		expect(PRIMARY_NAV.map((n) => n.label)).toEqual([
-			'홈',
-			'브리핑',
-			'포트폴리오',
-			'매매일지'
-		]);
+		expect(PRIMARY_NAV.map((n) => n.label)).toEqual(['홈', '브리핑', '포트폴리오', '매매일지']);
 		expect(PRIMARY_NAV.filter((n) => n.pendingBadge).map((n) => n.id)).toEqual(['portfolio']);
 	});
 	it('이후 섹션은 모두 disabled(href 없음)', () => {

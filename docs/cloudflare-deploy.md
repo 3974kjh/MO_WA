@@ -6,12 +6,12 @@ SvelteKit + Supabase 프로젝트를 **Cloudflare Pages**에 배포하는 방법
 
 ## 1. 사전 준비
 
-| 항목 | 설명 |
-|---|---|
+| 항목                                                   | 설명                          |
+| ------------------------------------------------------ | ----------------------------- |
 | [Cloudflare 계정](https://dash.cloudflare.com/sign-up) | Pages 무료 플랜으로 시작 가능 |
-| [Supabase 프로젝트](https://supabase.com/dashboard) | Auth + Postgres |
-| GitHub/GitLab 저장소 | Pages Git 연동 배포 권장 |
-| Node.js 20+ / pnpm | 빌드용 |
+| [Supabase 프로젝트](https://supabase.com/dashboard)    | Auth + Postgres               |
+| GitHub/GitLab 저장소                                   | Pages Git 연동 배포 권장      |
+| Node.js 20+ / pnpm                                     | 빌드용                        |
 
 CLI로 직접 배포할 경우:
 
@@ -23,12 +23,12 @@ pnpm wrangler login
 
 ## 2. 프로젝트 설정 요약
 
-| 파일 | 역할 |
-|---|---|
-| `wrangler.jsonc` | **로컬 preview 전용** (호환 플래그만). Dashboard 잠금 방지 |
-| `svelte.config.js` | `@sveltejs/adapter-cloudflare` |
-| `.dev.vars.example` | 로컬 `wrangler pages dev`용 **비밀 변수** 템플릿 |
-| `package.json` | `CF_PAGES=1` 빌드, `cf:preview`, `cf:deploy` |
+| 파일                | 역할                                                       |
+| ------------------- | ---------------------------------------------------------- |
+| `wrangler.jsonc`    | **로컬 preview 전용** (호환 플래그만). Dashboard 잠금 방지 |
+| `svelte.config.js`  | `@sveltejs/adapter-cloudflare`                             |
+| `.dev.vars.example` | 로컬 `wrangler pages dev`용 **비밀 변수** 템플릿           |
+| `package.json`      | `CF_PAGES=1` 빌드, `cf:preview`, `cf:deploy`               |
 
 > **중요:** `wrangler.jsonc`에 `pages_build_output_dir` 또는 `vars`를 넣으면  
 > Cloudflare Dashboard의 Environment variables가 **읽기 전용(수정·삭제 불가)** 으로 바뀝니다.  
@@ -40,10 +40,10 @@ pnpm wrangler login
 
 ### 3.1 Supabase Dashboard → Project Settings → API
 
-| 변수명 | 복사 위치 | 비밀 여부 |
-|---|---|---|
-| `PUBLIC_SUPABASE_URL` | **Project URL** | 공개 |
-| `PUBLIC_SUPABASE_ANON_KEY` | **anon public** key | 공개 |
+| 변수명                      | 복사 위치            | 비밀 여부                 |
+| --------------------------- | -------------------- | ------------------------- |
+| `PUBLIC_SUPABASE_URL`       | **Project URL**      | 공개                      |
+| `PUBLIC_SUPABASE_ANON_KEY`  | **anon public** key  | 공개                      |
 | `SUPABASE_SERVICE_ROLE_KEY` | **service_role** key | **비밀 (절대 공개 금지)** |
 
 ---
@@ -54,11 +54,11 @@ pnpm wrangler login
 
 Production / Preview 각각 설정합니다 (Preview에도 동일 값 권장).
 
-| Name | Type | Value |
-|---|---|---|
-| `PUBLIC_SUPABASE_URL` | Plaintext | `https://YOUR-PROJECT-REF.supabase.co` |
-| `PUBLIC_SUPABASE_ANON_KEY` | Plaintext | Supabase anon key |
-| `SUPABASE_SERVICE_ROLE_KEY` | **Secret** (Encrypt) | Supabase service_role key |
+| Name                        | Type                 | Value                                  |
+| --------------------------- | -------------------- | -------------------------------------- |
+| `PUBLIC_SUPABASE_URL`       | Plaintext            | `https://YOUR-PROJECT-REF.supabase.co` |
+| `PUBLIC_SUPABASE_ANON_KEY`  | Plaintext            | Supabase anon key                      |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Secret** (Encrypt) | Supabase service_role key              |
 
 Git 연동 배포 시 **Dashboard 환경 변수만** 사용합니다.
 
@@ -94,17 +94,17 @@ pnpm cf:preview   # http://localhost:8788
 
 **Authentication → URL Configuration**
 
-| 설정 | 값 예시 |
-|---|---|
-| **Site URL** | `https://mo-wa.pages.dev` (배포 후 실제 Pages URL) |
-| **Redirect URLs** | `https://mo-wa.pages.dev/**` |
-| | Preview: `https://<branch>.mo-wa.pages.dev/**` |
-| | 커스텀 도메인: `https://your-domain.com/**` |
+| 설정              | 값 예시                                            |
+| ----------------- | -------------------------------------------------- |
+| **Site URL**      | `https://mo-wa.pages.dev` (배포 후 실제 Pages URL) |
+| **Redirect URLs** | `https://mo-wa.pages.dev/**`                       |
+|                   | Preview: `https://<branch>.mo-wa.pages.dev/**`     |
+|                   | 커스텀 도메인: `https://your-domain.com/**`        |
 
 로컬 개발:
 
-| 설정 | 값 |
-|---|---|
+| 설정          | 값                         |
+| ------------- | -------------------------- |
 | Redirect URLs | `http://localhost:5173/**` |
 
 ---
@@ -116,14 +116,14 @@ pnpm cf:preview   # http://localhost:8788
 1. [Cloudflare Dashboard](https://dash.cloudflare.com/) → **Workers & Pages** → **Create** → **Pages** → **Connect to Git**
 2. 저장소 선택 후 빌드 설정:
 
-| 항목 | 값 |
-|---|---|
-| **Framework preset** | SvelteKit |
-| **Production branch** | `main` (또는 사용 중인 브랜치) |
-| **Build command** | `pnpm install && pnpm build` |
-| **Build output directory** | `.svelte-kit/cloudflare` |
-| **Root directory** | `/` |
-| **Node.js version** | 20 이상 (Environment variables에서 `NODE_VERSION=22` 등) |
+| 항목                       | 값                                                       |
+| -------------------------- | -------------------------------------------------------- |
+| **Framework preset**       | SvelteKit                                                |
+| **Production branch**      | `main` (또는 사용 중인 브랜치)                           |
+| **Build command**          | `pnpm install && pnpm build`                             |
+| **Build output directory** | `.svelte-kit/cloudflare`                                 |
+| **Root directory**         | `/`                                                      |
+| **Node.js version**        | 20 이상 (Environment variables에서 `NODE_VERSION=22` 등) |
 
 3. **Environment variables** (§3.2) 설정
 4. **Save and Deploy**
@@ -172,12 +172,12 @@ Supabase Redirect URLs에 Preview 패턴(`https://*.mo-wa.pages.dev/**`)을 추�
 
 ## 7. 로컬 개발 vs Pages
 
-| 명령 | 용도 |
-|---|---|
-| `pnpm dev` | Vite dev server (`localhost:5173`), `.env` 사용 |
-| `pnpm build` | Pages용 빌드 (`CF_PAGES=1` 포함) |
-| `pnpm cf:preview` | Pages Functions 런타임 로컬 테스트 |
-| `pnpm cf:deploy` | CLI로 Pages에 수동 배포 |
+| 명령              | 용도                                            |
+| ----------------- | ----------------------------------------------- |
+| `pnpm dev`        | Vite dev server (`localhost:5173`), `.env` 사용 |
+| `pnpm build`      | Pages용 빌드 (`CF_PAGES=1` 포함)                |
+| `pnpm cf:preview` | Pages Functions 런타임 로컬 테스트              |
+| `pnpm cf:deploy`  | CLI로 Pages에 수동 배포                         |
 
 일상 개발은 `pnpm dev` + `.env`로 충분합니다.
 
@@ -185,13 +185,13 @@ Supabase Redirect URLs에 Preview 패턴(`https://*.mo-wa.pages.dev/**`)을 추�
 
 ## 8. 문제 해결
 
-| 증상 | 확인 사항 |
-|---|---|
+| 증상                             | 확인 사항                                   |
+| -------------------------------- | ------------------------------------------- |
 | 빌드 실패: output directory 없음 | Build output이 `.svelte-kit/cloudflare`인지 |
-| Adapter / platform 오류 | `pnpm build`가 `CF_PAGES=1`로 실행되는지 |
-| 로그인 세션 안 됨 | Supabase Site URL = Pages URL인지 |
-| service_role 오류 | Dashboard Secrets + `.dev.vars`(로컬) |
-| Preview에서만 Auth 실패 | Supabase Redirect URLs에 preview URL 추가 |
+| Adapter / platform 오류          | `pnpm build`가 `CF_PAGES=1`로 실행되는지    |
+| 로그인 세션 안 됨                | Supabase Site URL = Pages URL인지           |
+| service_role 오류                | Dashboard Secrets + `.dev.vars`(로컬)       |
+| Preview에서만 Auth 실패          | Supabase Redirect URLs에 preview URL 추가   |
 
 ---
 
@@ -199,9 +199,9 @@ Supabase Redirect URLs에 Preview 패턴(`https://*.mo-wa.pages.dev/**`)을 추�
 
 이 프로젝트는 **Pages** 기준입니다.
 
-| | Pages (현재) | Workers |
-|---|---|---|
-| wrangler 키 | `pages_build_output_dir` | `main` + `assets` |
-| Git 자동 배포 | ✅ 기본 지원 | 별도 Workers Builds 설정 |
-| Preview URL | ✅ 브랜치/PR별 | 제한적 |
-| 배포 CLI | `wrangler pages deploy` | `wrangler deploy` |
+|               | Pages (현재)             | Workers                  |
+| ------------- | ------------------------ | ------------------------ |
+| wrangler 키   | `pages_build_output_dir` | `main` + `assets`        |
+| Git 자동 배포 | ✅ 기본 지원             | 별도 Workers Builds 설정 |
+| Preview URL   | ✅ 브랜치/PR별           | 제한적                   |
+| 배포 CLI      | `wrangler pages deploy`  | `wrangler deploy`        |

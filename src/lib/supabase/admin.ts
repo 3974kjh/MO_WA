@@ -9,7 +9,10 @@ export type AdminClientOptions = {
 
 const PLACEHOLDER_HOSTS = new Set(['example.supabase.co']);
 
-function assertAdminConfig(url: string, serviceRoleKey: string | undefined): asserts serviceRoleKey is string {
+function assertAdminConfig(
+	url: string,
+	serviceRoleKey: string | undefined
+): asserts serviceRoleKey is string {
 	if (!serviceRoleKey) {
 		throw new Error('SUPABASE_SERVICE_ROLE_KEY is required for admin Supabase operations.');
 	}

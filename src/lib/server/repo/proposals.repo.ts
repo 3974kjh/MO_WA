@@ -1,9 +1,6 @@
 import type { PositionProposalRow, PrincipleProposalRow } from '$lib/types/mowa.contract';
 import { stripClientIdentity, type RepoClient } from './client';
-import {
-	clientRefConflictFromInsertError,
-	resolveClientRefConflict
-} from './clientRef';
+import { clientRefConflictFromInsertError, resolveClientRefConflict } from './clientRef';
 import { fromRepo } from './db';
 import { isOwnerDisplayId } from './displayId';
 import { requireOwnerId, withOwnerFilter } from './owner';

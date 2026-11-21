@@ -83,12 +83,10 @@ describe('fromRepo owner_id forcing', () => {
 		);
 		expect(upserted[0]).toEqual({ title: 'u', client_ref: 'c', owner_id: 'owner-xyz' });
 
-		expect(() => fromRepo(repo, 'reports').upsert({ title: 'u' })).toThrow(
-			/onConflict.*owner_id/i
+		expect(() => fromRepo(repo, 'reports').upsert({ title: 'u' })).toThrow(/onConflict.*owner_id/i);
+		expect(() => fromRepo(repo, 'reports').upsert({ title: 'u' }, { onConflict: 'id' })).toThrow(
+			/onConflict must include owner_id/i
 		);
-		expect(() =>
-			fromRepo(repo, 'reports').upsert({ title: 'u' }, { onConflict: 'id' })
-		).toThrow(/onConflict must include owner_id/i);
 		expect(() =>
 			fromRepo(repo, 'reports').upsert(
 				{ id: 'row-uuid', title: 'u' },
@@ -102,9 +100,7 @@ describe('fromRepo owner_id forcing', () => {
 			)
 		).toThrow(/owner_id mismatch/i);
 
-		expect(() => assertUpsertOnConflictIncludesOwner({ onConflict: 'id' })).toThrow(
-			/owner_id/
-		);
+		expect(() => assertUpsertOnConflictIncludesOwner({ onConflict: 'id' })).toThrow(/owner_id/);
 		expect(() => assertUpsertPayloadHasNoId({ id: 'x' })).toThrow(/id/i);
 	});
 

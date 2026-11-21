@@ -35,11 +35,7 @@ import {
 } from '$lib/schemas';
 import type { ValidationIssue, ValidationMode, ValidationResult, ValidationRule } from './types';
 
-function issue(
-	id: string,
-	level: ValidationIssue['level'],
-	message: string
-): ValidationIssue {
+function issue(id: string, level: ValidationIssue['level'], message: string): ValidationIssue {
 	return { id, level, message };
 }
 
@@ -188,8 +184,7 @@ export const ruleR13: ValidationRule<R13Input> = {
 	id: 'R-VAL-R13',
 	level: 'WARN',
 	check(input) {
-		const isFm =
-			input.profile === 'finance-manager' || input.profile === 'finance-manager-boot';
+		const isFm = input.profile === 'finance-manager' || input.profile === 'finance-manager-boot';
 		if (!isFm || input.kind !== 'equity_analysis') return null;
 		const meta = input.meta ?? {};
 		const hasMetaTarget = meta.target_price != null || meta.opinion != null;
@@ -260,14 +255,11 @@ export const ruleR15: ValidationRule<R15Input> = {
 			return issue(
 				'R-VAL-R15',
 				'ERROR',
-				parsed.error.issues[0]?.message ??
-					'[R-VAL-R15] invalid equity_analysis context / alignment'
+				parsed.error.issues[0]?.message ?? '[R-VAL-R15] invalid equity_analysis context / alignment'
 			);
 		}
 		if (meta.alignment != null) {
-			const ok = ['aligned', 'partial', 'conflict', 'unchecked'].includes(
-				String(meta.alignment)
-			);
+			const ok = ['aligned', 'partial', 'conflict', 'unchecked'].includes(String(meta.alignment));
 			if (!ok) {
 				return issue('R-VAL-R15', 'ERROR', 'alignment must be aligned|partial|conflict|unchecked');
 			}
@@ -289,11 +281,7 @@ export const ruleJ08: ValidationRule<J08Input> = {
 	check(input) {
 		const hits = tagsContainingTickerCodes(input.tags, input.knownTickers);
 		if (hits.length === 0) return null;
-		return issue(
-			'R-VAL-J08',
-			'WARN',
-			`tags must not contain ticker codes: ${hits.join(', ')}`
-		);
+		return issue('R-VAL-J08', 'WARN', `tags must not contain ticker codes: ${hits.join(', ')}`);
 	}
 };
 
@@ -317,17 +305,10 @@ export const ruleJ02: ValidationRule<J02Input> = {
 	check(input, mode) {
 		if (input.kind !== 'buy' && input.kind !== 'sell') return null;
 		const missing =
-			!input.instrument_id ||
-			input.price == null ||
-			input.qty == null ||
-			!input.currency;
+			!input.instrument_id || input.price == null || input.qty == null || !input.currency;
 		if (!missing) return null;
 		const level = mode === 'migration' ? 'WARN' : 'ERROR';
-		return issue(
-			'R-VAL-J02',
-			level,
-			'buy/sell requires instrument_id, price, qty, currency'
-		);
+		return issue('R-VAL-J02', level, 'buy/sell requires instrument_id, price, qty, currency');
 	}
 };
 
