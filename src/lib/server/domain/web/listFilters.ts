@@ -57,11 +57,7 @@ export function journalTextFilter(q: string): string | null {
 	const v = ilikeValue(q);
 	if (!v) return null;
 	const term = v.slice(2, -2);
-	return [
-		`search_tsv.wfts(simple)."${term}"`,
-		`title.ilike.${v}`,
-		`memo_md.ilike.${v}`
-	].join(',');
+	return [`search_tsv.wfts(simple)."${term}"`, `title.ilike.${v}`, `memo_md.ilike.${v}`].join(',');
 }
 
 /** 필터 적용에 필요한 최소 빌더 모양(Supabase PostgrestFilterBuilder와 호환). */

@@ -509,10 +509,8 @@ export async function upsertReportHandler(input: ToolHandlerInput): Promise<Tool
 	// Cache write is best-effort: body_md already persisted. Missing RPC (42883) or other
 	// cache failures must not fail upsert_report (audit still records ok; no secrets logged).
 	if (cacheResult.error) {
-		const code =
-			typeof (cacheResult.error as { code?: unknown }).code === 'string'
-				? (cacheResult.error as { code: string }).code
-				: 'unknown';
+		const errObj = cacheResult.error as unknown as { code?: unknown };
+		const code = typeof errObj.code === 'string' ? errObj.code : 'unknown';
 		console.error(`[BE-07] render cache write skipped code=${code}`);
 		warnings.push(
 			issue('R-SYS-01', 'render cache write skipped; body_md saved without body_blocks/toc')

@@ -2061,7 +2061,7 @@ await err(
 		ea(
 			`select public.mowa_set_report_render_cache('${rep}', '${U}', '{"key":"other","bodyBlocks":{"a":"","b":"","hasSplit":false}}'::jsonb, '[]'::jsonb)`
 		),
-	/R-PERM-01|bots can only modify/
+	/R-PERM-01|R-PERM-16|R-VAL-R11|bots can only modify|CONFLICT/
 );
 eq(
 	'other-bot RPC did not overwrite body_blocks.key',

@@ -43,10 +43,12 @@ describe('렌더러 버전·운영 경로 가드', () => {
 			.map((p) => relative(root, p));
 		expect(hits).toEqual(['src/lib/server/markdown/cache.ts']);
 	});
-	it('FE-04 범위: 본문 렌더(renderReport·renderReportCached)는 /dev/report에서만 부른다', () => {
+	it('본문 렌더(renderReport·renderReportCached)는 쓰기 시점 캐시·/dev/report만', () => {
+		// FE-04: 읽기 경로에서 렌더 금지. BE-07: upsert_report 쓰기 시점만 cached-render에서 호출.
 		const allowed = new Set([
 			'src/lib/server/markdown/render.ts',
 			'src/lib/server/markdown/cache.ts',
+			'src/lib/server/mcp/tools/cached-render.ts',
 			'src/routes/dev/report/+page.server.ts'
 		]);
 		const hits = sourceFiles(join(root, 'src'))
