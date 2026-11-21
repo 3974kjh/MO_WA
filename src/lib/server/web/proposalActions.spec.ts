@@ -1,0 +1,250 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@sveltejs/kit', async () => {
+	const actual = await vi.importActual<typeof import('@sveltejs/kit')>('@sveltejs/kit');
+	return {
+		...actual,
+		fail: (status: number, data: unknown) => ({ status, data })
+	};
+});
+
+vi.mock('$lib/server/repo', () => ({
+	forUser: (_sb: unknown, ownerId: string) => ({
+		actor: { kind: 'user', ownerId, botClientId: null }
+	}),
+	approveProposalRpc: vi.fn(),
+	rejectProposalRpc: vi.fn(),
+	holdProposalRpc: vi.fn(),
+	applyUserCorrectionRpc: vi.fn(),
+	acknowledgeProposalRpc: vi.fn(),
+	acknowledgePrincipleProposalRpc: vi.fn(),
+	archiveRow: vi.fn(),
+	restoreRow: vi.fn()
+}));
+
+import {
+	approveProposalRpc,
+	applyUserCorrectionRpc,
+	acknowledgeProposalRpc
+} from '$lib/server/repo';
+import { handleAck, handleApprove, handleCorrect } from './proposalActions';
+
+beforeEach(() => {
+	vi.clearAllMocks();
+});
+
+function fakeSupabase(meta: {
+	change_type?: string;
+	proposed_by_type?: string;
+	asset_type?: string;
+	position?: { id: string; instrument_id: string; approval_version: number } | null;
+}) {
+	return {
+		from(table: string) {
+			if (table === 'position_proposals') {
+				return {
+					select: () => ({
+						eq: () => ({
+							eq: () => ({
+								maybeSingle: async () => ({
+									data: {
+										change_type: meta.change_type ?? 'set_qty_avg',
+										proposed_by_type: meta.proposed_by_type ?? 'bot',
+										instrument_id: 'inst-1'
+									}
+								})
+							})
+						})
+					})
+				};
+			}
+			if (table === 'instruments') {
+				return {
+					select: () => ({
+						eq: () => ({
+							eq: () => ({
+								maybeSingle: async () => ({
+									data: { asset_type: meta.asset_type ?? 'stock' }
+								})
+							})
+						})
+					})
+				};
+			}
+			if (table === 'positions') {
+				return {
+					select: () => ({
+						eq: () => ({
+							eq: () => ({
+								maybeSingle: async () => ({
+									data: meta.position ?? {
+										id: 'pos-1',
+										instrument_id: 'inst-1',
+										approval_version: 1
+									}
+								})
+							})
+						})
+					})
+				};
+			}
+			throw new Error(`unexpected table ${table}`);
+		}
+	} as never;
+}
+
+describe('BE-11 approve action', () => {
+	it('conflict path returns 409 when RPC status=conflict', async () => {
+		vi.mocked(approveProposalRpc).mockResolvedValue({
+			data: {
+				id: 'p1',
+				status: 'conflict',
+				display_id: 'P-0001',
+				base_version: 1,
+				applied_values: null,
+				proposed_values: {},
+				change_type: 'set_qty_avg',
+				attention_started_at: null,
+				acknowledged_at: null
+			},
+			error: null
+		});
+		const form = new FormData();
+		form.set('id', 'p1');
+		form.set('overrides', JSON.stringify({ qty: 2 }));
+		const result = (await handleApprove(fakeSupabase({}), 'owner', form)) as {
+			status: number;
+			data: { status?: string; ruleIds: string[] };
+		};
+		expect(result.status).toBe(409);
+		expect(result.data.status).toBe('conflict');
+		expect(result.data.ruleIds).toContain('R-PERM-13');
+	});
+
+	it('blocks disallowed override keys before RPC', async () => {
+		const form = new FormData();
+		form.set('id', 'p1');
+		form.set('overrides', JSON.stringify({ trigger_price: 100 }));
+		const result = (await handleApprove(fakeSupabase({}), 'owner', form)) as {
+			status: number;
+			data: { ruleIds: string[] };
+		};
+		expect(result.status).toBe(400);
+		expect(result.data.ruleIds).toContain('R-VAL-P07');
+		expect(approveProposalRpc).not.toHaveBeenCalled();
+	});
+
+	it('R-VAL-M03 blocks fractional stock qty override', async () => {
+		const form = new FormData();
+		form.set('id', 'p1');
+		form.set('overrides', JSON.stringify({ qty: 1.5 }));
+		const result = (await handleApprove(fakeSupabase({ asset_type: 'stock' }), 'owner', form)) as {
+			status: number;
+			data: { ruleIds: string[] };
+		};
+		expect(result.status).toBe(400);
+		expect(result.data.ruleIds).toContain('R-VAL-M03');
+	});
+});
+
+describe('BE-19 correct / ack actions', () => {
+	it('reason 121 chars → ERROR; 120 ok', async () => {
+		const long = new FormData();
+		long.set('position_id', 'pos-1');
+		long.set('qty', '1');
+		long.set('currency', 'KRW');
+		long.set('avg_price', '100');
+		long.set('reason', 'x'.repeat(121));
+		const bad = (await handleCorrect(fakeSupabase({}), 'owner', long)) as {
+			status: number;
+			data: { ruleIds: string[] };
+		};
+		expect(bad.status).toBe(400);
+		expect(bad.data.ruleIds).toContain('R-VAL-P11');
+
+		vi.mocked(applyUserCorrectionRpc).mockResolvedValue({
+			data: {
+				id: 'new',
+				status: 'approved',
+				display_id: 'P-0002',
+				base_version: 1,
+				applied_values: { qty: 1, avg_price: 100, currency: 'KRW' },
+				proposed_values: { qty: 1, avg_price: 100, currency: 'KRW' },
+				change_type: 'set_qty_avg',
+				attention_started_at: null,
+				acknowledged_at: null
+			},
+			error: null
+		});
+		const okForm = new FormData();
+		okForm.set('position_id', 'pos-1');
+		okForm.set('qty', '1');
+		okForm.set('currency', 'KRW');
+		okForm.set('avg_price', '100');
+		okForm.set('reason', 'x'.repeat(120));
+		const ok = await handleCorrect(fakeSupabase({}), 'owner', okForm);
+		expect(ok).toMatchObject({ ok: true });
+		expect(applyUserCorrectionRpc).toHaveBeenCalled();
+	});
+
+	it('newline reason is ERROR', async () => {
+		const form = new FormData();
+		form.set('position_id', 'pos-1');
+		form.set('qty', '1');
+		form.set('currency', 'KRW');
+		form.set('avg_price', '100');
+		form.set('reason', 'a\nb');
+		const result = (await handleCorrect(fakeSupabase({}), 'owner', form)) as {
+			status: number;
+			data: { ruleIds: string[] };
+		};
+		expect(result.status).toBe(400);
+		expect(result.data.ruleIds).toContain('R-VAL-P11');
+	});
+
+	it('base_version mismatch → CONFLICT', async () => {
+		vi.mocked(applyUserCorrectionRpc).mockResolvedValue({
+			data: null,
+			error: Object.assign(new Error('[R-PERM-13] CONFLICT: position changed'), {
+				code: '40001'
+			})
+		});
+		const form = new FormData();
+		form.set('position_id', 'pos-1');
+		form.set('qty', '1');
+		form.set('currency', 'KRW');
+		form.set('avg_price', '100');
+		form.set('reason', '정정');
+		form.set('base_version', '1');
+		const result = (await handleCorrect(fakeSupabase({}), 'owner', form)) as {
+			status: number;
+			data: { code?: string };
+		};
+		expect(result.status).toBe(409);
+		expect(result.data.code).toBe('CONFLICT');
+	});
+
+	it('ack leaves status as-is (RPC only stamps acknowledged_at)', async () => {
+		vi.mocked(acknowledgeProposalRpc).mockResolvedValue({
+			data: {
+				id: 'p1',
+				status: 'conflict',
+				display_id: 'P-0001',
+				base_version: 1,
+				applied_values: null,
+				proposed_values: {},
+				change_type: 'set_qty_avg',
+				attention_started_at: '2026-11-20T00:00:00Z',
+				acknowledged_at: '2026-11-21T00:00:00Z'
+			},
+			error: null
+		});
+		const form = new FormData();
+		form.set('id', 'p1');
+		const result = await handleAck(fakeSupabase({}), 'owner', form);
+		expect(result).toMatchObject({
+			ok: true,
+			proposal: { status: 'conflict', acknowledged_at: expect.any(String) }
+		});
+	});
+});

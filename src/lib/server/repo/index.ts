@@ -38,3 +38,7 @@ export * from './journal.repo';
 export * from './positions.repo';
 export * from './proposals.repo';
 export * from './reports.repo';
+export * from './proposalActions.repo';
+export * from './market.repo';
+export * from './auditStats.repo';
+export * from './webLoads.repo';
