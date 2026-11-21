@@ -16,8 +16,8 @@
 	import {
 		AUDIT_RESULTS,
 		auditFilterActive,
-		auditResultLabel,
-		formatArgsPreview
+		argsPreview,
+		auditResultLabel
 	} from '$lib/settings/view';
 
 	let { data }: { data: PageData } = $props();
@@ -43,6 +43,7 @@
 	}
 
 	let detail = $state<Row | null>(null);
+	const preview = $derived(detail ? argsPreview(detail.args_preview) : null);
 
 	const columns: Col<Row>[] = [
 		{ key: 'when', label: '시각', num: true, render: whenCell },
@@ -184,9 +185,12 @@
 				<dd class="num">{detail.duration_ms}ms</dd>
 			{/if}
 		</dl>
-		{#if formatArgsPreview(detail.args_preview)}
+		{#if preview?.text}
 			<p class="lbl">요청 내용(미리보기)</p>
-			<pre class="args" data-testid="audit-args">{formatArgsPreview(detail.args_preview)}</pre>
+			<pre class="args" data-testid="audit-args">{preview.text}</pre>
+			{#if preview.truncated}
+				<p class="cut" data-testid="audit-args-cut">내용이 길어 앞부분만 보여 줘요.</p>
+			{/if}
 		{/if}
 	{/if}
 	{#snippet footer()}
@@ -322,5 +326,10 @@
 		font-size: 12px;
 		background: var(--color-canvas-parchment);
 		border-radius: var(--radius-sm);
+	}
+	.cut {
+		margin: 4px 0 0;
+		font-size: 12px;
+		color: var(--color-muted);
 	}
 </style>

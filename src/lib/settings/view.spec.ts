@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	ACTION_FALLBACK_MESSAGE,
 	applyKstOffset,
+	argsPreview,
 	auditFilterActive,
 	expiryRequired,
 	formatArgsPreview,
@@ -86,6 +87,18 @@ describe('formatArgsPreview', () => {
 		expect(formatArgsPreview({ a: 1 })).toContain('"a": 1');
 		expect(formatArgsPreview(null)).toBe('');
 		expect(formatArgsPreview({ t: 'x'.repeat(5000) }).length).toBe(ARGS_PREVIEW_MAX + 1);
+	});
+
+	it('잘렸는지 함께 알려 준다(N-2)', () => {
+		expect(argsPreview({ a: 1 })).toEqual({ text: '{\n  "a": 1\n}', truncated: false });
+		expect(argsPreview(null)).toEqual({ text: '', truncated: false });
+		const long = argsPreview({ t: 'x'.repeat(5000) });
+		expect(long.truncated).toBe(true);
+		expect(long.text.length).toBe(ARGS_PREVIEW_MAX + 1);
+		// 경계: 정확히 ARGS_PREVIEW_MAX자는 자르지 않는다
+		const pad = ARGS_PREVIEW_MAX - JSON.stringify({ t: '' }, null, 2).length;
+		expect(argsPreview({ t: 'y'.repeat(pad) })).toMatchObject({ truncated: false });
+		expect(argsPreview({ t: 'y'.repeat(pad + 1) })).toMatchObject({ truncated: true });
 	});
 });
 

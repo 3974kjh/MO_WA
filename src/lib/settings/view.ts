@@ -143,14 +143,21 @@ export function auditFilterActive(f: AuditFilter): boolean {
 
 export const ARGS_PREVIEW_MAX = 2000;
 
-/** args_preview를 상세 시트에 보여 줄 문자열로(길면 자른다). */
-export function formatArgsPreview(v: unknown): string {
-	if (v == null) return '';
+/** args_preview를 상세 시트에 보여 줄 문자열과 잘림 여부(길면 ARGS_PREVIEW_MAX자에서 자른다). */
+export function argsPreview(v: unknown): { text: string; truncated: boolean } {
+	if (v == null) return { text: '', truncated: false };
 	let s: string;
 	try {
 		s = JSON.stringify(v, null, 2) ?? '';
 	} catch {
-		return '';
+		return { text: '', truncated: false };
 	}
-	return s.length > ARGS_PREVIEW_MAX ? `${s.slice(0, ARGS_PREVIEW_MAX)}…` : s;
+	return s.length > ARGS_PREVIEW_MAX
+		? { text: `${s.slice(0, ARGS_PREVIEW_MAX)}…`, truncated: true }
+		: { text: s, truncated: false };
+}
+
+/** args_preview를 상세 시트에 보여 줄 문자열로(길면 자른다). */
+export function formatArgsPreview(v: unknown): string {
+	return argsPreview(v).text;
 }

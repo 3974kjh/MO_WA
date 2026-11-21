@@ -88,5 +88,18 @@ describe('FE-09 활동 기록 화면', () => {
 		(container.querySelector('[data-action="audit-open"]') as HTMLButtonElement).click();
 		flushSync();
 		expect(text(document.querySelector('[data-testid="audit-args"]'))).toContain('더미 인자');
+		expect(document.querySelector('[data-testid="audit-args-cut"]')).toBeNull();
+	});
+
+	it('미리보기가 잘리면 짧은 안내를 함께 보여 준다(규칙 ID 없음)', () => {
+		const { container } = render(Page, {
+			data: makeData({ rows: [row(1, { args_preview: { memo: '가'.repeat(3000) } })] })
+		});
+		(container.querySelector('[data-action="audit-open"]') as HTMLButtonElement).click();
+		flushSync();
+		expect(text(document.querySelector('[data-testid="audit-args"]')).endsWith('…')).toBe(true);
+		const cut = text(document.querySelector('[data-testid="audit-args-cut"]'));
+		expect(cut).toBe('내용이 길어 앞부분만 보여 줘요.');
+		expect(cut).not.toMatch(/R-[A-Z]+/);
 	});
 });
