@@ -101,7 +101,7 @@
 ### Review follow-up (same PR)
 
 - Low 1: smoke S5 asserts `auth_mode === "db"` and `bot === MCP_WHOAMI_BOT` (env mode no longer passes)
-- Low 2: host allowlist (loopback + Preview `*.mo-wa.pages.dev`); refuse apex / `main` / `www` (+ unit tests)
+- Low 2: host allowlist (loopback + branch-alias Preview); refuse apex / `main` / `www` / 8-hex by default; 8-hex only via `MCP_SMOKE_ALLOWED_HOSTS`
 - Nit 5: S3 protocolVersion assert; S1 wrong-key 401
 - Low 3 (429 audit cap) deferred; Nit 2 deferred to BE-06
 

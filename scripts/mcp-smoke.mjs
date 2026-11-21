@@ -2,8 +2,9 @@
 /**
  * Local / Preview MCP smoke (S1–S10 subset). Never prints key material.
  *
- * Allowlist only: loopback, or genuine Cloudflare Pages Preview hosts
- * (`<label>.mo-wa.pages.dev` excluding production aliases).
+ * Default allowlist: loopback, or branch-alias Preview (`<label>.mo-wa.pages.dev`
+ * excluding reserved aliases and 8-hex unique-deployment hosts).
+ * Opt-in a Preview hash only via MCP_SMOKE_ALLOWED_HOSTS (not wrangler.jsonc).
  *
  * Usage (Preview / local DB mode — auth_mode=db required):
  *   MCP_SMOKE_URL=… MCP_SMOKE_KEY=mowa_… MCP_WHOAMI_BOT=local-bot \
@@ -29,9 +30,9 @@ try {
 }
 
 const host = parsed.hostname;
-if (!isAllowedMcpSmokeHost(host)) {
+if (!isAllowedMcpSmokeHost(host, { env: process.env })) {
 	refuse(
-		`host ${host.toLowerCase()} is not allowlisted (loopback or Preview *.mo-wa.pages.dev; apex/main/www refused)`
+		`host ${host.toLowerCase()} is not allowlisted (loopback or branch Preview; apex/main/www/8-hex refused unless MCP_SMOKE_ALLOWED_HOSTS)`
 	);
 }
 
