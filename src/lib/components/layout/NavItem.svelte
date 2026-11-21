@@ -23,7 +23,7 @@
 		icon: NavIcon;
 		label: string;
 		current?: boolean;
-		/** 승인 대기 건수(pending만, G-1). 0이면 표시 안 함 */
+		/** 확인 대기 건수(pending만, G-1). 0이면 표시 안 함 */
 		badge?: number;
 		disabled?: boolean;
 		variant?: 'side' | 'tab' | 'sheet';

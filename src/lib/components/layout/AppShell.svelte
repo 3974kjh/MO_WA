@@ -4,7 +4,7 @@
 	 * - ≥1024: 240px 사이드바(1차/이후/관리 그룹, 하단 로그아웃·계정)
 	 * - 640~1023: 72px 아이콘 레일(라벨 숨김, pill 유지)
 	 * - <640: 상단바 52px + 하단 탭 4 + 더보기(52px + safe-area)
-	 * pendingCount는 승인 대기 pending 건수(보류 제외, G-1). 포트폴리오 항목에 pill로 붙는다.
+	 * pendingCount는 확인 대기 pending 건수(보류 제외, G-1). 포트폴리오 항목에 pill로 붙는다.
 	 */
 	import type { Snippet } from 'svelte';
 	import { resolve } from '$app/paths';
@@ -46,7 +46,7 @@
 <a class="skip" href="#main">본문으로 건너뛰기</a>
 
 <aside class="side" aria-label="주 메뉴">
-	<a class="brand" href={resolve('/')} aria-label="MO_WA 대시보드">
+	<a class="brand" href={resolve('/')} aria-label="MO_WA 홈">
 		<span class="brand-mark" aria-hidden="true">M</span><span class="t">MO_WA</span>
 	</a>
 	<nav class="nav" aria-label="섹션">

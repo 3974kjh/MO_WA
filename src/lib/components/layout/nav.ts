@@ -1,6 +1,6 @@
 /**
  * 내비게이션 정의 (FE-01, H §2·§3, DS §5·§6, 시안 shared/shell.js NAV)
- * 1차 = 대시보드·브리핑·포트폴리오·매매일지 / 이후 = 종목·기업분석·부동산·원칙·전략(disabled '준비 중')
+ * 1차 = 홈·브리핑·포트폴리오·매매일지 / 이후 = 종목·기업분석·부동산·투자 원칙(disabled '준비 중')
  */
 export type SectionId =
 	| 'dashboard'
@@ -32,12 +32,12 @@ export interface NavEntry {
 	icon: NavIcon;
 	/** 없으면 disabled('준비 중') */
 	href?: '/' | '/briefings' | '/portfolio' | '/journal';
-	/** 승인 대기 pill을 붙이는 항목 */
+	/** 확인 대기 pill을 붙이는 항목 */
 	pendingBadge?: boolean;
 }
 
 export const PRIMARY_NAV: NavEntry[] = [
-	{ id: 'dashboard', label: '대시보드', icon: 'house', href: '/' },
+	{ id: 'dashboard', label: '홈', icon: 'house', href: '/' },
 	{ id: 'briefings', label: '브리핑', icon: 'file-text', href: '/briefings' },
 	{
 		id: 'portfolio',
@@ -53,7 +53,7 @@ export const LATER_NAV: NavEntry[] = [
 	{ id: 'stocks', label: '종목', icon: 'chart-line' },
 	{ id: 'equity', label: '기업분석', icon: 'search' },
 	{ id: 'realestate', label: '부동산', icon: 'building' },
-	{ id: 'rules', label: '원칙·전략', icon: 'shield' }
+	{ id: 'rules', label: '투자 원칙', icon: 'shield' }
 ];
 
 /**

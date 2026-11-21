@@ -11,7 +11,7 @@ export const THEME_STORAGE_KEY = 'mowa-theme';
 export const THEME_ATTR = 'data-theme';
 
 export const THEME_LABEL: Record<ThemeMode, string> = {
-	system: '시스템 설정 따름',
+	system: '기기 설정 따름',
 	light: '라이트',
 	dark: '다크'
 };
