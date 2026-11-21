@@ -71,3 +71,39 @@ describe('formatUsd 금액', () => {
 		expect(formatUsd(-12_000).text).toBe(`${MINUS}$1.2만`);
 	});
 });
+
+describe('D-4: USD 단가는 저장 4자리 유지, 표시만 2자리', () => {
+	it('12.3456 → 표시 $12.35 (exact·text 모두), 입력값은 변하지 않는다', () => {
+		const stored = 12.3456;
+		const f = formatMoney(stored, 'USD', 'unit');
+		expect(f.text).toBe('$12.35');
+		expect(f.exact).toBe('$12.35');
+		expect(f.abbreviated).toBe(false);
+		expect(stored).toBe(12.3456);
+		expect(String(stored)).toBe('12.3456');
+	});
+	it('표시 자릿수는 항상 2자리(0 채움·반올림)', () => {
+		expect(formatMoney(272.6549, 'USD', 'unit').text).toBe('$272.65');
+		expect(formatMoney(272.6551, 'USD', 'unit').text).toBe('$272.66');
+		expect(formatMoney(5, 'USD', 'unit').text).toBe('$5.00');
+		expect(formatMoney(0.00004, 'USD', 'unit').text).toBe('$0.00');
+		expect(formatMoney(1234.5678, 'USD', 'unit').text).toBe('$1,234.57');
+	});
+	it('부호: 음수는 −, plus는 +', () => {
+		expect(formatMoney(-12.3456, 'USD', 'unit').text).toBe(`${MINUS}$12.35`);
+		expect(formatMoney(12.3456, 'USD', 'unit', { plus: true }).text).toBe('+$12.35');
+	});
+	it('같은 값을 여러 번 포맷해도 값이 바뀌지 않고 결과가 같다(순수 함수)', () => {
+		const a = formatMoney(12.3456, 'USD', 'unit');
+		const b = formatMoney(12.3456, 'USD', 'unit');
+		expect(a).toEqual(b);
+	});
+	it('달러 금액(1만 미만)도 소수 2자리를 넘지 않는다', () => {
+		expect(formatMoney(1820.1234, 'USD', 'amount').text).toBe('$1,820.12');
+		expect(formatMoney(1820.1234, 'USD', 'amount').exact).toBe('$1,820.12');
+	});
+	it('KRW 단가·금액 규칙은 그대로', () => {
+		expect(formatMoney(161_600, 'KRW', 'unit').text).toBe('161,600');
+		expect(formatMoney(24_141_484, 'KRW', 'amount').text).toBe('2,414');
+	});
+});
