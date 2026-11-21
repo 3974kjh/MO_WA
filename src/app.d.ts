@@ -1,5 +1,6 @@
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 import type { Database } from '$lib/types/database.types';
+import type { PublicUser } from '$lib/server/auth';
 
 interface Env {
 	PUBLIC_SUPABASE_URL: string;
@@ -18,7 +19,7 @@ declare global {
 			user: User | null;
 		}
 		interface PageData {
-			user: User | null;
+			user: PublicUser | null;
 		}
 		// interface PageState {}
 		interface Platform {

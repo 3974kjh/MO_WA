@@ -23,29 +23,39 @@ import {
 	type ValuationRecord
 } from '$lib/utils/assetCalculations';
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, parent }) => {
+	// L-1: layout guard can race with this load — require auth before any anon queries.
+	await parent();
 	const userId = locals.user?.id;
-	if (userId) {
-		await ensurePresetCategories(locals.supabase, userId, presetCategoryRows);
-	}
+	if (!userId) redirect(303, '/login');
 
-	const { rows, error } = await loadAssetRows(locals.supabase);
-	const { liabilities, error: liabilityError } = await loadLiabilities(locals.supabase);
-	const { cashflows, error: cashflowError } = await loadCashflows(locals.supabase);
-	const { categories } = await loadAssetCategories(locals.supabase);
+	await ensurePresetCategories(locals.supabase, userId, presetCategoryRows);
 
-	const { data: valuations } = await locals.supabase
-		.from('asset_valuations')
-		.select('asset_id, value, valued_at')
-		.order('valued_at', { ascending: true })
-		.limit(500);
+	const [assets, liabilitiesResult, cashflowsResult, categoriesResult, valuationsResult, goalResult] =
+		await Promise.all([
+			loadAssetRows(locals.supabase),
+			loadLiabilities(locals.supabase),
+			loadCashflows(locals.supabase),
+			loadAssetCategories(locals.supabase),
+			locals.supabase
+				.from('asset_valuations')
+				.select('asset_id, value, valued_at')
+				.order('valued_at', { ascending: true })
+				.limit(500),
+			locals.supabase
+				.from('goals')
+				.select('*')
+				.order('created_at', { ascending: false })
+				.limit(1)
+				.maybeSingle()
+		]);
 
-	const { data: goal } = await locals.supabase
-		.from('goals')
-		.select('*')
-		.order('created_at', { ascending: false })
-		.limit(1)
-		.maybeSingle();
+	const { rows, error } = assets;
+	const { liabilities, error: liabilityError } = liabilitiesResult;
+	const { cashflows, error: cashflowError } = cashflowsResult;
+	const { categories } = categoriesResult;
+	const valuations = valuationsResult.data;
+	const goal = goalResult.data;
 
 	const valuationRecords: ValuationRecord[] = (valuations ?? []).map((row) => ({
 		asset_id: row.asset_id,
