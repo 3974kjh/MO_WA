@@ -12,6 +12,12 @@ import {
 } from '$lib/server/domain/proposals';
 import { computeDashboardValuation } from '$lib/server/domain/dashboard/valuation';
 import { toPageResult, type PageParams, type PageResult } from '$lib/server/domain/web/pagination';
+import {
+	applyBriefingFilter,
+	applyJournalFilter,
+	type BriefingListFilter,
+	type JournalListFilter
+} from '$lib/server/domain/web/listFilters';
 import type { RepoClient } from './client';
 import { fromRepo } from './db';
 import { requireOwnerId, withOwnerFilter } from './owner';
@@ -388,24 +394,28 @@ export type BriefingListItem = {
 
 export async function listBriefingsWithKospi(
 	repo: RepoClient,
-	params: PageParams
+	params: PageParams,
+	filter?: Partial<BriefingListFilter>
 ): Promise<{ data: PageResult<BriefingListItem>; error: Error | null }> {
 	const ownerId = requireOwnerId(repo);
 	let countQ = fromRepo(repo, 'reports').select('id', { count: 'exact', head: true });
 	countQ = withOwnerFilter(countQ, ownerId)
 		.in('kind', ['daily_brief', 'weekly_report'])
 		.is('archived_at', null);
+	countQ = applyBriefingFilter(countQ, filter);
 	const { count, error: countErr } = await countQ;
 	if (countErr) return { data: toPageResult([], 0, params), error: countErr as Error };
 
 	let q = fromRepo(repo, 'reports')
 		.select('id, kind, headline, title, report_date, tags')
 		.in('kind', ['daily_brief', 'weekly_report'])
-		.is('archived_at', null)
+		.is('archived_at', null);
+	q = applyBriefingFilter(q, filter);
+	q = withOwnerFilter(q, ownerId);
+	const pageQ = q
 		.order('report_date', { ascending: false })
 		.range(params.offset, params.offset + params.limit - 1);
-	q = withOwnerFilter(q, ownerId);
-	const { data, error } = await q;
+	const { data, error } = await pageQ;
 	if (error) return { data: toPageResult([], 0, params), error: error as Error };
 
 	const rows = (data ?? []) as Array<{
@@ -432,7 +442,8 @@ export async function listBriefingsWithKospi(
 
 export async function listJournalPage(
 	repo: RepoClient,
-	params: PageParams
+	params: PageParams,
+	filter?: Partial<JournalListFilter>
 ): Promise<{
 	data: PageResult<Record<string, unknown>>;
 	error: Error | null;
@@ -443,16 +454,16 @@ export async function listJournalPage(
 		head: true
 	});
 	countQ = withOwnerFilter(countQ, ownerId).is('archived_at', null);
+	countQ = applyJournalFilter(countQ, filter);
 	const { count, error: countErr } = await countQ;
 	if (countErr) return { data: toPageResult([], 0, params), error: countErr as Error };
 
-	let q = fromRepo(repo, 'journal_entries')
-		.select('*')
-		.is('archived_at', null)
+	let q = fromRepo(repo, 'journal_entries').select('*').is('archived_at', null);
+	q = applyJournalFilter(q, filter);
+	q = withOwnerFilter(q, ownerId);
+	const { data, error } = await q
 		.order('entry_date', { ascending: false })
 		.range(params.offset, params.offset + params.limit - 1);
-	q = withOwnerFilter(q, ownerId);
-	const { data, error } = await q;
 	if (error) return { data: toPageResult([], 0, params), error: error as Error };
 	return {
 		data: toPageResult((data ?? []) as Record<string, unknown>[], count ?? 0, params),
