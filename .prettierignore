@@ -10,3 +10,6 @@ node_modules/
 # Miscellaneous
 /static/
 .cursor/
+
+# 디자인 확정본 토큰 원본(design/tokens.css) 그대로 복사 — 서식 변경 금지
+src/tokens.css
