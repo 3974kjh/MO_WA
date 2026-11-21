@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { largeBriefing, sampleBriefing, sampleGlossary } from '$lib/fixtures/report';
+import { GLOSSARY } from '$lib/content/glossary';
+import { largeBriefing, sampleBriefing } from '$lib/fixtures/report';
 import * as render from './render';
 import {
+	MEMORY_CACHE_MAX_ENTRIES,
 	RENDERER_VERSION,
 	createMemoryReportCache,
+	createNoStoreReportCache,
+	isRenderFieldKey,
 	renderReportCached,
 	reportCacheKey,
 	stripRenderFields,
@@ -29,16 +33,49 @@ afterEach(() => {
 });
 
 const report = { id: 'r-1', version: 3, body: sampleBriefing };
-const opts = { glossary: sampleGlossary };
+const opts = { glossary: GLOSSARY };
 
 describe('리포트 렌더 캐시', () => {
-	it('키에 id·version·RENDERER_VERSION(fe15-r3)이 들어간다', () => {
-		expect(RENDERER_VERSION).toBe('fe15-r3');
+	it('키에 id·version·RENDERER_VERSION(fe15-r4)이 들어간다', () => {
+		expect(RENDERER_VERSION).toBe('fe15-r4');
 		const key = reportCacheKey(report, opts);
 		expect(key).toContain('r-1');
 		expect(key).toContain(':v3:');
 		expect(key).toContain(RENDERER_VERSION);
 		expect(reportCacheKey(report, {})).not.toBe(key); // 옵션(용어 사전)이 다르면 다른 키
+	});
+	it('L-2: id의 `:`는 인코딩돼 다른 id·version과 키가 겹치지 않는다', () => {
+		const a = reportCacheKey({ id: 'a:v1', version: 2 });
+		expect(a).toContain('report:a%3Av1:v2:');
+		expect(a).not.toBe(reportCacheKey({ id: 'a', version: 1 }));
+		expect(() => reportCacheKey({ id: 'a', version: '1:v2' })).toThrow();
+		expect(() => reportCacheKey({ id: 'a', version: -1 })).toThrow();
+		expect(() => reportCacheKey({ id: 'a', version: 1.5 })).toThrow();
+		expect(() => reportCacheKey({ id: '', version: 1 })).toThrow();
+	});
+	it('저장 안 함 저장소: 미스마다 렌더하고 아무것도 저장하지 않는다', async () => {
+		const store = createNoStoreReportCache();
+		const setSpy = vi.spyOn(store, 'set');
+		const spy = vi.spyOn(render, 'renderReport');
+		await renderReportCached(report, store, opts);
+		await renderReportCached(report, store, opts);
+		expect(spy).toHaveBeenCalledTimes(2);
+		expect(setSpy).toHaveBeenCalledTimes(2);
+		expect(store.get(reportCacheKey(report, opts))).toBeUndefined();
+	});
+	it('L-4: 메모리 저장소는 상한을 넘으면 가장 오래 쓰지 않은 항목부터 지운다', () => {
+		expect(MEMORY_CACHE_MAX_ENTRIES).toBeGreaterThan(0);
+		const store = createMemoryReportCache({ maxEntries: 2 });
+		const v = {
+			key: 'k',
+			bodyBlocks: { a: '', b: '', hasSplit: false },
+			toc: []
+		} as unknown as CachedRender;
+		store.set('a', v);
+		store.set('b', v);
+		store.get('a'); // a를 최근으로
+		store.set('c', v);
+		expect([...store.map.keys()]).toEqual(['a', 'c']);
 	});
 	it('미스 → 마크다운 + sanitize 후 저장(키 포함)', async () => {
 		const store = createMemoryReportCache();
@@ -184,6 +221,23 @@ describe('리포트 렌더 캐시', () => {
 		};
 		const out = stripRenderFields(input);
 		expect(out).toEqual({ id: 'r-1', body_md: '## a' });
+		// Nit: 이름 변형도 지운다
+		const variants = stripRenderFields({
+			title: 't',
+			Body_Blocks: 1,
+			BODYBLOCKS: 1,
+			'body-blocks': 1,
+			body_block: 1,
+			' toc ': 1,
+			TOC: 1,
+			Toc: 1,
+			table_of_contents: 1,
+			ｔｏｃ: 1
+		});
+		expect(variants).toEqual({ title: 't' });
+		expect(isRenderFieldKey('tocs')).toBe(true);
+		expect(isRenderFieldKey('tock')).toBe(false);
+		expect(isRenderFieldKey('body_md')).toBe(false);
 		const plain: string = '<p>';
 		// @ts-expect-error — 일반 string은 CachedRender의 SanitizedHtml 자리에 넣을 수 없다
 		const bad: CachedRender['bodyBlocks']['a'] = plain;

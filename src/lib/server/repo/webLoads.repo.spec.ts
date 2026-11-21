@@ -65,7 +65,9 @@ describe('FE-10 listBriefingsWithKospi: count·page 요청 모두 같은 owner·
 		expect(filterParams(count.params)).toEqual(filterParams(list.params));
 		expectOwnerOnly(count.params);
 		expectOwnerOnly(list.params);
-		expect(list.params.get('or')).toBe('(headline.ilike."%FOMC%",title.ilike."%FOMC%")');
+		expect(list.params.get('or')).toBe(
+			'(search_tsv.wfts(simple)."FOMC",title.ilike."%FOMC%",headline.ilike."%FOMC%")'
+		);
 		// Low-2: 원소를 큰따옴표로 감싼 배열 리터럴(공백이 있어도 원소 하나).
 		expect(list.params.get('tags')).toBe('cs.{"52주 저가"}');
 		expect(list.params.getAll('report_date')).toEqual(['gte.2026-11-01', 'lt.2026-12-01']);
@@ -96,7 +98,7 @@ describe('FE-10 listBriefingsWithKospi: count·page 요청 모두 같은 owner·
 			expectOwnerOnly(r.params);
 			expect(r.params.getAll('or')).toHaveLength(1);
 			expect(r.params.get('or')).toBe(
-				'(headline.ilike."%x owner id.neq. y%",title.ilike."%x owner id.neq. y%")'
+				'(search_tsv.wfts(simple)."x owner id.neq. y",title.ilike."%x owner id.neq. y%",headline.ilike."%x owner id.neq. y%")'
 			);
 		}
 	});
