@@ -99,7 +99,7 @@ Unchanged by this follow-up (still rules §5-0 / §5-2 baselines; no Notion 💼
 **Extraction method (dry-run):** collect confirmed instrument codes only —
 
 - literal codes already known from Notion 💼 / context keys: `035420`, `030200`, `GOOGL`, `QBTS`, `SGOV`, `108490`, `005380`, `066570`, `000660`, `207940`, `068270`, `102110`, `UST_30Y`, `KR_CORP_BOND`
-- Korean/English display names that resolve via that **same confirmed set** (e.g. 네이버→`035420`, 로보티즈→`108490`)
+- Korean/English display names that resolve via that **same confirmed set** (e.g. 네이버→`035420`, 로보티즈/`Robotis`→`108490`, 현대차/`Hyundai`→`005380`). Do **not** map yield indicator `UST30Y` → position `UST_30Y`.
 - **No estimated codes.** Unknown 6-digit tokens → hold. Tags never receive codes (`R-VAL-J08`).
 
 | Outcome | Count | Notes |
@@ -114,15 +114,15 @@ Unchanged by this follow-up (still rules §5-0 / §5-2 baselines; no Notion 💼
 | `type=sell` with no resolvable MO_WA ticker in body | **1** | `entry-2026-10-16-ust30y-full-sell-executed` (mentions CUSIP / T 1.625; extracted `SGOV` only as nearby text — UST_30Y not literal; instrument object is not a ticker code) |
 | Tags that would receive ticker codes | **0** | policy forbids |
 
-**Code frequency (entries containing code):**
+**Code frequency (entries containing code; includes English `Robotis` / `Hyundai`):**
 
 | Code | Entries |
 |---|---:|
 | 035420 | 35 |
+| 005380 | 27 |
 | 030200 | 25 |
+| 108490 | 25 |
 | GOOGL | 24 |
-| 005380 | 11 |
-| 108490 | 10 |
 | QBTS | 10 |
 | 102110 | 10 |
 | SGOV | 7 |
