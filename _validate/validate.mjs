@@ -524,10 +524,16 @@ await err('other-owner instrument rejected on decisions', () => user(`insert int
 await err('other-owner instrument rejected on events', () => user(`insert into events(owner_id,event_date,title,domain,kind,instrument_id) values ('${U}','2026-12-01','x','stock','earn','${instXEarly}')`), /R-PERM-01|same owner/);
 await err('other-owner instrument rejected on report_instruments', () => user(`insert into report_instruments(owner_id,report_id,instrument_id) values ('${U}','${rep}','${instXEarly}')`), /R-PERM-01|same owner/);
 await err('other-owner instrument rejected on position_proposals', () => fm(`insert into position_proposals(owner_id,change_type,instrument_id,proposed_values,evidence) values ('${U}','open_holding','${instXEarly}','{"qty":1,"avg_price":10,"currency":"USD"}','[{"url":"https://own"}]')`), /R-PERM-01|same owner|instrument/);
-await ok('same-owner instrument allowed on positions', () => user(`insert into positions(owner_id,instrument_id,status,currency,qty,avg_price) values ('${U}','${g}','holding','USD',2,300) returning id`));
-await ok('same-owner instrument allowed on price_snapshots', () => fm(`insert into price_snapshots(owner_id,instrument_id,as_of,close,currency) values ('${U}','${g}','2026-11-22',301,'USD')`));
-await ok('same-owner instrument allowed on report_instruments', () => user(`insert into report_instruments(owner_id,report_id,instrument_id) values ('${U}','${rep}','${g}')`));
-eq('price_snapshots keeps unique (instrument_id, as_of)', (await db.query(`select indexdef from pg_indexes where schemaname='public' and tablename='price_snapshots' and indexdef ilike '%unique%instrument_id%as_of%'`)).rows.length >= 1, true);
+const instSame = (
+	await user(
+		`insert into instruments(owner_id,ticker,name,market,asset_type) values ('${U}','AMD','AMD','NASDAQ','stock') returning id`
+	)
+).rows[0].id;
+await ok('same-owner instrument allowed on positions', () => user(`insert into positions(owner_id,instrument_id,status,currency,qty,avg_price) values ('${U}','${instSame}','holding','USD',2,100) returning id`));
+await ok('same-owner instrument allowed on price_snapshots', () => fm(`insert into price_snapshots(owner_id,instrument_id,as_of,close,currency) values ('${U}','${instSame}','2026-11-22',101,'USD')`));
+await ok('same-owner instrument allowed on report_instruments', () => user(`insert into report_instruments(owner_id,report_id,instrument_id) values ('${U}','${rep}','${instSame}')`));
+await ok('same-owner instrument allowed on journal_entries', () => user(`insert into journal_entries(owner_id,entry_date,kind,title,instrument_id,currency,price) values ('${U}','2026-11-22','buy','amd','${instSame}','USD',100)`));
+eq('price_snapshots keeps unique (instrument_id, as_of)', (await db.query(`select indexdef from pg_indexes where schemaname='public' and tablename='price_snapshots' and indexdef ilike '%(instrument_id, as_of)%'`)).rows.length >= 1, true);
 
 console.log('\n[M-4 tenant · revoked/expired · CASCADE · TRUNCATE]');
 const FMX = (
@@ -588,16 +594,33 @@ await err('TRUNCATE reports denied to service_role', () => run('service_role', n
 await err('TRUNCATE instruments denied to service_role', () => run('service_role', null, FM, 'truncate public.instruments'), /permission denied/);
 await err('TRUNCATE display_sequences denied to service_role', () => run('service_role', null, FM, 'truncate public.display_sequences'), /permission denied/);
 eq(
-	'default privileges revoke PUBLIC execute on new functions',
+	'default privileges: no PUBLIC EXECUTE on new functions',
 	(
 		await db.query(`
-      select defacldefault is false or not exists (
-        select 1 from aclexplode(defaclacl) a where a.grantee = 0 and a.privilege_type = 'EXECUTE'
-      ) as ok
-      from pg_default_acl
-     where defaclnamespace = 'public'::regnamespace and defaclobjtype = 'f'
-     limit 1`)
-	).rows[0]?.ok !== false,
+      select not exists (
+        select 1
+          from pg_default_acl d
+          cross join lateral aclexplode(d.defaclacl) a
+         where d.defaclnamespace = 'public'::regnamespace
+           and d.defaclobjtype = 'f'
+           and a.grantee = 0
+           and a.privilege_type = 'EXECUTE'
+      ) as ok`)
+	).rows[0].ok,
+	true
+);
+eq(
+	'service_role lacks TRUNCATE on owned-data tables',
+	(
+		await db.query(`
+      select bool_and(not has_table_privilege('service_role', format('public.%I', t), 'TRUNCATE')) as ok
+        from unnest(array[
+          'price_snapshots','portfolio_snapshots','targets_valuation','market_indicators',
+          'market_indicator_keys','decisions','events','re_complexes','re_complex_snapshots',
+          're_market_stats','re_subscriptions','display_sequences','journal_entries',
+          'report_instruments','principle_proposals'
+        ]) t`)
+	).rows[0].ok,
 	true
 );
 await err('anon cannot execute mowa_assert_bot_tenant', () => run('anon', null, null, `select public.mowa_assert_bot_tenant('${U}')`), /permission denied/);
