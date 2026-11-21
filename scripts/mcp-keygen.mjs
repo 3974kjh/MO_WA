@@ -12,14 +12,6 @@ const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
 const rnd = c.getRandomValues(new Uint8Array(10));
 const prefix = [...rnd].map((b) => alphabet[b % alphabet.length]).join('');
 const secret = Buffer.from(c.getRandomValues(new Uint8Array(32))).toString('base64url');
-const k = await c.subtle.importKey(
-	'raw',
-	new TextEncoder().encode(pepper),
-	{ name: 'HMAC', hash: 'SHA-256' },
-	false,
-	['sign']
-);
-const hash = Buffer.from(await c.subtle.sign('HMAC', k, new TextEncoder().encode(secret))).toString(
-	'hex'
-);
+const k = await c.subtle.importKey('raw', new TextEncoder().encode(pepper), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+const hash = Buffer.from(await c.subtle.sign('HMAC', k, new TextEncoder().encode(secret))).toString('hex');
 console.log(JSON.stringify({ key: `mowa_${prefix}_${secret}`, prefix, hash }, null, 2));

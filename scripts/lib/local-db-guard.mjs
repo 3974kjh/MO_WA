@@ -12,11 +12,7 @@ export const LOCAL_STACK_DB_RE = /^mowa_local(_\w+)?$/;
 export const VALIDATE_DB_RE = /^mowa_local$/;
 
 export function isLoopbackHost(host) {
-	return LOOPBACK.has(
-		String(host || '')
-			.trim()
-			.toLowerCase()
-	);
+	return LOOPBACK.has(String(host || '').trim().toLowerCase());
 }
 
 export function quoteIdent(name) {
@@ -30,18 +26,11 @@ export function quoteIdent(name) {
 /**
  * @param {{ host: string, dbName: string, dbNameRe?: RegExp, label?: string }} opts
  */
-export function assertLocalDbTarget({
-	host,
-	dbName,
-	dbNameRe = LOCAL_STACK_DB_RE,
-	label = 'local-db'
-}) {
+export function assertLocalDbTarget({ host, dbName, dbNameRe = LOCAL_STACK_DB_RE, label = 'local-db' }) {
 	const h = String(host || '').trim();
 	const d = String(dbName || '').trim();
 	if (!isLoopbackHost(h)) {
-		console.error(
-			`[${label}] Refusing non-loopback host "${h}". Only 127.0.0.1 / localhost / ::1.`
-		);
+		console.error(`[${label}] Refusing non-loopback host "${h}". Only 127.0.0.1 / localhost / ::1.`);
 		process.exit(1);
 	}
 	if (!dbNameRe.test(d)) {
@@ -52,10 +41,7 @@ export function assertLocalDbTarget({
 }
 
 /** Ignore DATABASE_URL; build from MOWA_DB_* only. */
-export function resolveMowaDbEnv(
-	env = process.env,
-	{ dbNameRe = LOCAL_STACK_DB_RE, label = 'local-db' } = {}
-) {
+export function resolveMowaDbEnv(env = process.env, { dbNameRe = LOCAL_STACK_DB_RE, label = 'local-db' } = {}) {
 	const host = env.MOWA_DB_HOST ?? '127.0.0.1';
 	const port = env.MOWA_DB_PORT ?? '5432';
 	const user = env.MOWA_DB_USER ?? 'postgres';

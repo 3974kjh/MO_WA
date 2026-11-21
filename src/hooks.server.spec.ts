@@ -89,7 +89,10 @@ describe('hooks.server handle (BE-02 / M-1 / H-1)', () => {
 			}
 		});
 
-		const event = makeEvent('/', ['sb-testproject-auth-token', 'sb-testproject-auth-token.0']);
+		const event = makeEvent('/', [
+			'sb-testproject-auth-token',
+			'sb-testproject-auth-token.0'
+		]);
 		let seenUser: unknown = 'unset';
 
 		await handle({

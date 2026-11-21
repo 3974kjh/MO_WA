@@ -56,16 +56,16 @@ Open http://localhost:5173 — unauthenticated users redirect to `/login`.
 
 ## Scripts
 
-| Script            | Description                         |
-| ----------------- | ----------------------------------- |
-| `pnpm dev`        | Dev server                          |
-| `pnpm check`      | TypeScript + Svelte check           |
-| `pnpm test:unit`  | Vitest unit tests                   |
-| `pnpm test:e2e`   | Playwright E2E                      |
-| `pnpm db:types`   | Generate Supabase types (local CLI) |
-| `pnpm db:reset`   | Reset local Supabase DB             |
-| `pnpm cf:preview` | Pages Functions 로컬 미리보기       |
-| `pnpm cf:deploy`  | Cloudflare Pages CLI 배포           |
+| Script           | Description                         |
+| ---------------- | ----------------------------------- |
+| `pnpm dev`       | Dev server                          |
+| `pnpm check`     | TypeScript + Svelte check           |
+| `pnpm test:unit` | Vitest unit tests                   |
+| `pnpm test:e2e`  | Playwright E2E                      |
+| `pnpm db:types`  | Generate Supabase types (local CLI) |
+| `pnpm db:reset`  | Reset local Supabase DB             |
+| `pnpm cf:preview`| Pages Functions 로컬 미리보기          |
+| `pnpm cf:deploy` | Cloudflare Pages CLI 배포             |
 
 ## Deploy (Cloudflare Pages)
 

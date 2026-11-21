@@ -58,8 +58,7 @@ describe('mapDbError', () => {
 		}
 		expect(
 			mapDbErrorToRuleIds({
-				message:
-					'duplicate key value violates unique constraint "journal_entries_owner_id_client_ref_key"',
+				message: 'duplicate key value violates unique constraint "journal_entries_owner_id_client_ref_key"',
 				code: '23505'
 			})
 		).toEqual(['R-PERM-11']);
@@ -87,9 +86,9 @@ describe('mapDbError', () => {
 	it('returns null for prototype keys (constructor / toString / __proto__)', () => {
 		for (const name of ['constructor', 'toString', '__proto__'] as const) {
 			expect(mapConstraintToRuleId(name), name).toBeNull();
-			expect(mapDbErrorToRuleIds({ message: 'x', code: 'XX000', constraint: name })).toEqual([
-				`${UNMAPPED_MARKER}:XX000:${name}`
-			]);
+			expect(
+				mapDbErrorToRuleIds({ message: 'x', code: 'XX000', constraint: name })
+			).toEqual([`${UNMAPPED_MARKER}:XX000:${name}`]);
 		}
 	});
 

@@ -17,7 +17,10 @@ import {
 
 function first<T>(
 	rule: {
-		check: (input: T, mode: 'strict' | 'migration') => ValidationIssue | ValidationIssue[] | null;
+		check: (
+			input: T,
+			mode: 'strict' | 'migration'
+		) => ValidationIssue | ValidationIssue[] | null;
 	},
 	input: T,
 	mode: 'strict' | 'migration' = 'strict'
@@ -90,7 +93,9 @@ describe('domain validation rules', () => {
 		expect(first(ruleM03, { qty: 1000.505, asset_type: 'cash' })?.level).toBe('ERROR');
 		// status omitted: cash 0 matches DB (no ERROR from repo/validation hard-fail)
 		expect(first(ruleM03, { qty: 0, asset_type: 'cash' })).toBeNull();
-		expect(first(ruleM03, { qty: 0, asset_type: 'cash', status: 'holding' })?.level).toBe('ERROR');
+		expect(first(ruleM03, { qty: 0, asset_type: 'cash', status: 'holding' })?.level).toBe(
+			'ERROR'
+		);
 		// L1: planned null / closed 0 are not false positives
 		expect(first(ruleM03, { qty: null, asset_type: 'stock', status: 'planned' })).toBeNull();
 		expect(first(ruleM03, { qty: 0, asset_type: 'stock', status: 'closed' })).toBeNull();
@@ -180,8 +185,12 @@ describe('domain validation rules', () => {
 		expect(
 			first(ruleJ08, { tags: ['AI', 'ETF', 'IPO', 'USA', '반도체'], knownTickers: [] })
 		).toBeNull();
-		expect(first(ruleJ08, { tags: ['005380', 'theme'], knownTickers: [] })?.level).toBe('WARN');
-		expect(first(ruleJ08, { tags: ['GOOGL'], knownTickers: ['GOOGL'] })?.level).toBe('WARN');
+		expect(
+			first(ruleJ08, { tags: ['005380', 'theme'], knownTickers: [] })?.level
+		).toBe('WARN');
+		expect(
+			first(ruleJ08, { tags: ['GOOGL'], knownTickers: ['GOOGL'] })?.level
+		).toBe('WARN');
 		expect(first(ruleJ08, { tags: ['GOOGL'], knownTickers: [] })).toBeNull();
 	});
 

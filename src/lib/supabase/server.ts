@@ -10,7 +10,10 @@ import { getSupabasePublicConfig } from './config';
  * When `pendingCookies` is provided, every setAll mutation is also recorded so the hook
  * can attach Set-Cookie on early responses (e.g. Auth 503) — criterion 3 option B.
  */
-export function createSupabaseServerClient(cookies: Cookies, pendingCookies?: PendingSetCookie[]) {
+export function createSupabaseServerClient(
+	cookies: Cookies,
+	pendingCookies?: PendingSetCookie[]
+) {
 	const { url, anonKey, configured } = getSupabasePublicConfig();
 
 	if (!configured) {

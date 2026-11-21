@@ -92,14 +92,14 @@ describe('repo identity / M-4', () => {
 	});
 
 	it('rejects plain objects, Symbol brands, spreads, and post-mint mutation for forBot', () => {
-		expect(() => forBot({ ownerId: 'o', botClientId: 'b' } as never)).toThrow(
-			/minted BotRepoIdentity/i
-		);
+		expect(() =>
+			forBot({ ownerId: 'o', botClientId: 'b' } as never)
+		).toThrow(/minted BotRepoIdentity/i);
 
 		const brand = Symbol('fake');
-		expect(() => forBot({ ownerId: 'o', botClientId: 'b', [brand]: brand } as never)).toThrow(
-			/minted BotRepoIdentity/i
-		);
+		expect(() =>
+			forBot({ ownerId: 'o', botClientId: 'b', [brand]: brand } as never)
+		).toThrow(/minted BotRepoIdentity/i);
 
 		const legit = mintBotRepoIdentity('owner-1', 'bot-9');
 		expect(isBotRepoIdentity(legit)).toBe(true);
@@ -164,7 +164,10 @@ describe('repo identity / M-4', () => {
 		);
 		expect(position.status).toBe('holding');
 
-		const report = stripClientIdentity({ title: 'r', status: 'draft', slug: 's' }, 'reports');
+		const report = stripClientIdentity(
+			{ title: 'r', status: 'draft', slug: 's' },
+			'reports'
+		);
 		expect(report.status).toBe('draft');
 		expect(Object.getPrototypeOf(report)).toBeNull();
 	});
@@ -250,7 +253,10 @@ describe('ESLint M-4 / L6 restrictions', () => {
 			clientProbe,
 			`import { forUser } from '$lib/server/repo/client';\nvoid forUser;\n`
 		);
-		writeFileSync(adminProbe, `const x = await import(\`$lib/supabase/admin\`);\nvoid x;\n`);
+		writeFileSync(
+			adminProbe,
+			`const x = await import(\`$lib/supabase/admin\`);\nvoid x;\n`
+		);
 		writeFileSync(
 			mcpMintProbe,
 			`import { mintBotRepoIdentity } from '$lib/server/repo/botIdentityBrand';\nvoid mintBotRepoIdentity;\n`
@@ -258,10 +264,11 @@ describe('ESLint M-4 / L6 restrictions', () => {
 		try {
 			let failed = false;
 			try {
-				execFileSync('pnpm', ['exec', 'eslint', clientProbe, adminProbe, mcpMintProbe], {
-					encoding: 'utf8',
-					cwd: process.cwd()
-				});
+				execFileSync(
+					'pnpm',
+					['exec', 'eslint', clientProbe, adminProbe, mcpMintProbe],
+					{ encoding: 'utf8', cwd: process.cwd() }
+				);
 			} catch (err) {
 				failed = true;
 				const out = `${(err as { stdout?: string }).stdout ?? ''}${(err as { stderr?: string }).stderr ?? ''}`;

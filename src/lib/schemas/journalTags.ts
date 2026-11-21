@@ -14,7 +14,9 @@ export function tagsContainingTickerCodes(
 	knownTickers: Iterable<string> | null | undefined
 ): string[] {
 	if (!tags?.length) return [];
-	const known = new Set([...(knownTickers ?? [])].map((t) => t.trim()).filter(Boolean));
+	const known = new Set(
+		[...(knownTickers ?? [])].map((t) => t.trim()).filter(Boolean)
+	);
 	return tags.filter((raw) => {
 		const t = raw.trim();
 		if (!t) return false;

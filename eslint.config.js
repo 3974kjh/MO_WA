@@ -23,7 +23,8 @@ const brandMessage =
 const dynamicImportBanMessage =
 	'Dynamic imports with interpolated templates or string concatenation are blocked for admin/repo bypass paths (L6).';
 
-const testingImportMessage = 'mcp/testing.ts is test/dev only — do not import from production code';
+const testingImportMessage =
+	'mcp/testing.ts is test/dev only — do not import from production code';
 
 /** Shared testing-ban paths (BE-05 Low / M-4) — spread into global, supabase, and lifted overrides. */
 const testingImportPaths = [
@@ -76,7 +77,7 @@ const testingRestrictedSyntax = [
 		message: 'Do not re-export mcp/testing.ts from production barrels'
 	},
 	{
-		selector: 'ImportExpression[source.value=/mcp\\/testing|\\/testing(\\.ts|\\.js)?$/]',
+		selector: "ImportExpression[source.value=/mcp\\/testing|\\/testing(\\.ts|\\.js)?$/]",
 		message: 'Do not dynamically import mcp/testing.ts from production code'
 	}
 ];
@@ -245,7 +246,7 @@ export default defineConfig(
 				'error',
 				...dynamicImportRestrictedSyntax,
 				{
-					selector: 'ImportDeclaration[source.value=/^\\.\\/?admin(\\.ts)?$/]',
+					selector: "ImportDeclaration[source.value=/^\\.\\/?admin(\\.ts)?$/]",
 					message: adminImportMessage
 				}
 			]
