@@ -20,6 +20,18 @@ export async function listInstruments(
 	return { data: (data ?? []) as InstrumentRow[], error: error as Error | null };
 }
 
+/** Owner-scoped lookup by ticker (includes archived rows — unique key spans them). */
+export async function getInstrumentByTicker(
+	repo: RepoClient,
+	ticker: string
+): Promise<{ data: InstrumentRow | null; error: Error | null }> {
+	const ownerId = requireOwnerId(repo);
+	let q = fromRepo(repo, 'instruments').select('*').eq('ticker', ticker);
+	q = withOwnerFilter(q, ownerId);
+	const { data, error } = await q.maybeSingle();
+	return { data: (data as InstrumentRow | null) ?? null, error: error as Error | null };
+}
+
 export async function createInstrument(
 	repo: RepoClient,
 	input: InstrumentCreateInput

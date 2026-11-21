@@ -57,7 +57,21 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 		return jsonError(auth.status, auth.reason, headers);
 	}
 
-	const res = await handleMcp(request, auth.ctx, { repo: auth.repo });
+	const recorder = createAuditRecorder({
+		sink: createRepoAuditSink(),
+		waitUntil: platformWaitUntil(platform),
+		onError: (err) => console.warn(JSON.stringify({ evt: 'mcp_audit_err', err: String(err) }))
+	});
+	const res = await handleMcp(request, auth.ctx, {
+		repo: auth.repo,
+		recorder,
+		meta: {
+			requestId: request.headers.get('cf-ray'),
+			ip: request.headers.get('cf-connecting-ip'),
+			userAgent: request.headers.get('user-agent')
+		},
+		logError: (message) => console.warn(JSON.stringify({ evt: 'mcp_tool_err', err: message }))
+	});
 	console.log(
 		JSON.stringify({
 			evt: 'mcp',

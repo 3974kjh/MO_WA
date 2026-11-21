@@ -32,6 +32,59 @@ export async function getReportById(
 	return { data: (data as ReportRow | null) ?? null, error: error as Error | null };
 }
 
+/** Natural key (owner, kind, report_date, slug) — includes archived rows (unique key spans them). */
+export async function getReportByNaturalKey(
+	repo: RepoClient,
+	key: { kind: string; reportDate: string; slug: string }
+): Promise<{ data: ReportRow | null; error: Error | null }> {
+	const ownerId = requireOwnerId(repo);
+	let q = fromRepo(repo, 'reports')
+		.select('*')
+		.eq('kind', key.kind)
+		.eq('report_date', key.reportDate)
+		.eq('slug', key.slug);
+	q = withOwnerFilter(q, ownerId);
+	const { data, error } = await q.maybeSingle();
+	return { data: (data as ReportRow | null) ?? null, error: error as Error | null };
+}
+
+export type ReportSourceInput = {
+	label: string;
+	publisher: string;
+	accessed_at: string;
+	url?: string | null;
+	is_primary?: boolean;
+};
+
+/**
+ * Replace the full source list of a report (R-VAL-R07: upsert replaces sources).
+ * Not transactional: delete then insert; a failed insert leaves the report without sources
+ * until the bot retries the idempotent upsert.
+ */
+export async function replaceReportSources(
+	repo: RepoClient,
+	reportId: string,
+	sources: readonly ReportSourceInput[]
+): Promise<{ error: Error | null }> {
+	const ownerId = requireOwnerId(repo);
+	let del = fromRepo(repo, 'report_sources').delete().eq('report_id', reportId);
+	del = withOwnerFilter(del, ownerId);
+	const { error: delError } = await del;
+	if (delError) return { error: delError as Error };
+	if (sources.length === 0) return { error: null };
+	const rows = sources.map((s, i) => ({
+		report_id: reportId,
+		label: s.label,
+		publisher: s.publisher,
+		accessed_at: s.accessed_at,
+		url: s.url ?? null,
+		is_primary: s.is_primary ?? false,
+		sort: i
+	}));
+	const { error } = await fromRepo(repo, 'report_sources').insert(rows);
+	return { error: (error as Error | null) ?? null };
+}
+
 /** Create report — server fills owner_id + source_bot_id (R-PERM-03). No runRules here (M-5). */
 export async function createReport(
 	repo: RepoClient,

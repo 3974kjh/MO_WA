@@ -1,13 +1,20 @@
 /** BE-05 audit + BE-04 auth helpers (auth implementation lives in ./auth). */
 
 export {
+	ALL_MCP_TOOL_NAMES,
+	assertReportKindScope,
 	assertToolScope,
+	EVENT_WRITE_SENTINEL,
 	filterToolsByScopes,
+	hasReportWriteScope,
 	hasScope,
 	importAllUnlocksTool,
 	PRINCIPLES_WRITE_TOOLS,
 	PROPOSAL_TOOLS,
+	REPORT_KIND_TO_SCOPE,
+	REPORT_WRITE_SENTINEL,
 	requiredScopeForTool,
+	scopeForReportKind,
 	SPIKE_TOOL_NAMES,
 	TOOL_REQUIRED_SCOPE
 } from './scopes';

@@ -1,9 +1,6 @@
 import type { PositionProposalRow, PrincipleProposalRow } from '$lib/types/mowa.contract';
 import { stripClientIdentity, type RepoClient } from './client';
-import {
-	clientRefConflictFromInsertError,
-	resolveClientRefConflict
-} from './clientRef';
+import { clientRefConflictFromInsertError, resolveClientRefConflict } from './clientRef';
 import { fromRepo } from './db';
 import { isOwnerDisplayId } from './displayId';
 import { requireOwnerId, withOwnerFilter } from './owner';
@@ -80,5 +77,35 @@ export async function getPositionProposalByDisplayId(
 	let q = fromRepo(repo, 'position_proposals').select('*').eq('display_id', displayId);
 	q = withOwnerFilter(q, ownerId);
 	const { data, error } = await q.maybeSingle();
+	return { data: (data as PositionProposalRow | null) ?? null, error: error as Error | null };
+}
+
+export async function getPositionProposalById(
+	repo: RepoClient,
+	id: string
+): Promise<{ data: PositionProposalRow | null; error: Error | null }> {
+	const ownerId = requireOwnerId(repo);
+	let q = fromRepo(repo, 'position_proposals').select('*').eq('id', id);
+	q = withOwnerFilter(q, ownerId);
+	const { data, error } = await q.maybeSingle();
+	return { data: (data as PositionProposalRow | null) ?? null, error: error as Error | null };
+}
+
+/**
+ * Compare-and-set status transition (e.g. cancel: pending/on_hold → cancelled).
+ * Returns data=null when no row matched (wrong id/owner or status not in `from`).
+ */
+export async function updateProposalStatus(
+	repo: RepoClient,
+	id: string,
+	transition: { from: readonly string[]; to: string }
+): Promise<{ data: PositionProposalRow | null; error: Error | null }> {
+	const ownerId = requireOwnerId(repo);
+	let q = fromRepo(repo, 'position_proposals')
+		.update({ status: transition.to })
+		.eq('id', id)
+		.in('status', [...transition.from]);
+	q = withOwnerFilter(q, ownerId);
+	const { data, error } = await q.select('*').maybeSingle();
 	return { data: (data as PositionProposalRow | null) ?? null, error: error as Error | null };
 }

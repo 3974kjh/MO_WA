@@ -1,88 +1,54 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { pingDatabase, type RepoClient } from '$lib/server/repo';
 import type { McpContext } from '../types';
 import { MCP_SERVER_VERSION } from '../version';
-import { SPIKE_TOOL_NAMES, filterToolsByScopes } from '../scopes';
+import { ALL_MCP_TOOL_NAMES, filterToolsByScopes } from '../scopes';
+import { registerAuditedTool, type ToolRegistrationContext } from './register';
 
-const ok = <T extends Record<string, unknown>>(data: T) => ({
-	content: [{ type: 'text' as const, text: JSON.stringify(data) }],
-	structuredContent: data
-});
-
-export type RegisterSpikeToolsOptions = {
-	/** Bot-scoped repo from auth mint/forBot (db mode). Unused by spike read tools today. */
-	repo?: RepoClient | null;
-};
+export { registerAuditedTool } from './register';
+export type {
+	AuditedToolDefinition,
+	ToolHandler,
+	ToolHandlerInput,
+	ToolHandlerOutcome,
+	ToolRegistrationContext,
+	ToolRequestMeta
+} from './register';
 
 /** Names that would appear in tools/list for this key (scope-filtered). */
-export function spikeToolsForContext(ctx: Pick<McpContext, 'scopes'>): string[] {
-	return filterToolsByScopes(SPIKE_TOOL_NAMES, ctx);
+export function toolsForContext(ctx: Pick<McpContext, 'scopes'>): string[] {
+	return filterToolsByScopes(ALL_MCP_TOOL_NAMES, ctx);
 }
 
-export function registerSpikeTools(
-	server: McpServer,
-	ctx: McpContext,
-	options: RegisterSpikeToolsOptions = {}
-) {
-	void options.repo;
-	const allowed = new Set(spikeToolsForContext(ctx));
+function registerWhoami(reg: ToolRegistrationContext): void {
+	registerAuditedTool(reg, {
+		name: 'whoami',
+		title: 'Who am I',
+		description: '인증된 봇 이름·스코프·서버 시각을 돌려준다(연결 확인용).',
+		inputSchema: {},
+		outputSchema: {
+			bot: z.string(),
+			bot_client_id: z.string(),
+			scopes: z.array(z.string()),
+			auth_mode: z.string(),
+			server_time: z.string(),
+			version: z.string()
+		},
+		annotations: { readOnlyHint: true, idempotentHint: true },
+		handler: async ({ ctx }) => ({
+			data: {
+				bot: ctx.botName,
+				bot_client_id: ctx.botClientId,
+				scopes: [...ctx.scopes],
+				auth_mode: ctx.mode,
+				server_time: new Date().toISOString(),
+				version: MCP_SERVER_VERSION
+			}
+		})
+	});
+}
 
-	if (allowed.has('whoami')) {
-		server.registerTool(
-			'whoami',
-			{
-				title: 'Who am I',
-				description: '인증된 봇 이름·스코프·서버 시각을 돌려준다(연결 확인용).',
-				inputSchema: {},
-				outputSchema: {
-					bot: z.string(),
-					bot_client_id: z.string(),
-					scopes: z.array(z.string()),
-					auth_mode: z.string(),
-					server_time: z.string(),
-					version: z.string()
-				},
-				annotations: { readOnlyHint: true, idempotentHint: true }
-			},
-			async () =>
-				ok({
-					bot: ctx.botName,
-					bot_client_id: ctx.botClientId,
-					scopes: [...ctx.scopes],
-					auth_mode: ctx.mode,
-					server_time: new Date().toISOString(),
-					version: MCP_SERVER_VERSION
-				})
-		);
-	}
-
-	if (allowed.has('echo')) {
-		server.registerTool(
-			'echo',
-			{
-				title: 'Echo',
-				description: '입력 검증(zod) 동작 확인용. message를 그대로 돌려준다.',
-				inputSchema: { message: z.string().min(1).max(200) },
-				outputSchema: { message: z.string(), length: z.number() },
-				annotations: { readOnlyHint: true, idempotentHint: true }
-			},
-			async ({ message }) => ok({ message, length: message.length })
-		);
-	}
-
-	if (allowed.has('db_ping')) {
-		server.registerTool(
-			'db_ping',
-			{
-				title: 'Supabase ping (read-only)',
-				description:
-					'Workers→Supabase(PostgREST) 왕복 지연을 잰다. 쓰기 없음: profiles head count만 조회.',
-				inputSchema: {},
-				outputSchema: { ok: z.boolean(), latency_ms: z.number(), error: z.string().optional() },
-				annotations: { readOnlyHint: true, idempotentHint: true }
-			},
-			async () => ok(await pingDatabase())
-		);
-	}
+/** Register every implemented tool the key's scopes allow. BE-06~10 handlers land here. */
+export function registerAllMcpTools(reg: ToolRegistrationContext): void {
+	const allowed = new Set(toolsForContext(reg.ctx));
+	if (allowed.has('whoami')) registerWhoami(reg);
 }

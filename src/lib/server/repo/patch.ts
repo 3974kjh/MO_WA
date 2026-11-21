@@ -36,6 +36,7 @@ export const REPORT_PATCHABLE = [
 	'meta',
 	'status',
 	'generated_at',
+	'body_blocks',
 	'toc'
 ] as const;
 
@@ -80,6 +81,35 @@ export const INSTRUMENT_PATCHABLE = [
 	'sector',
 	'aliases',
 	'is_watchlist'
+] as const;
+
+export const DECISION_PATCHABLE = [
+	'title',
+	'context_md',
+	'options',
+	'status',
+	'due_date',
+	'decided_at',
+	'decision_md',
+	'instrument_id',
+	'report_id',
+	'client_ref'
+] as const;
+
+export const EVENT_PATCHABLE = [
+	'event_date',
+	'event_time',
+	'is_estimated',
+	'title',
+	'domain',
+	'kind',
+	'status',
+	'link',
+	'instrument_id',
+	'amount',
+	'currency',
+	'client_ref',
+	'meta'
 ] as const;
 
 const DANGEROUS_OWN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);

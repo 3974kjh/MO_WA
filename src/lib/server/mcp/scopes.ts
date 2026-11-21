@@ -1,6 +1,23 @@
 import { forbiddenScopeError } from './errors';
 import type { McpContext, McpToolErrorResult } from './types';
 
+const REPORT_WRITE_SCOPES = [
+	'reports:daily_brief',
+	'reports:weekly_report',
+	'reports:strategy',
+	'reports:equity_analysis',
+	'reports:buy_plan_draft',
+	'reports:realestate_brief',
+	'reports:realestate_analysis'
+] as const;
+
+const EVENT_WRITE_SCOPES = ['events:stock', 'events:macro', 'events:realestate'] as const;
+
+/** Sentinel: "any report write scope" (not a real scope string a key can hold). */
+export const REPORT_WRITE_SENTINEL = 'reports:*';
+/** Sentinel: "any events:* domain scope". */
+export const EVENT_WRITE_SENTINEL = 'events:*';
+
 /**
  * Tool → required scope mapping (design §5-2 / §5-5).
  * No inventing `import_legacy_*` tools — I-7 uses existing write tools + `import:all` key.
@@ -10,8 +27,6 @@ import type { McpContext, McpToolErrorResult } from './types';
  */
 export const TOOL_REQUIRED_SCOPE: Readonly<Record<string, string>> = {
 	whoami: 'read',
-	echo: 'read',
-	db_ping: 'read',
 	get_dashboard_context: 'read',
 	get_report: 'read',
 	list_reports: 'read',
@@ -23,21 +38,57 @@ export const TOOL_REQUIRED_SCOPE: Readonly<Record<string, string>> = {
 	list_decisions: 'read',
 	list_events: 'read',
 	list_principle_proposals: 'read',
-	upsert_report: 'reports:daily_brief',
-	archive_report: 'reports:daily_brief',
-	propose_position_change: 'positions:propose',
-	cancel_proposal: 'positions:propose',
+	upsert_report: REPORT_WRITE_SENTINEL,
+	archive_report: REPORT_WRITE_SENTINEL,
+	upsert_instrument: 'instruments:write',
 	create_planned_position: 'positions:annotate',
 	update_position_reference: 'positions:annotate',
+	propose_position_change: 'positions:propose',
+	cancel_proposal: 'positions:propose',
 	propose_principle_change: 'principles:propose',
 	cancel_principle_proposal: 'principles:propose',
 	add_journal_entry: 'journal:write',
 	update_journal_entry: 'journal:write',
-	archive_journal_entry: 'journal:write'
+	archive_journal_entry: 'journal:write',
+	record_price_snapshots: 'prices:write',
+	record_portfolio_snapshot: 'portfolio:snapshot',
+	record_market_indicators: 'indicators:write',
+	upsert_decision: 'decisions:write',
+	archive_decision: 'decisions:write',
+	upsert_event: EVENT_WRITE_SENTINEL,
+	archive_event: EVENT_WRITE_SENTINEL
 };
 
-/** M1-a default spike tool set (whoami / echo / db_ping). */
-export const SPIKE_TOOL_NAMES = ['whoami', 'echo', 'db_ping'] as const;
+/**
+ * Tools unlocked by any one of several scopes (handler narrows further:
+ * report kind → REPORT_KIND_TO_SCOPE, instrument enrich fields, event domain).
+ */
+const TOOL_ANY_OF_SCOPES: Readonly<Record<string, readonly string[]>> = {
+	upsert_report: REPORT_WRITE_SCOPES,
+	archive_report: REPORT_WRITE_SCOPES,
+	upsert_instrument: ['instruments:write', 'instruments:enrich'],
+	upsert_event: EVENT_WRITE_SCOPES,
+	archive_event: EVENT_WRITE_SCOPES
+};
+
+/** Every tool name registered in the MCP surface (scope-filtered by tools/list). */
+export const ALL_MCP_TOOL_NAMES: readonly string[] = Object.freeze(
+	Object.keys(TOOL_REQUIRED_SCOPE)
+);
+
+/** @deprecated M1 spike set — echo / db_ping were removed; whoami only. */
+export const SPIKE_TOOL_NAMES = ['whoami'] as const;
+
+/** report kind (or `buy_plan` pseudo-kind for equity_analysis/subtype=buy_plan) → write scope. */
+export const REPORT_KIND_TO_SCOPE: Readonly<Record<string, string>> = {
+	daily_brief: 'reports:daily_brief',
+	weekly_report: 'reports:weekly_report',
+	strategy: 'reports:strategy',
+	equity_analysis: 'reports:equity_analysis',
+	buy_plan: 'reports:buy_plan_draft',
+	realestate_brief: 'reports:realestate_brief',
+	realestate_analysis: 'reports:realestate_analysis'
+};
 
 /** tools/list filter: tools the key's scopes may see. */
 export function filterToolsByScopes(
@@ -65,7 +116,7 @@ export const PRINCIPLES_WRITE_TOOLS = new Set([
 ]);
 
 export function requiredScopeForTool(tool: string): string | null {
-	return TOOL_REQUIRED_SCOPE[tool] ?? null;
+	return Object.hasOwn(TOOL_REQUIRED_SCOPE, tool) ? (TOOL_REQUIRED_SCOPE[tool] ?? null) : null;
 }
 
 export function hasScope(ctx: Pick<McpContext, 'scopes'>, scope: string): boolean {
@@ -80,6 +131,44 @@ export function importAllUnlocksTool(tool: string): boolean {
 	return !PROPOSAL_TOOLS.has(tool);
 }
 
+/** Scopes that allow at least one report kind write (principles are never writable). */
+export const REPORT_WRITE_SCOPE_LIST: readonly string[] = REPORT_WRITE_SCOPES;
+
+export function hasReportWriteScope(ctx: Pick<McpContext, 'scopes'>): boolean {
+	return REPORT_WRITE_SCOPES.some((scope) => hasScope(ctx, scope));
+}
+
+/** Scope needed to write this report kind; null for kinds with no bot write scope (principles). */
+export function scopeForReportKind(kind: string, subtype?: string | null): string | null {
+	if (kind === 'equity_analysis' && subtype === 'buy_plan') {
+		return REPORT_KIND_TO_SCOPE.buy_plan;
+	}
+	if (!Object.hasOwn(REPORT_KIND_TO_SCOPE, kind) || kind === 'buy_plan') return null;
+	return REPORT_KIND_TO_SCOPE[kind] ?? null;
+}
+
+/**
+ * Handler-level check after the tool gate: the key must hold the scope for this
+ * specific kind/subtype (`import:all` also passes, except principles).
+ */
+export function assertReportKindScope(
+	ctx: Pick<McpContext, 'scopes'>,
+	kind: string,
+	subtype?: string | null
+): McpToolErrorResult | null {
+	const required = scopeForReportKind(kind, subtype);
+	if (required === null) {
+		return forbiddenScopeError(`report:${kind}`, '(no write scope for this kind)');
+	}
+	if (hasScope(ctx, required) || hasScope(ctx, 'import:all')) return null;
+	return forbiddenScopeError(`report:${kind}`, required);
+}
+
+function requiredLabel(tool: string): string {
+	const anyOf = TOOL_ANY_OF_SCOPES[tool];
+	return anyOf ? anyOf.join('|') : (requiredScopeForTool(tool) ?? '(unregistered)');
+}
+
 /**
  * R-PERM-04: out-of-scope or unknown tool → FORBIDDEN_SCOPE.
  * `import:all` unlocks §5-5 write/read tools except live proposal tools.
@@ -92,11 +181,12 @@ export function assertToolScope(
 	if (required === null) {
 		return forbiddenScopeError(tool, '(unregistered)');
 	}
-	if (hasScope(ctx, required)) {
+	const anyOf = TOOL_ANY_OF_SCOPES[tool];
+	if (anyOf ? anyOf.some((scope) => hasScope(ctx, scope)) : hasScope(ctx, required)) {
 		return null;
 	}
 	if (hasScope(ctx, 'import:all') && importAllUnlocksTool(tool)) {
 		return null;
 	}
-	return forbiddenScopeError(tool, required);
+	return forbiddenScopeError(tool, requiredLabel(tool));
 }

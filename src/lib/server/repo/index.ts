@@ -28,13 +28,17 @@ export {
 	REPORT_PATCHABLE,
 	POSITION_PATCHABLE,
 	JOURNAL_PATCHABLE,
-	INSTRUMENT_PATCHABLE
+	INSTRUMENT_PATCHABLE,
+	DECISION_PATCHABLE,
+	EVENT_PATCHABLE
 } from './patch';
 export { archiveRow, restoreRow, type ArchivableTable } from './archive';
 export { pingDatabase, type DatabasePingResult } from './health';
 export { createRepoAuditSink } from './mcpAuditSink';
 export * from './instruments.repo';
 export * from './journal.repo';
+export * from './decisions.repo';
+export * from './events.repo';
 export * from './positions.repo';
 export * from './proposals.repo';
 export * from './reports.repo';
