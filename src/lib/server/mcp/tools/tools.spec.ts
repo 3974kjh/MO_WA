@@ -23,8 +23,7 @@ const READ_TOOLS = [
 	'list_proposals',
 	'list_journal_entries',
 	'list_decisions',
-	'list_events',
-	'list_principle_proposals'
+	'list_events'
 ];
 
 describe('scope-filtered tools/list', () => {
@@ -67,14 +66,30 @@ describe('scope-filtered tools/list', () => {
 		expect(listed).not.toContain('propose_position_change');
 		expect(listed).not.toContain('cancel_proposal');
 		expect(listed).not.toContain('propose_principle_change');
+		expect(listed).not.toContain('cancel_principle_proposal');
+		expect(listed).not.toContain('list_principle_proposals');
 	});
 
-	it('maps every BE-06~10 tool to its design scope', () => {
+	it('principles:propose lists exactly the three BE-17 tools (no approve/reject/hold)', () => {
+		const listed = toolsForContext({ scopes: ['principles:propose'] }).sort();
+		expect(listed).toEqual(
+			['cancel_principle_proposal', 'list_principle_proposals', 'propose_principle_change'].sort()
+		);
+		expect(listed).not.toContain('approve_principle_proposal');
+		expect(listed).not.toContain('reject_principle_proposal');
+		expect(listed).not.toContain('hold_principle_proposal');
+		expect(listed).not.toContain('decide_principle_proposal');
+	});
+
+	it('maps every BE-06~10 / BE-17 tool to its design scope', () => {
 		expect(TOOL_REQUIRED_SCOPE).toMatchObject({
 			create_planned_position: 'positions:annotate',
 			update_position_reference: 'positions:annotate',
 			propose_position_change: 'positions:propose',
 			cancel_proposal: 'positions:propose',
+			propose_principle_change: 'principles:propose',
+			cancel_principle_proposal: 'principles:propose',
+			list_principle_proposals: 'principles:propose',
 			upsert_instrument: 'instruments:write',
 			record_price_snapshots: 'prices:write',
 			record_portfolio_snapshot: 'portfolio:snapshot',

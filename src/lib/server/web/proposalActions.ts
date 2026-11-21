@@ -13,13 +13,16 @@ import {
 	acknowledgePrincipleProposalRpc,
 	acknowledgeProposalRpc,
 	applyUserCorrectionRpc,
+	approvePrincipleProposalRpc,
 	approveProposalRpc,
 	archiveRow,
+	decidePrincipleProposalRpc,
 	holdProposalRpc,
 	rejectProposalRpc,
 	restoreRow,
 	forUser,
-	type ArchivableTable
+	type ArchivableTable,
+	type PrincipleDecideAction
 } from '$lib/server/repo';
 import type { Database } from '$lib/types/database.types';
 import {
@@ -267,6 +270,72 @@ export async function handleAck(
 		kind === 'principle'
 			? await acknowledgePrincipleProposalRpc(repo, { id })
 			: await acknowledgeProposalRpc(repo, { id });
+	if (error) return failFromDbError(400, error);
+	return { ok: true as const, proposal: data };
+}
+
+/** BE-17: approve_principle_proposal (user session). Optional final_body_md edits the new version. */
+export async function handleApprovePrinciple(
+	supabase: SupabaseClient<Database>,
+	ownerId: string,
+	form: FormData
+) {
+	const id = String(form.get('id') ?? '').trim();
+	if (!id) return failValidation(400, 'R-PERM-15', 'proposal id is required');
+	const noteRaw = form.get('note');
+	const note = typeof noteRaw === 'string' && noteRaw.trim() ? noteRaw.trim() : null;
+	const bodyRaw = form.get('final_body_md');
+	const finalBodyMd = typeof bodyRaw === 'string' && bodyRaw.trim() ? bodyRaw.trim() : null;
+	const summaryRaw = form.get('summary');
+	const summary = typeof summaryRaw === 'string' && summaryRaw.trim() ? summaryRaw.trim() : null;
+
+	const repo = forUser(supabase, ownerId);
+	const { data, error } = await approvePrincipleProposalRpc(repo, {
+		id,
+		finalBodyMd,
+		summary,
+		note
+	});
+	if (error) {
+		return failFromDbError(isConflictDbError(error) ? 409 : 400, error);
+	}
+	if (data?.status === 'conflict') {
+		return fail(409, {
+			ok: false as const,
+			message: ACTION_CONFLICT_MESSAGE,
+			ruleIds: ['R-PERM-13'],
+			code: 'CONFLICT',
+			status: 'conflict',
+			proposal: data
+		});
+	}
+	return { ok: true as const, proposal: data };
+}
+
+const PRINCIPLE_DECIDE_ACTIONS = new Set<PrincipleDecideAction>([
+	'reject',
+	'hold',
+	'unhold',
+	'cancel',
+	'ack'
+]);
+
+/** BE-17: decide_principle_proposal (reject|hold|unhold|cancel|ack). No undo RPC. */
+export async function handleDecidePrinciple(
+	supabase: SupabaseClient<Database>,
+	ownerId: string,
+	form: FormData
+) {
+	const id = String(form.get('id') ?? '').trim();
+	if (!id) return failValidation(400, 'R-PERM-15', 'proposal id is required');
+	const action = String(form.get('action') ?? '').trim() as PrincipleDecideAction;
+	if (!PRINCIPLE_DECIDE_ACTIONS.has(action)) {
+		return failValidation(400, 'R-PERM-13', 'action must be reject|hold|unhold|cancel|ack');
+	}
+	const noteRaw = form.get('note');
+	const note = typeof noteRaw === 'string' && noteRaw.trim() ? noteRaw.trim() : null;
+	const repo = forUser(supabase, ownerId);
+	const { data, error } = await decidePrincipleProposalRpc(repo, { id, action, note });
 	if (error) return failFromDbError(400, error);
 	return { ok: true as const, proposal: data };
 }

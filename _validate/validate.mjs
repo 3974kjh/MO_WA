@@ -1179,6 +1179,181 @@ eq(
 	(await user(`select status from decide_principle_proposal('${ppu}','cancel')`)).rows[0].status,
 	'cancelled'
 );
+
+// ——— BE-17 extras (MCP surface is vitest; DB concurrency / expiry / display / no-overwrite) ———
+eq(
+	'BE-17 undo RPC 부재',
+	(
+		await db.query(
+			`select count(*)::int c from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+       where n.nspname='public' and p.proname in ('undo_principle_proposal','undo_proposal')`
+		)
+	).rows[0].c,
+	0
+);
+eq(
+	'BE-17 display 시리즈 분리(P- vs R-) — principle_proposal scope',
+	(
+		await db.query(
+			`select count(*)::int c from display_sequences where scope in ('position_proposal','principle_proposal')`
+		)
+	).rows[0].c >= 2,
+	true
+);
+const dispP = (
+	await db.query(
+		`select display_id from position_proposals where owner_id='${U}' and display_id is not null order by display_no desc limit 1`
+	)
+).rows[0];
+const dispR = (
+	await db.query(
+		`select display_id from principle_proposals where owner_id='${U}' and display_id is not null order by display_no desc limit 1`
+	)
+).rows[0];
+if (dispP && dispR) {
+	eq('BE-17 display_id P- 형식', /^P-\d{4,}$/.test(dispP.display_id), true);
+	eq('BE-17 display_id R- 형식', /^R-\d{4,}$/.test(dispR.display_id), true);
+}
+const be17Base = (
+	await user(
+		`select id, version, body_md from reports where kind='principles' and archived_at is null order by version desc, report_date desc limit 1`
+	)
+).rows[0];
+const be17Hold = (
+	await fm(
+		`insert into principle_proposals(owner_id,principle_id,proposed_body_md,reason_md,evidence)
+     values ('${U}','${be17Base.id}','# hold-body','hold reason','[{"url":"https://be17-hold"}]')
+     returning id, expires_at, display_id`
+	)
+).rows[0];
+await user(`select decide_principle_proposal('${be17Hold.id}','hold')`);
+await db.query(
+	`update principle_proposals set expires_at = now() - interval '1 hour' where id='${be17Hold.id}'`
+);
+await db.query(`select public.expire_stale_proposals()`);
+eq(
+	'BE-17 on_hold는 expire_stale_proposals에서 제외',
+	(await db.query(`select status from principle_proposals where id='${be17Hold.id}'`)).rows[0]
+		.status,
+	'on_hold'
+);
+const unholdRow = (
+	await user(
+		`select status, expires_at > now() + interval '6 days' as fresh
+     from decide_principle_proposal('${be17Hold.id}','unhold')`
+	)
+).rows[0];
+eq('BE-17 unhold → pending + expires_at 재계산(≥6d)', unholdRow, {
+	status: 'pending',
+	fresh: true
+});
+await user(`select decide_principle_proposal('${be17Hold.id}','reject')`);
+
+// Dedicated principles row (unique slug, past date) so same-day insert cannot collide
+// with earlier approvals of slug=main (insert-only; no ON CONFLICT overwrite).
+const be17Target = (
+	await user(
+		`insert into reports(owner_id,kind,domain,slug,title,report_date,body_md)
+     values ('${U}','principles','stock','be17-edit-base','BE-17 edit base','2026-09-01','# base-immutable')
+     returning id, body_md`
+	)
+).rows[0];
+const be17Edit = (
+	await fm(
+		`insert into principle_proposals(owner_id,principle_id,proposed_body_md,reason_md,evidence)
+     values ('${U}','${be17Target.id}','# proposed-v','edit reason','[{"url":"https://be17-edit"}]')
+     returning id`
+	)
+).rows[0].id;
+const apEdit = (
+	await user(
+		`select status, applied_report_id from approve_principle_proposal('${be17Edit}', '# final-edited-body', null, 'edited')`
+	)
+).rows[0];
+eq('BE-17 승인 시 최종 본문 수정 반영', apEdit.status, 'approved');
+eq(
+	'BE-17 승인 → 새 principles 행 + 기존 대상 행 본문 불변',
+	(
+		await user(
+			`select
+         (select body_md from reports where id='${apEdit.applied_report_id}') as new_body,
+         (select body_md from reports where id='${be17Target.id}') as old_body,
+         (select id <> '${be17Target.id}' from reports where id='${apEdit.applied_report_id}') as is_new_row`
+		)
+	).rows[0],
+	{ new_body: '# final-edited-body', old_body: be17Target.body_md, is_new_row: true }
+);
+eq(
+	'BE-17 approve audit before/after',
+	(
+		await db.query(
+			`select (args_preview ? 'before') and (args_preview ? 'after') as ok
+       from mcp_audit_log
+       where tool='principle_proposal.approve' and owner_id='${U}'
+       order by created_at desc limit 1`
+		)
+	).rows[0].ok,
+	true
+);
+
+// Concurrent approve: two sessions race on a fresh target (unique slug).
+const be17RaceTarget = (
+	await user(
+		`insert into reports(owner_id,kind,domain,slug,title,report_date,body_md)
+     values ('${U}','principles','stock','be17-race-base','BE-17 race','2026-09-02','# race-base')
+     returning id`
+	)
+).rows[0].id;
+const be17Race = (
+	await fm(
+		`insert into principle_proposals(owner_id,principle_id,proposed_body_md,reason_md,evidence)
+     values ('${U}','${be17RaceTarget}','# race','race','[{"url":"https://be17-race"}]')
+     returning id`
+	)
+).rows[0].id;
+// Each session must COMMIT before the other can take FOR UPDATE — do not hold
+// both open until both RPCs return (that deadlocks on the proposal row lock).
+const raceClients = await Promise.all([pool.connect(), pool.connect()]);
+try {
+	const raceResults = await Promise.allSettled(
+		raceClients.map(async (c) => {
+			await c.query('BEGIN');
+			await c.query(`select set_config('request.jwt.claims', $1, true)`, [
+				JSON.stringify({ role: 'authenticated', sub: U })
+			]);
+			await c.query(`select set_config('request.headers', $1, true)`, [JSON.stringify({})]);
+			await c.query(`set local role authenticated`);
+			try {
+				const r = await c.query(`select status from approve_principle_proposal($1)`, [be17Race]);
+				await c.query('COMMIT');
+				return r;
+			} catch (e) {
+				try {
+					await c.query('ROLLBACK');
+				} catch {
+					/* ignore */
+				}
+				throw e;
+			}
+		})
+	);
+	const approvedCount = (
+		await db.query(
+			`select count(*)::int c from principle_proposals where id='${be17Race}' and status='approved'`
+		)
+	).rows[0].c;
+	eq('BE-17 동시 승인 → approved 행 정확히 1', approvedCount, 1);
+	eq(
+		'BE-17 동시 승인 → 패자 세션은 already-decided 또는 approved 1회',
+		approvedCount === 1 &&
+			(raceResults.filter((r) => r.status === 'fulfilled').length >= 1 ||
+				raceResults.some((r) => r.status === 'rejected')),
+		true
+	);
+} finally {
+	raceClients.forEach((c) => c.release());
+}
+
 const cf = (await db.query(`select id from position_proposals where status='conflict' limit 1`))
 	.rows[0];
 if (cf) {

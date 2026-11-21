@@ -110,8 +110,23 @@ export type PrincipleProposalRow = {
 	display_no: number;
 	/** Server string — e.g. R-0001. */
 	display_id: string;
+	principle_id: Uuid;
+	base_version: number;
+	base_body_hash?: string;
+	clause_ref?: string | null;
+	proposed_body_md: string;
+	reason_md: string;
+	evidence: unknown;
 	proposed_by_type: 'bot' | 'user';
 	proposed_by: Uuid | null;
 	proposed_by_user: Uuid | null;
 	status: string;
+	expires_at?: string;
+	held_at?: string | null;
+	decision_note?: string | null;
+	decided_at?: string | null;
+	attention_started_at?: string | null;
+	acknowledged_at?: string | null;
+	created_at?: string;
+	updated_at?: string;
 };

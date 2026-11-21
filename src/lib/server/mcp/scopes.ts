@@ -37,7 +37,7 @@ export const TOOL_REQUIRED_SCOPE: Readonly<Record<string, string>> = {
 	list_journal_entries: 'read',
 	list_decisions: 'read',
 	list_events: 'read',
-	list_principle_proposals: 'read',
+	list_principle_proposals: 'principles:propose',
 	upsert_report: REPORT_WRITE_SENTINEL,
 	archive_report: REPORT_WRITE_SENTINEL,
 	upsert_instrument: 'instruments:write',
@@ -106,13 +106,15 @@ export const PROPOSAL_TOOLS = new Set([
 	'propose_position_change',
 	'cancel_proposal',
 	'propose_principle_change',
-	'cancel_principle_proposal'
+	'cancel_principle_proposal',
+	'list_principle_proposals'
 ]);
 
 /** @deprecated alias — prefer PROPOSAL_TOOLS (principles subset of proposal tools). */
 export const PRINCIPLES_WRITE_TOOLS = new Set([
 	'propose_principle_change',
-	'cancel_principle_proposal'
+	'cancel_principle_proposal',
+	'list_principle_proposals'
 ]);
 
 export function requiredScopeForTool(tool: string): string | null {
