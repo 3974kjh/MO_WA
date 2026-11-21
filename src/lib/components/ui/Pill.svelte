@@ -1,8 +1,8 @@
 <script lang="ts">
-	/** 승인 대기 건수 pill (DS §8: aria-label="승인 대기 N건"). 0이면 렌더하지 않는다. */
+	/** 확인 대기 건수 pill (DS §8: aria-label="확인 대기 N건"). 0이면 렌더하지 않는다. */
 	let {
 		count,
-		label = `승인 대기 ${count}건`,
+		label = `확인 대기 ${count}건`,
 		class: className = ''
 	}: { count: number; label?: string; class?: string } = $props();
 </script>
