@@ -1,3 +1,4 @@
+guard ok: DATABASE_URL ignored; remote DB/PostgREST hosts refused
 resetting local stack (migrations only; GATED stays .sql.txt)…
 draft ok  20260529190000_initial_mo_wa_schema.sql
 draft ok  20260529200000_profiles_trigger_tags_maturity.sql
@@ -202,6 +203,29 @@ draft ok  20261125000910_revoke_anon_all.sql
   ✓ L-1: authenticated는 다른 owner settings 읽기 불가 → [R-PERM-01] cannot read another owner's settings
   ✓ authenticated는 bot_clients 직접 insert 불가 → permission denied for table bot_clients
 
+[M-4 tenant · revoked/expired · CASCADE · TRUNCATE]
+  ✓ M-4: revoked U bot cannot modify X positions → [R-PERM-03] bot identity invalid, revoked, or expired
+  ✓ M-4: X finance-manager can update own X position memo
+  ✓ M-4: expired bot cannot write U positions → [R-PERM-03] bot identity invalid, revoked, or expired
+  ✓ M-4: U bot cannot insert into X instruments → [R-PERM-03] bot owner mismatch
+  ✓ M-4: U bot cannot insert into X price_snapshots → [R-PERM-03] bot owner mismatch
+  ✓ M-4: other-owner update on X instruments rejected → [R-PERM-03] bot owner mismatch
+  ✓ M-4: owner_id change on instruments rejected → [R-PERM-01] owner_id is immutable
+  ✓ M-4: owner_id change on positions rejected → [R-PERM-01] owner_id is immutable
+  ✓ M-4: revoked bot position proposal insert rejected → [R-PERM-03] bot identity invalid, revoked, or expired
+  ✓ M-4: expired bot principle proposal insert rejected → [R-PERM-03] bot identity invalid, revoked, or expired
+  ✓ M-4: same-owner EA enriches instruments
+  ✓ M-4: same-owner EA snapshot upsert stamps calling bot
+  ✓ M-4: FM cannot write targets_valuation (equity-analyst only) → [R-PERM-04] targets_valuation is equity-analyst only (Q-25)
+  ✓ TRUNCATE positions denied to service_role → permission denied for table positions
+  ✓ TRUNCATE bot_clients denied to service_role → permission denied for table bot_clients
+  ✓ anon cannot execute mowa_assert_bot_tenant → permission denied for function mowa_assert_bot_tenant
+  ✓ pre-delete: revision + audit exist for Z
+  ✓ account deletion CASCADE past immutable triggers
+  ✓ CASCADE removed revisions + audit for Z
+  ✓ app DELETE on report_revisions still blocked → [R-SYS-05] report_revisions is append-only (no update/delete)
+  ✓ app DELETE on mcp_audit_log still blocked → [R-SYS-05] mcp_audit_log is append-only
+
 [인증·감사]
   ✓ R-SYS-05 감사 로그 append-only → [R-SYS-05] mcp_audit_log is append-only
   ✓ R-PERM-10 mcp_authenticate ok + profile
@@ -220,4 +244,4 @@ CONTEXT:  PL/pgSQL function inline_code_blo
   ✓ 검증 기록 후 drop 실행
   ✓ 레거시 테이블 제거·profiles 유지
 
-RESULT pass=186 fail=0
+RESULT pass=207 fail=0
