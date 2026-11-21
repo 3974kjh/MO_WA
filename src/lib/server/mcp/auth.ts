@@ -69,24 +69,28 @@ export async function authenticate(request: Request, env: AuthEnv): Promise<Auth
 	const { createSupabaseAdminClient } = await import('$lib/supabase/admin');
 	const admin = createSupabaseAdminClient();
 	const ip = request.headers.get('cf-connecting-ip');
-	// @ts-expect-error: RPC 타입은 db:types 재생성 후 생긴다
 	const { data, error } = await admin.rpc('mcp_authenticate', {
 		p_prefix: key.prefix,
 		p_hash: hash,
 		p_ip: ip
 	});
 	if (error) return { ok: false, status: 500, reason: 'auth_backend_error' };
-	const row = (data as Array<Record<string, unknown>> | null)?.[0];
+	const row = data?.[0];
 	if (!row) return { ok: false, status: 401, reason: 'invalid_key' };
 	if (!row.allowed)
-		return { ok: false, status: 429, reason: 'rate_limited', retryAfter: Number(row.retry_after_s) || 60 };
+		return {
+			ok: false,
+			status: 429,
+			reason: 'rate_limited',
+			retryAfter: Number(row.retry_after_s) || 60
+		};
 	return {
 		ok: true,
 		ctx: {
 			botClientId: String(row.bot_client_id),
 			ownerId: String(row.owner_id),
 			botName: String(row.bot_name),
-			scopes: (row.scopes as string[]) ?? [],
+			scopes: row.scopes ?? [],
 			mode: 'db'
 		}
 	};

@@ -40,7 +40,9 @@ test.describe('MO_WA auth and dashboard shell', () => {
 		const status = response?.status() ?? 0;
 		const onLogin = /\/login$/.test(page.url());
 
-		// Must not render the authenticated dashboard shell.
+		// Must not render the authenticated landing (HF-1). testid is landing-only;
+		// '로그아웃' must also be absent so a forged cookie cannot look signed-in.
+		await expect(page.getByTestId('mo-wa-authenticated-landing')).toHaveCount(0);
 		await expect(page.getByRole('button', { name: '로그아웃' })).toHaveCount(0);
 
 		// getUser() 401 → login redirect; unreachable Auth → 503 (L-2). Neither grants access.
