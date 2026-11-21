@@ -1,3 +1,16 @@
+/**
+ * MCP auth (BE-04).
+ *
+ * After a successful `mcp_authenticate`, this module will call
+ * `mintBotRepoIdentity` from `repo/botIdentityBrand` and pass the frozen
+ * identity to `forBot`. Mint is intentionally **not** re-exported — callers
+ * outside auth must not construct BotRepoIdentity.
+ */
+export type { BotRepoIdentity } from '../repo/botIdentityBrand';
+
+// BE-04 will import mintBotRepoIdentity here only (not re-export):
+// import { mintBotRepoIdentity } from '../repo/botIdentityBrand';
+
 import { hmacSha256Hex, timingSafeEqualHex } from '$lib/server/crypto';
 
 /** mowa_<prefix 10자 [a-z0-9]>_<secret 43자 base64url(32B)> */
@@ -42,7 +55,13 @@ export async function authenticate(request: Request, env: AuthEnv): Promise<Auth
 		if (!(okPrefix && okHash)) return { ok: false, status: 401, reason: 'invalid_key' };
 		return {
 			ok: true,
-			ctx: { botClientId: `env:${key.prefix}`, ownerId: null, botName: 'spike', scopes: ['read'], mode: 'env' }
+			ctx: {
+				botClientId: `env:${key.prefix}`,
+				ownerId: null,
+				botName: 'spike',
+				scopes: ['read'],
+				mode: 'env'
+			}
 		};
 	}
 
@@ -51,11 +70,16 @@ export async function authenticate(request: Request, env: AuthEnv): Promise<Auth
 	const admin = createSupabaseAdminClient();
 	const ip = request.headers.get('cf-connecting-ip');
 	// @ts-expect-error: RPC 타입은 db:types 재생성 후 생긴다
-	const { data, error } = await admin.rpc('mcp_authenticate', { p_prefix: key.prefix, p_hash: hash, p_ip: ip });
+	const { data, error } = await admin.rpc('mcp_authenticate', {
+		p_prefix: key.prefix,
+		p_hash: hash,
+		p_ip: ip
+	});
 	if (error) return { ok: false, status: 500, reason: 'auth_backend_error' };
 	const row = (data as Array<Record<string, unknown>> | null)?.[0];
 	if (!row) return { ok: false, status: 401, reason: 'invalid_key' };
-	if (!row.allowed) return { ok: false, status: 429, reason: 'rate_limited', retryAfter: Number(row.retry_after_s) || 60 };
+	if (!row.allowed)
+		return { ok: false, status: 429, reason: 'rate_limited', retryAfter: Number(row.retry_after_s) || 60 };
 	return {
 		ok: true,
 		ctx: {

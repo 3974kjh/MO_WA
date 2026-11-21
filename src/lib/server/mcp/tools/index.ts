@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { pingDatabase } from '$lib/server/repo';
 import type { McpContext } from '../auth';
 import { MCP_SERVER_VERSION } from '../handler';
 
@@ -57,17 +58,6 @@ export function registerSpikeTools(server: McpServer, ctx: McpContext) {
 			outputSchema: { ok: z.boolean(), latency_ms: z.number(), error: z.string().optional() },
 			annotations: { readOnlyHint: true, idempotentHint: true }
 		},
-		async () => {
-			const t0 = Date.now();
-			try {
-				const { createSupabaseAdminClient } = await import('$lib/supabase/admin');
-				const { error } = await createSupabaseAdminClient()
-					.from('profiles')
-					.select('id', { count: 'exact', head: true });
-				return ok({ ok: !error, latency_ms: Date.now() - t0, ...(error ? { error: error.message } : {}) });
-			} catch (e) {
-				return ok({ ok: false, latency_ms: Date.now() - t0, error: (e as Error).message });
-			}
-		}
+		async () => ok(await pingDatabase())
 	);
 }

@@ -1,18 +1,64 @@
 import type { Handle } from '@sveltejs/kit';
 import { createSupabaseServerClient } from '$lib/supabase/server';
+import { getSupabasePublicConfig } from '$lib/supabase/config';
+import {
+	authUnavailableResponse,
+	cache,
+	clearSupabaseAuthCookies,
+	isMcpApiPath,
+	resolveAuthenticatedUser,
+	type PendingSetCookie
+} from '$lib/server/auth';
 
 export const handle: Handle = async ({ event, resolve }) => {
-	// MCP는 Bearer 키로 자체 인증한다. 쿠키 세션 조회(Auth 왕복)를 건너뛴다.
-	if (event.url.pathname.startsWith('/api/mcp')) return resolve(event);
+	// MCP uses Bearer keys; skip cookie Auth round-trips (BE-02 / M-3).
+	if (isMcpApiPath(event.url.pathname)) {
+		event.locals.user = null;
+		// OPTIONS may be unauthenticated; POST must not bypass Bearer auth.
+		if (event.request.method === 'OPTIONS') {
+			return resolve(event);
+		}
+		if (!event.request.headers.get('authorization')) {
+			return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+				status: 401,
+				headers: {
+					'content-type': 'application/json',
+					'WWW-Authenticate': 'Bearer realm="mo-wa-mcp"'
+				}
+			});
+		}
+		return resolve(event);
+	}
 
-	event.locals.supabase = createSupabaseServerClient(event.cookies);
+	const { configured } = getSupabasePublicConfig();
+	if (!configured) {
+		console.error(
+			'[auth] PUBLIC_SUPABASE_URL / PUBLIC_SUPABASE_ANON_KEY missing or placeholder; refusing request'
+		);
+		return new Response('Internal Server Error', { status: 500 });
+	}
 
-	const {
-		data: { session }
-	} = await event.locals.supabase.auth.getSession();
+	// Collect Set-Cookie mutations from Auth (refresh etc.) so 503 can still send them (option B).
+	const pendingCookies: PendingSetCookie[] = [];
+	event.locals.supabase = createSupabaseServerClient(event.cookies, pendingCookies);
 
-	event.locals.session = session;
-	event.locals.user = session?.user ?? null;
+	event.locals.getUser = cache(() => event.locals.supabase.auth.getUser());
+	const resolution = resolveAuthenticatedUser(await event.locals.getUser());
+
+	if (resolution.kind === 'unavailable') {
+		console.error(`[auth] Auth unavailable (${resolution.reason}); returning 503`);
+		// Do not use error(503): SvelteKit does not guarantee Set-Cookie on thrown HttpErrors from hooks.
+		// Option B + Low-1: attach valued rotation cookies; keep deletes only when valued ones exist.
+		return authUnavailableResponse(pendingCookies, {
+			secure: event.url.protocol === 'https:'
+		});
+	}
+
+	if (resolution.kind === 'anonymous' && resolution.clearCookies) {
+		clearSupabaseAuthCookies(event.cookies);
+	}
+
+	event.locals.user = resolution.user;
 
 	return resolve(event, {
 		filterSerializedResponseHeaders(name) {
