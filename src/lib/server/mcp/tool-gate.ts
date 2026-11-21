@@ -38,10 +38,7 @@ export type AuditedToolHandler = (input: {
 	ruleIds?: string[];
 }>;
 
-function collectWarnings(
-	data: Record<string, unknown>,
-	explicit?: McpRuleIssue[]
-): McpRuleIssue[] {
+function collectWarnings(data: Record<string, unknown>, explicit?: McpRuleIssue[]): McpRuleIssue[] {
 	const fromData = Array.isArray(data.warnings) ? (data.warnings as McpRuleIssue[]) : [];
 	return [...(explicit ?? []), ...fromData].filter((w) => w && typeof w.rule === 'string');
 }

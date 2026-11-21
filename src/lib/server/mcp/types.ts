@@ -1,17 +1,17 @@
 /**
- * Shared MCP types for BE-05 (audit + response contract).
- * Auth DB mode (BE-04) is out of scope — consumers inject McpContext.
- * Row shape aligned with BE-01 `mcp_audit_log` (PR #7 contract; migrations not applied here).
+ * Shared MCP types for BE-05 (audit + response contract) and BE-04 auth.
+ * Row shape aligned with BE-01 `mcp_audit_log` (PR #7 contract).
  */
 
-/** Authenticated bot context. BE-04 fills this from mcp_authenticate. */
+/** Authenticated bot context. BE-04 fills this from mcp_authenticate (db) or env spike. */
 export type McpContext = {
 	botClientId: string;
-	ownerId: string;
+	/** Null in env/spike mode (no real owner). Required UUID after db auth. */
+	ownerId: string | null;
 	profile: string;
 	scopes: readonly string[];
-	/** Optional display name for logs; not required by design §5-2. */
-	botName?: string;
+	botName: string;
+	mode: 'env' | 'db';
 };
 
 export type McpActorType = 'bot' | 'user' | 'system';
