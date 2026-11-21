@@ -1,6 +1,6 @@
 /*
  * MO_WA 전역 스타일 (FE-13)
- * - 디자인 토큰: ./tokens.css (design/tokens.css 확정본 v1.0을 그대로 복사, 수정 금지)
+ * - 디자인 토큰: ./tokens.css (design/tokens.css 확정본 v1.2를 그대로 복사, 수정 금지)
  * - 테마: data-theme 속성이 없으면 OS 설정(prefers-color-scheme)을 따른다. 토큰만 쓰고 `dark:` 유틸리티는 쓰지 않는다(G-14, lint로 검사).
  * - 폰트: Pretendard Variable 동적 서브셋 self-host(/fonts/pretendard/pretendard.css, app.html에서 로드)
  */
@@ -9,15 +9,11 @@
 @import './tokens.css' theme(static); /* 컴포넌트 <style>의 var(--color-*)도 쓰므로 모든 토큰 변수를 항상 출력 */
 
 /*
- * 디자인 토큰에 없는 보조 값 2개 (시안 shared/app.css에 하드코딩돼 있던 값을 이름만 붙여 한 곳에 모은다).
+ * 디자인 토큰에 없는 보조 값 1개 (시안 shared/app.css에 하드코딩돼 있던 값을 이름만 붙여 한 곳에 모은다).
  * 디자이너 확인 대기 — FE 보고서의 질문 항목 참고.
  */
 @theme static {
 	--color-on-warn-fill: #1b1100; /* 대기 pill 글자색(warn-fill 위, 라이트·다크 공통) */
-	--color-scrim: rgb(8 10 16 / 0.5); /* 시트·모달 뒤 스크림 */
-	--size-topbar: 3.75rem; /* 60 PC 상단바 */
-	--size-topbar-m: 3.25rem; /* 52 모바일 상단바 */
-	--size-tabbar: 3.25rem; /* 52 모바일 하단 탭(+safe-area) */
 }
 
 /* iOS safe-area (viewport-fit=cover와 함께 사용) */
@@ -26,6 +22,13 @@
 	--safe-bottom: env(safe-area-inset-bottom, 0px);
 	--safe-left: env(safe-area-inset-left, 0px);
 	--safe-right: env(safe-area-inset-right, 0px);
+	/* 하단 inset 삼중 최댓값: 홈 바 없는 기기에서도 8px 이상 (DS §4-1) */
+	--inset-b: max(var(--app-inset-b, 0px), env(safe-area-inset-bottom, 0px), 8px);
+}
+
+html {
+	scroll-padding-top: 68px;
+	scroll-padding-bottom: calc(52px + var(--inset-b) + 24px);
 }
 
 @layer base {
@@ -36,8 +39,7 @@
 	}
 	body {
 		margin: 0;
-		min-width: 320px;
-		min-height: 100vh;
+		min-height: 100dvh;
 		background: var(--color-canvas);
 		color: var(--color-text);
 		font-family: var(--font-sans);
