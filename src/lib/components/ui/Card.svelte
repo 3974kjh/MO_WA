@@ -71,9 +71,9 @@
 		padding: 14px 16px 0;
 	}
 	.tone-accent {
-		border-left: 4px solid var(--color-accent);
+		background: var(--color-accent-soft);
 	}
 	.tone-warn {
-		border-left: 4px solid var(--color-warn-fill);
+		background: var(--color-warn-soft);
 	}
 </style>
