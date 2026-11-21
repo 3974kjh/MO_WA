@@ -55,7 +55,21 @@ describe('listAuditLog', () => {
 		expect(r.method).toBe('GET');
 		expect(r.table).toBe('mcp_audit_log');
 		expect(new Set(r.params.getAll('owner_id'))).toEqual(new Set([`eq.${OWNER}`]));
-		expect(r.params.get('select')).toBe(AUDIT_LIST_COLUMNS.replace(/\s/g, ''));
+		// L-1: 리터럴 목록으로 고정 — 실제 열이 바뀌면 이 테스트가 깨져야 한다.
+		const EXPECTED_COLUMNS = [
+			'id',
+			'created_at',
+			'actor_type',
+			'bot_client_id',
+			'tool',
+			'result',
+			'error_code',
+			'rule_ids',
+			'args_preview',
+			'duration_ms'
+		];
+		expect(r.params.get('select')).toBe(EXPECTED_COLUMNS.join(','));
+		expect(AUDIT_LIST_COLUMNS.split(',').map((c) => c.trim())).toEqual(EXPECTED_COLUMNS);
 		expect(r.params.get('select')).not.toBe('*');
 		expect(r.params.get('select')).not.toMatch(/\bip\b|user_agent|warnings/);
 		expect(r.params.get('limit')).toBe('101');
