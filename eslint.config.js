@@ -102,6 +102,12 @@ const dynamicImportRestrictedSyntax = [
 	{
 		selector: 'ImportExpression[source.type=BinaryExpression]',
 		message: dynamicImportBanMessage
+	},
+	// Variable-only / .join() / .concat() / other non-literal sources
+	{
+		selector:
+			'ImportExpression:not([source.type=Literal]):not([source.type=TemplateLiteral])',
+		message: dynamicImportBanMessage
 	}
 ];
 

@@ -68,7 +68,11 @@ export function serverCreateStamps(actor: RepoActor): {
 	};
 }
 
-const STATIC_STRIP = [
+/**
+ * Server-owned / trigger-filled columns — never accept from the client on
+ * insert/update (Low-3). Kept out of R-PERM-11 content compare as well.
+ */
+export const SERVER_FILLED_KEYS = [
 	'owner_id',
 	'source_bot_id',
 	'display_no',
@@ -79,15 +83,24 @@ const STATIC_STRIP = [
 	'archived_at',
 	'created_at',
 	'updated_at',
+	'status',
+	'expires_at',
+	'decided_at',
+	'acknowledged_at',
+	'attention_started_at',
 	// M-2 / PR #7 naming — never accept client proposer fields
 	'proposer_type',
 	'proposed_by_bot_id',
-	'proposed_by_user_id'
+	'proposed_by_user_id',
+	'proposed_by_type',
+	'proposed_by',
+	'proposed_by_user'
 ] as const;
 
 /**
  * Strip client-supplied identity / system fields before insert/update.
- * Removes all `proposed_by*` plus `proposer_type` / bot_id aliases (M-2).
+ * Removes all `proposed_by*` plus server-filled columns (Low-3).
+ * Do not rely only on PR #7 triggers or CHECKs.
  */
 export function stripClientIdentity<T extends Record<string, unknown>>(
 	row: T
@@ -95,7 +108,7 @@ export function stripClientIdentity<T extends Record<string, unknown>>(
 	const out: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(row)) {
 		if (key.startsWith('proposed_by')) continue;
-		if ((STATIC_STRIP as readonly string[]).includes(key)) continue;
+		if ((SERVER_FILLED_KEYS as readonly string[]).includes(key)) continue;
 		out[key] = value;
 	}
 	return out;

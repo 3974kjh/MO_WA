@@ -5,12 +5,12 @@
  * Same client_ref + different content → CONFLICT (do not map to J06).
  * J06 is the WARN for same-day/same-title rewrite when there is no client_ref.
  *
- * Comparison uses attempted (input) keys only, excluding server-filled columns.
- * Nested values are compared via recursively key-sorted canonical JSON —
- * never `JSON.stringify` with a replacer key array (that filters nested keys).
+ * Comparison uses attempted (input) keys only, excluding server-filled columns
+ * and keys whose attempted value is `undefined` (incl. nested). Nested values
+ * use recursively key-sorted canonical JSON — never a stringify replacer array.
  */
 import { mapDbErrorToRuleIds } from '$lib/server/domain/validation/mapDbError';
-import type { RepoClient } from './client';
+import { SERVER_FILLED_KEYS, type RepoClient } from './client';
 import { fromRepo } from './db';
 import { requireOwnerId } from './owner';
 
@@ -29,42 +29,41 @@ export type ClientRefTable =
 	| 'position_proposals'
 	| 'principle_proposals';
 
-const SERVER_FILLED_KEYS = new Set([
-	'id',
-	'owner_id',
-	'display_id',
-	'display_no',
-	'created_at',
-	'updated_at',
-	'status',
-	'source_bot_id',
-	'archived_at',
-	'version',
-	'approval_version',
-	'attention_started_at',
-	'acknowledged_at',
-	'decided_at',
-	'expires_at',
-	'proposed_by_type',
-	'proposed_by',
-	'proposed_by_user',
-	'proposed_by_user_id',
-	'proposed_by_bot_id',
-	'proposer_type'
-]);
-
 function isServerFilledKey(key: string): boolean {
-	if (SERVER_FILLED_KEYS.has(key)) return true;
+	if ((SERVER_FILLED_KEYS as readonly string[]).includes(key)) return true;
 	if (key.startsWith('proposed_by')) return true;
 	return false;
 }
 
-/** Recursively sort object keys for stable JSON — no replacer array. */
+/** Drop keys whose value is `undefined` (recursively). */
+export function dropUndefinedKeys(value: unknown): unknown {
+	if (value === undefined) return undefined;
+	if (value === null || typeof value !== 'object') return value;
+	if (value instanceof Date) return value;
+	if (Array.isArray(value)) {
+		return value.map((item) => dropUndefinedKeys(item));
+	}
+	const out: Record<string, unknown> = Object.create(null);
+	for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+		if (nested === undefined) continue;
+		const cleaned = dropUndefinedKeys(nested);
+		if (cleaned === undefined) continue;
+		out[key] = cleaned;
+	}
+	return out;
+}
+
+/**
+ * Recursively sort object keys for stable JSON — no replacer array.
+ * Uses null-prototype objects so `__proto__` keys are preserved in the output.
+ * Dates become ISO strings (not `{}`).
+ */
 export function canonicalize(value: unknown): unknown {
+	if (value instanceof Date) return value.toISOString();
 	if (value === null || typeof value !== 'object') return value;
 	if (Array.isArray(value)) return value.map(canonicalize);
 	const obj = value as Record<string, unknown>;
-	const sorted: Record<string, unknown> = {};
+	const sorted: Record<string, unknown> = Object.create(null);
 	for (const key of Object.keys(obj).sort()) {
 		sorted[key] = canonicalize(obj[key]);
 	}
@@ -76,22 +75,24 @@ export function canonicalJson(value: unknown): string {
 }
 
 /**
- * Pick attempted keys (minus server-filled) from both sides and compare.
+ * Pick attempted keys (minus server-filled / undefined) from both sides and compare.
  * Nested-only differences (e.g. proposed_values.qty) must yield inequality.
+ * `{ memo: undefined }` vs DB `memo: null` must not CONFLICT on identical retry.
  */
 export function clientRefContentMatches(
 	attempted: Record<string, unknown>,
 	existing: Record<string, unknown>
 ): boolean {
-	const keys = Object.keys(attempted).filter((k) => !isServerFilledKey(k));
+	const cleaned = dropUndefinedKeys(attempted) as Record<string, unknown>;
+	const keys = Object.keys(cleaned).filter((k) => !isServerFilledKey(k));
 	const slice = (row: Record<string, unknown>): Record<string, unknown> => {
-		const out: Record<string, unknown> = {};
+		const out: Record<string, unknown> = Object.create(null);
 		for (const key of keys) {
 			out[key] = key in row ? row[key] : null;
 		}
 		return out;
 	};
-	return canonicalJson(slice(attempted)) === canonicalJson(slice(existing));
+	return canonicalJson(slice(cleaned)) === canonicalJson(slice(existing));
 }
 
 function isClientRefUniqueViolation(error: {

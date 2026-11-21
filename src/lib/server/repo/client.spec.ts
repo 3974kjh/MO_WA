@@ -139,6 +139,21 @@ describe('repo identity / M-4', () => {
 		expect('source_bot_id' in safe).toBe(false);
 	});
 
+	it('strips server-filled keys on first insert (Low-3)', () => {
+		const safe = stripClientIdentity({
+			title: 't',
+			status: 'approved',
+			expires_at: '2026-01-01',
+			decided_at: '2026-01-01',
+			acknowledged_at: '2026-01-01',
+			attention_started_at: '2026-01-01',
+			client_ref: 'ref-1'
+		});
+		expect(safe).toEqual({ title: 't', client_ref: 'ref-1' });
+		expect('status' in safe).toBe(false);
+		expect('expires_at' in safe).toBe(false);
+	});
+
 	it('strips system patch fields (M-3)', () => {
 		const safe = stripClientIdentity({
 			memo: 'ok',

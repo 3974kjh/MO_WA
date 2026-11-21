@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
 	canonicalJson,
+	canonicalize,
 	clientRefContentMatches,
+	dropUndefinedKeys,
 	resolveClientRefConflict
 } from './clientRef';
 import { forUser } from './client';
@@ -32,7 +34,7 @@ describe('R-PERM-11 client_ref content compare', () => {
 			updated_at: '2026-01-01T00:00:00Z',
 			proposed_by_type: 'bot',
 			proposed_by: 'b1',
-			proposed_values: { avg_price: 100, qty: 10 } // key order differs
+			proposed_values: { avg_price: 100, qty: 10 }
 		};
 		expect(clientRefContentMatches(attempted, existing)).toBe(true);
 	});
@@ -69,22 +71,46 @@ describe('R-PERM-11 client_ref content compare', () => {
 			evidence: [{ report_id: 'r-old' }]
 		};
 		expect(clientRefContentMatches(attempted, existing)).toBe(false);
-
-		// Same nested shape with different report_id only
-		expect(
-			clientRefContentMatches(
-				{ client_ref: 'x', evidence: [{ report_id: 'a' }] },
-				{ id: '1', client_ref: 'x', evidence: [{ report_id: 'b' }], status: 'pending' }
-			)
-		).toBe(false);
 	});
 
-	it('canonicalJson sorts nested keys without using a replacer array', () => {
+	it('undefined attempted values are dropped — memo:undefined vs memo:null is not CONFLICT', () => {
+		expect(
+			clientRefContentMatches(
+				{ client_ref: 'r', title: 'T', memo: undefined },
+				{ id: '1', client_ref: 'r', title: 'T', memo: null, status: 'pending' }
+			)
+		).toBe(true);
+
+		expect(
+			clientRefContentMatches(
+				{ client_ref: 'r', nested: { a: 1, b: undefined } },
+				{ id: '1', client_ref: 'r', nested: { a: 1 }, status: 'pending' }
+			)
+		).toBe(true);
+
+		expect(dropUndefinedKeys({ a: 1, b: undefined, c: { d: undefined, e: 2 } })).toEqual({
+			a: 1,
+			c: { e: 2 }
+		});
+	});
+
+	it('canonicalJson sorts nested keys; preserves __proto__; Dates → ISO', () => {
 		expect(canonicalJson({ b: 1, a: { d: 2, c: 3 } })).toBe(
 			canonicalJson({ a: { c: 3, d: 2 }, b: 1 })
 		);
-		// Nested key not present at top level must still appear
 		expect(canonicalJson({ proposed_values: { qty: 1 } })).toContain('"qty"');
+
+		const withProto = Object.create(null) as Record<string, unknown>;
+		withProto.__proto__ = 'kept';
+		withProto.a = 1;
+		const canon = canonicalize(withProto) as Record<string, unknown>;
+		expect(Object.getPrototypeOf(canon)).toBeNull();
+		expect(canon.__proto__).toBe('kept');
+		expect(canonicalJson(withProto)).toContain('"__proto__"');
+
+		const d = new Date('2026-01-02T03:04:05.000Z');
+		expect(canonicalize(d)).toBe('2026-01-02T03:04:05.000Z');
+		expect(canonicalJson({ at: d })).toBe('{"at":"2026-01-02T03:04:05.000Z"}');
 	});
 
 	it('resolveClientRefConflict: identical → existing; nested diff → CONFLICT', async () => {
