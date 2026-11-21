@@ -100,8 +100,8 @@
 
 ### Review follow-up (same PR)
 
-- M-1 pattern+value redaction; M-2 `errorCodeToAuditResult`; M-3 recursive strip + R-PERM-03 only on mismatch + PR#7 `proposed_by` stamp; M-4 stub moved to `testing.ts` (not barrel); M-5 `internalError` for unexpected throws; M-6 `import:all` not wildcard
-- L-1 `data.warnings` → audit; L-2 `{_redacted:true}` on preview fail; L-3 row shape (`owner_id` NOT NULL, `affected_ids[{table,id}]`, `user_id`/`user_agent`); L-4 digest after strip+redact; L-5 R-PERM-03 on denied; nit reject `P-0000`/`P-01234`
+- Pass 1: M-1…M-6, L-1…L-5, display-id nit
+- Pass 2: M-1 regex in free text + key allowlist (no over-mask); digest keeps body text; `recordRateLimited` strip+mask; M-6 remove fake `import_legacy_*`, `import:all` unlocks §5-5 writes except principles (BE-04 auth note); testing.ts prod throw + eslint; identity key normalize + UUID lower + proto skip; no-ctx → onError
 
 ## 2026-05-29 — Scenario Lab Dashboard Projection
 

@@ -2,19 +2,27 @@
 
 export {
 	assertPreviewHasNoRawBody,
+	BEARER_SECRET_RE,
 	buildArgsPreview,
 	createAuditRecorder,
 	createImmediateWaitUntil,
 	createMemoryAuditSink,
+	DANGEROUS_KEYS,
 	digestArgs,
 	isSecretKeyName,
+	JWT_VALUE_RE,
 	looksLikeSecretValue,
+	maskSecretsForDigest,
+	maskSecretsInString,
+	MCP_KEY_VALUE_RE,
 	normalizeKey,
 	platformWaitUntil,
-	redactArgs,
 	previewOrRedacted,
+	redactArgs,
+	redactArgsForPreview,
 	safeArgsPreview,
 	stableStringify,
+	toSnakeLower,
 	type AuditRecorder,
 	type CreateAuditRecorderOptions,
 	type RecordAuditInput
@@ -35,7 +43,9 @@ export {
 } from './errors';
 export {
 	botProposalIdentity,
+	identityValuesDiffer,
 	IMPERSONATION_KEYS,
+	isIdentityKey,
 	sanitizeIdentityFields,
 	type ImpersonationKey,
 	type SanitizeIdentityResult
@@ -43,7 +53,8 @@ export {
 export {
 	assertToolScope,
 	hasScope,
-	IMPORT_ALL_TOOLS,
+	importAllUnlocksTool,
+	PRINCIPLES_WRITE_TOOLS,
 	requiredScopeForTool,
 	TOOL_REQUIRED_SCOPE
 } from './scopes';

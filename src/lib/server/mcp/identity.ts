@@ -1,16 +1,37 @@
+import { DANGEROUS_KEYS, toSnakeLower } from './audit';
 import type { McpContext } from './types';
 
 /**
- * Client identity / proposer fields that must never be trusted (R-PERM-03).
- * Snake + camel; stripped recursively including nested objects and array items.
+ * Canonical snake_lower identity keys (R-PERM-03).
+ * Matching uses toSnakeLower so ownerId / owner-id / owner_id all hit.
  */
+const IDENTITY_CANONICAL = new Set([
+	'owner_id',
+	'user_id',
+	'source_bot_id',
+	'bot_client_id',
+	'created_by',
+	'proposed_by',
+	'proposed_by_type',
+	'proposed_by_user',
+	'proposed_by_user_id',
+	'proposed_by_bot_id',
+	'proposer_type'
+]);
+
+/** Public list of common aliases (docs / tests). Matching is via toSnakeLower. */
 export const IMPERSONATION_KEYS = [
 	'owner_id',
 	'ownerId',
+	'owner-id',
 	'user_id',
 	'userId',
 	'source_bot_id',
 	'sourceBotId',
+	'bot_client_id',
+	'botClientId',
+	'created_by',
+	'createdBy',
 	'proposed_by',
 	'proposedBy',
 	'proposed_by_type',
@@ -27,24 +48,12 @@ export const IMPERSONATION_KEYS = [
 
 export type ImpersonationKey = (typeof IMPERSONATION_KEYS)[number];
 
-const IDENTITY_KEY_SET = new Set<string>(IMPERSONATION_KEYS);
-
 export type SanitizeIdentityResult = {
-	/** Args with all identity fields stripped (handlers use ctx only). */
 	args: Record<string, unknown>;
-	/**
-	 * True when a sent identity value differed from ctx (design §5-6).
-	 * Same-as-ctx values are stripped without logging R-PERM-03.
-	 */
 	identityMismatch: boolean;
-	/** Rule ids when identityMismatch — `{R-PERM-03}`. */
 	ruleIds: string[];
 };
 
-/**
- * PR #7 / position_proposals_prepare stamp for bot inserts.
- * Handlers must pick fields explicitly — do not spread client args into inserts.
- */
 export function botProposalIdentity(ctx: Pick<McpContext, 'botClientId'>): {
 	proposed_by: string;
 	proposed_by_type: 'bot';
@@ -57,48 +66,49 @@ export function botProposalIdentity(ctx: Pick<McpContext, 'botClientId'>): {
 	};
 }
 
-function expectedForKey(
-	key: string,
+export function isIdentityKey(key: string): boolean {
+	if (DANGEROUS_KEYS.has(key)) return false;
+	return IDENTITY_CANONICAL.has(toSnakeLower(key));
+}
+
+function expectedForCanonical(
+	canonical: string,
 	ctx: Pick<McpContext, 'ownerId' | 'botClientId'>
 ): unknown {
-	switch (key) {
+	switch (canonical) {
 		case 'owner_id':
-		case 'ownerId':
 			return ctx.ownerId;
 		case 'source_bot_id':
-		case 'sourceBotId':
+		case 'bot_client_id':
 		case 'proposed_by':
-		case 'proposedBy':
 		case 'proposed_by_bot_id':
-		case 'proposedByBotId':
+		case 'created_by':
 			return ctx.botClientId;
 		case 'proposed_by_type':
-		case 'proposedByType':
 		case 'proposer_type':
-		case 'proposerType':
 			return 'bot';
 		case 'proposed_by_user':
-		case 'proposedByUser':
 		case 'proposed_by_user_id':
-		case 'proposedByUserId':
 		case 'user_id':
-		case 'userId':
 			return null;
 		default:
 			return undefined;
 	}
 }
 
-function valuesDiffer(sent: unknown, expected: unknown): boolean {
+/** UUID-aware compare (case-insensitive for strings). */
+export function identityValuesDiffer(sent: unknown, expected: unknown): boolean {
 	if (expected === null) {
 		return sent !== null && sent !== undefined;
+	}
+	if (typeof sent === 'string' && typeof expected === 'string') {
+		return sent.toLowerCase() !== expected.toLowerCase();
 	}
 	return sent !== expected;
 }
 
 /**
- * Strip identity fields recursively. Record R-PERM-03 only when a sent value
- * differs from authenticated ctx (same owner_id as ctx → strip only).
+ * Strip identity fields recursively. R-PERM-03 only when a sent value differs from ctx.
  */
 export function sanitizeIdentityFields(
 	args: Record<string, unknown>,
@@ -114,14 +124,16 @@ export function sanitizeIdentityFields(
 			return value;
 		}
 		const obj = value as Record<string, unknown>;
-		const out: Record<string, unknown> = {};
+		const out: Record<string, unknown> = Object.create(null);
 		for (const [key, child] of Object.entries(obj)) {
-			if (IDENTITY_KEY_SET.has(key)) {
-				const expected = expectedForKey(key, ctx);
-				if (valuesDiffer(child, expected)) {
+			if (DANGEROUS_KEYS.has(key)) continue;
+			if (isIdentityKey(key)) {
+				const canonical = toSnakeLower(key);
+				const expected = expectedForCanonical(canonical, ctx);
+				if (identityValuesDiffer(child, expected)) {
 					identityMismatch = true;
 				}
-				continue; // strip — handlers read identity from ctx
+				continue;
 			}
 			out[key] = walk(child);
 		}

@@ -28,7 +28,6 @@ export type ToolCallMeta = {
 };
 
 export type AuditedToolHandler = (input: {
-	/** Identity fields already stripped — use ctx for owner/bot ids. */
 	args: Record<string, unknown>;
 	ctx: McpContext;
 	ruleIds: string[];
@@ -47,9 +46,12 @@ function collectWarnings(
 	return [...(explicit ?? []), ...fromData].filter((w) => w && typeof w.rule === 'string');
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /**
  * Gate a tools/call: identity sanitize → scope check → handler → audit.
- * Later tool tickets (BE-06+) should call this instead of writing audit rows ad hoc.
  */
 export async function runAuditedToolCall(options: {
 	ctx: McpContext;
@@ -57,13 +59,11 @@ export async function runAuditedToolCall(options: {
 	meta: ToolCallMeta;
 	recorder: AuditRecorder;
 	handler: AuditedToolHandler;
-	/** Optional server logger; receives redacted messages only (M-5). */
 	logError?: (message: string) => void;
 }): Promise<McpToolResult> {
 	const { ctx, meta, recorder, handler } = options;
 	const startedAt = meta.startedAt ?? Date.now();
 
-	// L-4 / L-5: strip identity first so denied and ok paths share digest input + R-PERM-03.
 	const sanitized = sanitizeIdentityFields(options.args, ctx);
 	const identityRuleIds = [...sanitized.ruleIds];
 
@@ -87,7 +87,7 @@ export async function runAuditedToolCall(options: {
 
 	try {
 		const outcome = await handler({ args: sanitized.args, ctx, ruleIds: identityRuleIds });
-		const warnings = collectWarnings(outcome.data, outcome.warnings); // L-1
+		const warnings = collectWarnings(outcome.data, outcome.warnings);
 		const allRuleIds = unique([
 			...identityRuleIds,
 			...(outcome.ruleIds ?? []),
@@ -115,7 +115,7 @@ export async function runAuditedToolCall(options: {
 		});
 	} catch (err) {
 		if (err instanceof McpToolError) {
-			const result = errorCodeToAuditResult(err.code); // M-2
+			const result = errorCodeToAuditResult(err.code);
 			recorder.record({
 				ctx,
 				userId: meta.userId,
@@ -124,10 +124,7 @@ export async function runAuditedToolCall(options: {
 				args: sanitized.args,
 				result,
 				errorCode: err.code,
-				ruleIds: unique([
-					...identityRuleIds,
-					...err.errors.map((e) => e.rule)
-				]),
+				ruleIds: unique([...identityRuleIds, ...err.errors.map((e) => e.rule)]),
 				durationMs: Date.now() - startedAt,
 				ip: meta.ip,
 				userAgent: meta.userAgent
@@ -135,7 +132,6 @@ export async function runAuditedToolCall(options: {
 			return fromMcpToolError(err);
 		}
 
-		// M-5: never rethrow to the client — internalError envelope only.
 		const redacted = redactedErrorMessage(err);
 		options.logError?.(redacted);
 		recorder.record({
@@ -155,7 +151,10 @@ export async function runAuditedToolCall(options: {
 	}
 }
 
-/** Record rate_limited after auth knows the bot (BE-04 hooks here). */
+/**
+ * Record rate_limited after auth knows the bot (BE-04 hooks here).
+ * Same identity-strip + mask pipeline as other paths — owner_id must not remain in preview.
+ */
 export function recordRateLimited(options: {
 	recorder: AuditRecorder;
 	ctx: Pick<McpContext, 'botClientId' | 'ownerId'>;
@@ -165,13 +164,16 @@ export function recordRateLimited(options: {
 	userAgent?: string | null;
 	args?: unknown;
 }): void {
+	const raw = isPlainObject(options.args) ? options.args : {};
+	const sanitized = sanitizeIdentityFields(raw, options.ctx);
 	options.recorder.record({
 		ctx: options.ctx,
 		tool: options.tool ?? '(auth)',
 		requestId: options.requestId,
-		args: options.args ?? {},
+		args: sanitized.args,
 		result: 'rate_limited',
 		errorCode: 'RATE_LIMITED',
+		ruleIds: sanitized.ruleIds,
 		ip: options.ip,
 		userAgent: options.userAgent
 	});
@@ -180,6 +182,7 @@ export function recordRateLimited(options: {
 export function createDefaultToolAudit(options: {
 	sink: AuditSink;
 	waitUntil: WaitUntilFn;
+	onError?: (err: unknown) => void;
 }): AuditRecorder {
 	return createAuditRecorder(options);
 }

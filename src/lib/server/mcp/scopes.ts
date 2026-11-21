@@ -2,8 +2,11 @@ import { forbiddenScopeError } from './errors';
 import type { McpContext, McpToolErrorResult } from './types';
 
 /**
- * Tool → required scope mapping (design §5-2).
- * Unmapped tools are treated as out of catalog → denied.
+ * Tool → required scope mapping (design §5-2 / §5-5).
+ * No inventing `import_legacy_*` tools — I-7 uses existing write tools + `import:all` key.
+ *
+ * BE-04 note: profile=importer + mandatory expiry, and migration-mode wiring for
+ * `import:all` keys, belong to BE-04 auth / BE-03 validation — not implemented here.
  */
 export const TOOL_REQUIRED_SCOPE: Readonly<Record<string, string>> = {
 	whoami: 'read',
@@ -18,7 +21,7 @@ export const TOOL_REQUIRED_SCOPE: Readonly<Record<string, string>> = {
 	list_decisions: 'read',
 	list_events: 'read',
 	list_principle_proposals: 'read',
-	upsert_report: 'reports:daily_brief', // kind-specific refinement is BE-07
+	upsert_report: 'reports:daily_brief',
 	archive_report: 'reports:daily_brief',
 	propose_position_change: 'positions:propose',
 	cancel_proposal: 'positions:propose',
@@ -28,21 +31,17 @@ export const TOOL_REQUIRED_SCOPE: Readonly<Record<string, string>> = {
 	cancel_principle_proposal: 'principles:propose',
 	add_journal_entry: 'journal:write',
 	update_journal_entry: 'journal:write',
-	archive_journal_entry: 'journal:write',
-	/** Importer-only migration tools (pre-M5). Require `import:all` explicitly — not a wildcard. */
-	import_legacy_positions: 'import:all',
-	import_legacy_journal: 'import:all'
+	archive_journal_entry: 'journal:write'
 };
 
 /**
- * Tools that accept `import:all` as their required scope (M-6).
- * `import:all` must NOT satisfy other scopes (e.g. principles:propose).
+ * Principles write tools — `import:all` must NOT unlock these (M-6).
+ * Direct principles writes stay finance-manager + principles:propose only.
  */
-export const IMPORT_ALL_TOOLS = new Set(
-	Object.entries(TOOL_REQUIRED_SCOPE)
-		.filter(([, scope]) => scope === 'import:all')
-		.map(([tool]) => tool)
-);
+export const PRINCIPLES_WRITE_TOOLS = new Set([
+	'propose_principle_change',
+	'cancel_principle_proposal'
+]);
 
 export function requiredScopeForTool(tool: string): string | null {
 	return TOOL_REQUIRED_SCOPE[tool] ?? null;
@@ -53,8 +52,16 @@ export function hasScope(ctx: Pick<McpContext, 'scopes'>, scope: string): boolea
 }
 
 /**
- * R-PERM-04: out-of-scope or unknown tool → FORBIDDEN_SCOPE (MCP isError, not HTTP 403).
- * Returns null when allowed.
+ * Whether `import:all` may unlock this tool (I-7 migration via existing write tools).
+ * Not a full wildcard: principles write tools stay excluded.
+ */
+export function importAllUnlocksTool(tool: string): boolean {
+	return !PRINCIPLES_WRITE_TOOLS.has(tool);
+}
+
+/**
+ * R-PERM-04: out-of-scope or unknown tool → FORBIDDEN_SCOPE.
+ * `import:all` unlocks existing §5-5 tools except principles writes (M-6).
  */
 export function assertToolScope(
 	ctx: Pick<McpContext, 'scopes'>,
@@ -64,8 +71,11 @@ export function assertToolScope(
 	if (required === null) {
 		return forbiddenScopeError(tool, '(unregistered)');
 	}
-	if (!hasScope(ctx, required)) {
-		return forbiddenScopeError(tool, required);
+	if (hasScope(ctx, required)) {
+		return null;
 	}
-	return null;
+	if (hasScope(ctx, 'import:all') && importAllUnlocksTool(tool)) {
+		return null;
+	}
+	return forbiddenScopeError(tool, required);
 }

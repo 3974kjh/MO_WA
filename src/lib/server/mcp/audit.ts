@@ -11,7 +11,10 @@ import type {
 	WaitUntilFn
 } from './types';
 
-/** Long-text / body fields: preview stores length only (design §5-6). */
+/** Prototype-pollution keys — never copy or recurse into these. */
+export const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/** Preview only: long-text / body fields store length (design §5-6). Digest keeps original text. */
 const BODY_LENGTH_ONLY_KEYS = new Set([
 	'body',
 	'body_md',
@@ -27,28 +30,41 @@ const BODY_LENGTH_ONLY_KEYS = new Set([
 ]);
 
 /**
- * Normalized key substrings that mark secrets (M-1).
- * Key is lowercased with `_` / `-` removed before matching.
+ * Secret key tokens (after snake_lower normalization).
+ * Match exact key or separator-bounded segment — not substring (excludes tokens_count).
  */
-const SECRET_KEY_PATTERNS = [
-	'token',
+const SECRET_KEY_TOKENS = [
+	'pass',
+	'pwd',
+	'password',
 	'secret',
-	'passw',
+	'private_key',
+	'mcp_key',
 	'authorization',
-	'cookie',
-	'apikey',
-	'credential',
-	'session',
-	'bearer',
-	'pepper',
-	'keyhash'
+	'api_key',
+	'key_hash',
+	'access_token',
+	'refresh_token',
+	'id_token',
+	'client_secret'
 ] as const;
 
+/** Explicit non-secret keys that must not be treated as secret names. */
+const SECRET_KEY_EXCLUSIONS = new Set(['session_date', 'tokens_count', 'token_count']);
+
 const PREVIEW_MAX_BYTES = 2048;
-const MCP_KEY_PREFIX = 'mowa_';
+
+/** MCP API key in free text. */
+export const MCP_KEY_VALUE_RE = /mowa_[a-z0-9]{10}_\S+/g;
+/** JWT in free text. */
+export const JWT_VALUE_RE = /\beyJ[\w-]+\.[\w-]+\.[\w-]+/g;
+/**
+ * Bearer only when followed by MCP key or JWT — not "Bearer market…".
+ */
+export const BEARER_SECRET_RE =
+	/Bearer\s+(?:mowa_[a-z0-9]{10}_\S+|eyJ[\w-]+\.[\w-]+\.[\w-]+)/gi;
 
 export type BuildArgsPreviewOptions = {
-	/** Max UTF-8 byte size of serialized preview (default 2KB). */
 	maxBytes?: number;
 };
 
@@ -60,29 +76,57 @@ function utf8Bytes(s: string): number {
 	return new TextEncoder().encode(s).length;
 }
 
-/** Lowercase + strip `_` / `-` for pattern matching (M-1). */
+function emptyObject(): Record<string, unknown> {
+	return Object.create(null) as Record<string, unknown>;
+}
+
+/** camelCase / kebab → snake_lower for identity & secret key matching. */
+export function toSnakeLower(key: string): string {
+	return key
+		.replace(/-/g, '_')
+		.replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+		.toLowerCase();
+}
+
+/** @deprecated use toSnakeLower — kept for tests that called normalizeKey. */
 export function normalizeKey(key: string): string {
-	return key.toLowerCase().replace(/[_-]/g, '');
+	return toSnakeLower(key).replace(/_/g, '');
 }
 
 export function isSecretKeyName(key: string): boolean {
-	const norm = normalizeKey(key);
-	return SECRET_KEY_PATTERNS.some((p) => norm.includes(p));
-}
+	const snake = toSnakeLower(key);
+	if (SECRET_KEY_EXCLUSIONS.has(snake)) return false;
 
-/** Value-shape secret detectors (M-1). */
-export function looksLikeSecretValue(value: unknown): boolean {
-	if (typeof value !== 'string' || value.length < 8) return false;
-	const trimmed = value.trim();
-	if (trimmed.startsWith('eyJ')) return true; // JWT
-	if (/^Bearer\s+\S+/i.test(trimmed)) return true;
-	if (trimmed.startsWith(MCP_KEY_PREFIX)) return true;
+	const segments = snake.split('_').filter(Boolean);
+	for (const token of SECRET_KEY_TOKENS) {
+		const tokenSegs = token.split('_');
+		if (snake === token) return true;
+		// Separator-bounded consecutive segment match (e.g. user_password → password)
+		for (let i = 0; i <= segments.length - tokenSegs.length; i++) {
+			if (tokenSegs.every((t, j) => segments[i + j] === t)) return true;
+		}
+	}
 	return false;
 }
 
-/**
- * Stable JSON for digests: sort object keys recursively.
- */
+/** Mask MCP keys / JWTs / Bearer+secret wherever they appear in a string. */
+export function maskSecretsInString(value: string): string {
+	return value
+		.replace(BEARER_SECRET_RE, 'Bearer [REDACTED]')
+		.replace(MCP_KEY_VALUE_RE, '[REDACTED]')
+		.replace(JWT_VALUE_RE, '[REDACTED]');
+}
+
+export function looksLikeSecretValue(value: unknown): boolean {
+	if (typeof value !== 'string' || value.length < 8) return false;
+	MCP_KEY_VALUE_RE.lastIndex = 0;
+	JWT_VALUE_RE.lastIndex = 0;
+	BEARER_SECRET_RE.lastIndex = 0;
+	return (
+		MCP_KEY_VALUE_RE.test(value) || JWT_VALUE_RE.test(value) || BEARER_SECRET_RE.test(value)
+	);
+}
+
 export function stableStringify(value: unknown): string {
 	if (value === undefined) return 'null';
 	if (value === null || typeof value !== 'object') return JSON.stringify(value);
@@ -90,80 +134,110 @@ export function stableStringify(value: unknown): string {
 		return `[${value.map((v) => stableStringify(v)).join(',')}]`;
 	}
 	const obj = value as Record<string, unknown>;
-	const keys = Object.keys(obj).sort();
+	const keys = Object.keys(obj)
+		.filter((k) => !DANGEROUS_KEYS.has(k))
+		.sort();
 	return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(',')}}`;
 }
 
 /**
- * Deep-redact for preview + digest (L-4: one pipeline after identity strip).
+ * Identity-stripped args → secret-masked tree for digests.
+ * Keeps body_md / summary text (after in-string secret masking). Does not use {length}.
  */
-export function redactArgs(value: unknown, key = 'root'): unknown {
-	if (isSecretKeyName(key) || looksLikeSecretValue(value)) {
-		return { redacted: true };
-	}
-	const lower = key.toLowerCase();
-	if (BODY_LENGTH_ONLY_KEYS.has(lower) || lower.endsWith('_md') || lower.endsWith('_body')) {
-		if (typeof value === 'string') return { length: value.length };
-		if (value == null) return { length: 0 };
-		return { length: utf8Bytes(stableStringify(value)) };
-	}
+export function maskSecretsForDigest(value: unknown, key = 'root'): unknown {
+	if (DANGEROUS_KEYS.has(key)) return undefined;
+	if (isSecretKeyName(key)) return { redacted: true };
+	if (typeof value === 'string') return maskSecretsInString(value);
 	if (Array.isArray(value)) {
-		return value.map((item, i) => redactArgs(item, String(i)));
+		return value.map((item, i) => maskSecretsForDigest(item, String(i)));
 	}
 	if (isPlainObject(value)) {
-		const out: Record<string, unknown> = {};
-		for (const [k, v] of Object.entries(value)) out[k] = redactArgs(v, k);
+		const out = emptyObject();
+		for (const [k, v] of Object.entries(value)) {
+			if (DANGEROUS_KEYS.has(k)) continue;
+			out[k] = maskSecretsForDigest(v, k);
+		}
 		return out;
 	}
 	return value;
 }
 
 /**
- * Build args_preview for mcp_audit_log.
- * - Never includes raw request body / long markdown — length only.
- * - Never includes secret values (key patterns + value shapes).
- * - Truncated to 2KB.
+ * Preview tree: secret-mask first, then body fields → {length} (design §5-6).
  */
+export function redactArgsForPreview(value: unknown, key = 'root'): unknown {
+	if (DANGEROUS_KEYS.has(key)) return undefined;
+	if (isSecretKeyName(key)) return { redacted: true };
+
+	const lower = toSnakeLower(key);
+	if (BODY_LENGTH_ONLY_KEYS.has(lower) || lower.endsWith('_md') || lower.endsWith('_body')) {
+		if (typeof value === 'string') {
+			const masked = maskSecretsInString(value);
+			return { length: masked.length };
+		}
+		if (value == null) return { length: 0 };
+		return { length: utf8Bytes(stableStringify(maskSecretsForDigest(value, key))) };
+	}
+
+	if (typeof value === 'string') return maskSecretsInString(value);
+	if (Array.isArray(value)) {
+		return value.map((item, i) => redactArgsForPreview(item, String(i)));
+	}
+	if (isPlainObject(value)) {
+		const out = emptyObject();
+		for (const [k, v] of Object.entries(value)) {
+			if (DANGEROUS_KEYS.has(k)) continue;
+			out[k] = redactArgsForPreview(v, k);
+		}
+		return out;
+	}
+	return value;
+}
+
+/** @deprecated alias — prefer redactArgsForPreview */
+export const redactArgs = redactArgsForPreview;
+
 export function buildArgsPreview(
 	args: unknown,
 	options: BuildArgsPreviewOptions = {}
 ): Record<string, unknown> {
 	const maxBytes = options.maxBytes ?? PREVIEW_MAX_BYTES;
 	const root = args == null ? {} : isPlainObject(args) ? args : { value: args };
-	const redacted = redactArgs(root) as Record<string, unknown>;
+	const redacted = redactArgsForPreview(root) as Record<string, unknown>;
 
 	let json = JSON.stringify(redacted);
 	if (utf8Bytes(json) <= maxBytes) return redacted;
 
-	const truncated: Record<string, unknown> = {
-		_truncated: true,
-		_bytes: utf8Bytes(json),
-		_keys: Object.keys(redacted).sort()
-	};
+	const truncated = emptyObject();
+	truncated._truncated = true;
+	truncated._bytes = utf8Bytes(json);
+	truncated._keys = Object.keys(redacted).sort();
 	json = JSON.stringify(truncated);
 	if (utf8Bytes(json) > maxBytes) {
-		return { _truncated: true, _bytes: utf8Bytes(JSON.stringify(redacted)) };
+		const tiny = emptyObject();
+		tiny._truncated = true;
+		tiny._bytes = utf8Bytes(JSON.stringify(redacted));
+		return tiny;
 	}
 	return truncated;
 }
 
 /**
- * Digest = sha256(sorted JSON after redact) (L-4).
- * Callers must pass identity-stripped args so denied/ok share the same pipeline.
+ * Digest = sha256(sorted JSON after secret-mask). Body text kept (not {length}).
+ * Callers must pass identity-stripped args.
  */
 export async function digestArgs(args: unknown): Promise<string> {
-	const redacted = redactArgs(args == null ? {} : args);
-	return sha256Hex(stableStringify(redacted));
+	const masked = maskSecretsForDigest(args == null ? {} : args);
+	return sha256Hex(stableStringify(masked));
 }
 
 export type RecordAuditInput = {
 	actorType?: McpActorType;
-	/** Required for tool-call audits — owner_id NOT NULL in mcp_audit_log. */
-	ctx: Pick<McpContext, 'botClientId' | 'ownerId'>;
+	/** When missing, row is not inserted — onError / Workers log only. */
+	ctx?: Pick<McpContext, 'botClientId' | 'ownerId'> | null;
 	userId?: string | null;
 	tool: string;
 	requestId?: string | null;
-	/** Prefer identity-stripped args (same input for digest + preview). */
 	args?: unknown;
 	result: McpAuditResult;
 	errorCode?: McpErrorCode | null;
@@ -200,7 +274,7 @@ export function createAuditRecorder(options: CreateAuditRecorderOptions): AuditR
 
 	return {
 		record(input: RecordAuditInput) {
-			schedule(writeAuditRow(options.sink, input));
+			schedule(writeAuditRow(options.sink, input, options.onError));
 		},
 		async drain() {
 			await Promise.all([...pending]);
@@ -208,7 +282,21 @@ export function createAuditRecorder(options: CreateAuditRecorderOptions): AuditR
 	};
 }
 
-async function writeAuditRow(sink: AuditSink, input: RecordAuditInput): Promise<void> {
+async function writeAuditRow(
+	sink: AuditSink,
+	input: RecordAuditInput,
+	onError?: (err: unknown) => void
+): Promise<void> {
+	if (!input.ctx?.ownerId) {
+		// No authenticated owner — Workers log only (design §5-6 auth-fail path).
+		onError?.(
+			new Error(
+				`mcp_audit_skip: no ctx for tool=${input.tool} result=${input.result}`
+			)
+		);
+		return;
+	}
+
 	const warnings = input.warnings ?? [];
 	const ruleIds = uniqueStrings([
 		...(input.ruleIds ?? []),
@@ -221,7 +309,7 @@ async function writeAuditRow(sink: AuditSink, input: RecordAuditInput): Promise<
 	const row: McpAuditLogRow = {
 		owner_id: input.ctx.ownerId,
 		actor_type: input.actorType ?? 'bot',
-		bot_client_id: input.ctx.botClientId,
+		bot_client_id: input.ctx.botClientId ?? null,
 		user_id: input.userId ?? null,
 		tool: input.tool,
 		request_id: input.requestId ?? null,
@@ -244,10 +332,6 @@ function uniqueStrings(values: string[]): string[] {
 	return [...new Set(values.filter(Boolean))];
 }
 
-/**
- * L-2: if preview validation fails, keep the audit row with a redacted marker
- * instead of dropping the insert.
- */
 export function previewOrRedacted(
 	preview: Record<string, unknown>,
 	originalArgs: unknown
@@ -256,7 +340,9 @@ export function previewOrRedacted(
 		assertPreviewHasNoRawBody(preview, originalArgs);
 		return preview;
 	} catch {
-		return { _redacted: true };
+		const marker = emptyObject();
+		marker._redacted = true;
+		return marker;
 	}
 }
 
@@ -265,7 +351,8 @@ export function safeArgsPreview(args: unknown): Record<string, unknown> {
 }
 
 /**
- * Guard: preview must not embed long bodies or secret values from original args.
+ * Guard: preview must not embed raw bodies or unmasked secrets.
+ * Body fields are expected as {length} in preview.
  */
 export function assertPreviewHasNoRawBody(
 	preview: Record<string, unknown>,
@@ -273,19 +360,25 @@ export function assertPreviewHasNoRawBody(
 ): void {
 	const serialized = JSON.stringify(preview);
 	const scan = (value: unknown, key: string) => {
+		if (DANGEROUS_KEYS.has(key)) return;
 		if (typeof value === 'string') {
+			const lower = toSnakeLower(key);
 			if (
 				value.length >= 24 &&
-				(BODY_LENGTH_ONLY_KEYS.has(key.toLowerCase()) ||
-					key.toLowerCase().endsWith('_md') ||
-					key.toLowerCase().endsWith('_body')) &&
+				(BODY_LENGTH_ONLY_KEYS.has(lower) ||
+					lower.endsWith('_md') ||
+					lower.endsWith('_body')) &&
 				serialized.includes(value)
 			) {
 				throw new Error('args_preview must not contain raw body content');
 			}
+			if (isSecretKeyName(key) && value.length >= 8 && serialized.includes(value)) {
+				throw new Error('args_preview must not contain secret values');
+			}
+			MCP_KEY_VALUE_RE.lastIndex = 0;
+			JWT_VALUE_RE.lastIndex = 0;
 			if (
-				(isSecretKeyName(key) || looksLikeSecretValue(value)) &&
-				value.length >= 8 &&
+				(MCP_KEY_VALUE_RE.test(value) || JWT_VALUE_RE.test(value)) &&
 				serialized.includes(value)
 			) {
 				throw new Error('args_preview must not contain secret values');

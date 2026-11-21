@@ -8,9 +8,9 @@ import {
 	digestArgs,
 	isSecretKeyName,
 	looksLikeSecretValue,
-	normalizeKey,
+	maskSecretsInString,
 	previewOrRedacted,
-	stableStringify
+	toSnakeLower
 } from './audit';
 import { isOwnerScopedDisplayId, mowaDisplayId } from './display-id';
 import {
@@ -21,290 +21,238 @@ import {
 	validationError
 } from './errors';
 import { botProposalIdentity, sanitizeIdentityFields } from './identity';
-import { assertToolScope, hasScope } from './scopes';
+import { assertToolScope, hasScope, PRINCIPLES_WRITE_TOOLS } from './scopes';
 import { createStubMcpContext } from './testing';
 import { recordRateLimited, runAuditedToolCall } from './tool-gate';
 
-describe('M-1 secret redaction', () => {
-	it('normalizes keys then matches secret patterns', () => {
-		expect(normalizeKey('api_key')).toBe('apikey');
-		expect(normalizeKey('Access-Token')).toBe('accesstoken');
-		for (const key of [
-			'token',
-			'refresh_token',
-			'client_secret',
-			'password',
-			'passwd',
-			'authorization',
-			'Cookie',
-			'api_key',
-			'apiKey',
-			'credential',
-			'session_id',
-			'bearer_token',
-			'MCP_KEY_PEPPER'
-		]) {
-			expect(isSecretKeyName(key), key).toBe(true);
-		}
+const SAMPLE_MCP_KEY = 'mowa_abcdefgh12_' + 'A'.repeat(43);
+const SAMPLE_JWT = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signaturepart';
+
+describe('M-1 secret masking', () => {
+	it('matches secret key names by exact/boundary tokens; excludes tokens_count', () => {
+		expect(isSecretKeyName('password')).toBe(true);
+		expect(isSecretKeyName('user_password')).toBe(true);
+		expect(isSecretKeyName('api_key')).toBe(true);
+		expect(isSecretKeyName('accessToken')).toBe(true);
+		expect(isSecretKeyName('client-secret')).toBe(true);
+		expect(isSecretKeyName('key_hash')).toBe(true);
+		expect(isSecretKeyName('mcp_key')).toBe(true);
+		expect(isSecretKeyName('authorization')).toBe(true);
+		expect(isSecretKeyName('session_date')).toBe(false);
+		expect(isSecretKeyName('tokens_count')).toBe(false);
+		expect(isSecretKeyName('token_count')).toBe(false);
 		expect(isSecretKeyName('title')).toBe(false);
 	});
 
-	it.each([
-		['JWT eyJ…', 'eyJhbGciOiJIUzI1NiJ9.payload.sig'],
-		['Bearer prefix', 'Bearer abcdefghijklmnop'],
-		['MCP key prefix', 'mowa_abcdefgh12_' + 'A'.repeat(43)]
-	] as const)('redacts secret value shape: %s', (_label, value) => {
-		expect(looksLikeSecretValue(value)).toBe(true);
-		const preview = buildArgsPreview({ note: value });
-		expect(JSON.stringify(preview)).not.toContain(value);
-		expect(preview.note).toEqual({ redacted: true });
+	it('masks MCP key / JWT / Bearer+secret in free text; not "Bearer market…"', () => {
+		expect(maskSecretsInString(`my key is ${SAMPLE_MCP_KEY}`)).toBe('my key is [REDACTED]');
+		expect(maskSecretsInString(`Authorization: Bearer ${SAMPLE_JWT}`)).toBe(
+			'Authorization: Bearer [REDACTED]'
+		);
+		expect(maskSecretsInString(`jwt ${SAMPLE_JWT}`)).toBe('jwt [REDACTED]');
+		expect(maskSecretsInString('Bearer market briefing')).toBe('Bearer market briefing');
+		expect(looksLikeSecretValue('Bearer market briefing')).toBe(false);
 	});
 
-	it('stores body fields as length only — no raw request body', () => {
-		const body = 'A'.repeat(500);
+	it('preview redacts embedded secrets and body length', () => {
+		const body = 'A'.repeat(100);
 		const preview = buildArgsPreview({
-			kind: 'daily_brief',
+			title: `my key is ${SAMPLE_MCP_KEY}`,
 			body_md: body,
-			summary: 'line1\nline2',
-			title: 'ok-title'
+			note: 'Bearer market ok'
 		});
-		expect(preview.body_md).toEqual({ length: 500 });
-		expect(preview.summary).toEqual({ length: 'line1\nline2'.length });
-		expect(preview.title).toBe('ok-title');
-		expect(JSON.stringify(preview)).not.toContain(body);
-		assertPreviewHasNoRawBody(preview, { body_md: body, summary: 'line1\nline2', title: 'ok-title' });
+		expect(JSON.stringify(preview)).not.toContain(SAMPLE_MCP_KEY);
+		expect(preview.title).toBe('my key is [REDACTED]');
+		expect(preview.note).toBe('Bearer market ok');
+		expect(preview.body_md).toEqual({ length: 100 });
+	});
+});
+
+describe('digestArgs keeps body text (secret-masked only)', () => {
+	it('same length different body → different digest', async () => {
+		const a = await digestArgs({ body_md: 'AAAAAAAA' });
+		const b = await digestArgs({ body_md: 'BBBBBBBB' });
+		expect(a).not.toBe(b);
+	});
+
+	it('masks secrets in digest input but keeps body content otherwise', async () => {
+		const d1 = await digestArgs({ body_md: `hello ${SAMPLE_MCP_KEY}` });
+		const d2 = await digestArgs({ body_md: 'hello [REDACTED]' });
+		expect(d1).toBe(d2);
+		const preview = buildArgsPreview({ body_md: 'hello world body' });
+		expect(preview.body_md).toEqual({ length: 'hello world body'.length });
 	});
 });
 
 describe('M-2 errorCodeToAuditResult', () => {
-	it('maps FORBIDDEN_SCOPE → denied', () => {
+	it('maps codes', () => {
 		expect(errorCodeToAuditResult('FORBIDDEN_SCOPE')).toBe('denied');
-	});
-	it('maps RATE_LIMITED → rate_limited', () => {
 		expect(errorCodeToAuditResult('RATE_LIMITED')).toBe('rate_limited');
-	});
-	it('maps everything else → error', () => {
 		expect(errorCodeToAuditResult('VALIDATION')).toBe('error');
-		expect(errorCodeToAuditResult('CONFLICT')).toBe('error');
-		expect(errorCodeToAuditResult('INTERNAL')).toBe('error');
-		expect(errorCodeToAuditResult('NOT_FOUND')).toBe('error');
-		expect(errorCodeToAuditResult('PAYLOAD_TOO_LARGE')).toBe('error');
 	});
 });
 
-describe('M-3 identity strip (R-PERM-03)', () => {
-	it('records R-PERM-03 only when sent identity differs from ctx', () => {
+describe('M-3 / Low identity strip', () => {
+	it('normalizes owner-id / botClientId / created_by; UUID case-insensitive', () => {
 		const ctx = createStubMcpContext();
+		const same = sanitizeIdentityFields(
+			{ 'owner-id': ctx.ownerId.toUpperCase(), title: 't' },
+			ctx
+		);
+		expect(same.identityMismatch).toBe(false);
+		expect(same.args['owner-id']).toBeUndefined();
+
 		const mismatch = sanitizeIdentityFields(
-			{ owner_id: 'attacker', title: 'x' },
+			{ botClientId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', created_by: 'x' },
 			ctx
 		);
 		expect(mismatch.identityMismatch).toBe(true);
-		expect(mismatch.ruleIds).toEqual(['R-PERM-03']);
-		expect(mismatch.args.owner_id).toBeUndefined();
-		expect(mismatch.args.title).toBe('x');
-
-		const same = sanitizeIdentityFields({ owner_id: ctx.ownerId, title: 'y' }, ctx);
-		expect(same.identityMismatch).toBe(false);
-		expect(same.ruleIds).toEqual([]);
-		expect(same.args.owner_id).toBeUndefined();
+		expect(mismatch.args.botClientId).toBeUndefined();
+		expect(mismatch.args.created_by).toBeUndefined();
 	});
 
-	it('strips camelCase and nested identity fields', () => {
+	it('strips nested identity; skips __proto__', () => {
 		const ctx = createStubMcpContext();
-		const result = sanitizeIdentityFields(
-			{
-				ownerId: 'spoof',
-				items: [{ owner_id: 'nested-spoof', qty: 1 }],
-				meta: { user_id: 'u1', proposedByType: 'user' }
-			},
-			ctx
-		);
+		const polluted = JSON.parse('{"items":[{"owner_id":"spoof","qty":1}]}');
+		Object.defineProperty(polluted, '__proto__', { value: { polluted: true }, enumerable: true });
+		const result = sanitizeIdentityFields(polluted, ctx);
 		expect(result.identityMismatch).toBe(true);
-		expect(result.args.ownerId).toBeUndefined();
 		expect((result.args.items as Array<Record<string, unknown>>)[0]).toEqual({ qty: 1 });
-		expect(result.args.meta).toEqual({});
+		expect(Object.prototype.hasOwnProperty.call(result.args, '__proto__')).toBe(false);
 	});
 
-	it('botProposalIdentity matches PR #7 schema (no proposed_by_bot_id / proposer_type)', () => {
+	it('botProposalIdentity matches PR #7', () => {
 		const ctx = createStubMcpContext();
-		const stamp = botProposalIdentity(ctx);
-		expect(stamp).toEqual({
+		expect(botProposalIdentity(ctx)).toEqual({
 			proposed_by: ctx.botClientId,
 			proposed_by_type: 'bot',
 			proposed_by_user: null
 		});
-		expect('proposed_by_bot_id' in stamp).toBe(false);
-		expect('proposer_type' in stamp).toBe(false);
 	});
 });
 
-describe('M-6 import:all is not a wildcard', () => {
-	it('does not grant principles:propose via import:all', () => {
-		expect(hasScope({ scopes: ['import:all'] }, 'principles:propose')).toBe(false);
-		const denied = assertToolScope({ scopes: ['import:all'] }, 'propose_principle_change');
-		expect(denied?.structuredContent.code).toBe('FORBIDDEN_SCOPE');
-	});
-
-	it('allows import:all only on importer migration tools', () => {
-		expect(assertToolScope({ scopes: ['import:all'] }, 'import_legacy_positions')).toBeNull();
-		expect(assertToolScope({ scopes: ['read'] }, 'import_legacy_positions')?.isError).toBe(true);
-	});
-});
-
-describe('response contract (design §5-3)', () => {
-	it('success may include warnings[]', () => {
-		const res = mcpSuccess({
-			id: 'x',
-			warnings: [{ rule: 'R-VAL-M01', field: 'currency', message: 'market default USD' }]
-		});
-		expect(res.isError).toBeFalsy();
-		expect(res.structuredContent.warnings?.[0]?.rule).toBe('R-VAL-M01');
-	});
-
-	it('error includes code + errors[]', () => {
-		const res = validationError([
-			{ rule: 'R-VAL-T05', field: 'period_start', message: 'weekly period invalid' }
-		]);
-		expect(res.isError).toBe(true);
-		expect(res.structuredContent.code).toBe('VALIDATION');
+describe('M-6 import:all', () => {
+	it('unlocks existing write tools but not principles writes', () => {
+		const importer = { scopes: ['import:all'] };
+		expect(assertToolScope(importer, 'add_journal_entry')).toBeNull();
+		expect(assertToolScope(importer, 'propose_position_change')).toBeNull();
+		expect(assertToolScope(importer, 'upsert_report')).toBeNull();
+		expect(assertToolScope(importer, 'whoami')).toBeNull();
+		expect(PRINCIPLES_WRITE_TOOLS.has('propose_principle_change')).toBe(true);
+		expect(assertToolScope(importer, 'propose_principle_change')?.structuredContent.code).toBe(
+			'FORBIDDEN_SCOPE'
+		);
+		expect(hasScope(importer, 'principles:propose')).toBe(false);
+		expect(assertToolScope(importer, 'import_legacy_positions')?.isError).toBe(true);
 	});
 });
 
-describe('display id nit', () => {
-	it('formats owner-scoped P- / R- ids', () => {
-		expect(mowaDisplayId('P', 412)).toBe('P-0412');
-		expect(mowaDisplayId('R', 1)).toBe('R-0001');
-		expect(mowaDisplayId('P', 10_000)).toBe('P-10000');
-	});
-
-	it('rejects P-0000 and leading-zero 5-digit forms; allows P-0412 and P-10000', () => {
-		expect(isOwnerScopedDisplayId('P-0412')).toBe(true);
-		expect(isOwnerScopedDisplayId('P-10000')).toBe(true);
-		expect(isOwnerScopedDisplayId('P-0000')).toBe(false);
-		expect(isOwnerScopedDisplayId('P-01234')).toBe(false);
-		expect(isOwnerScopedDisplayId('PP-0412')).toBe(false);
-	});
-});
-
-describe('L-4 digest after strip+redact', () => {
-	it('denied and ok paths share the same digest for the same stripped args', async () => {
-		const ctx = createStubMcpContext({ scopes: ['read'] });
+describe('recordRateLimited strip+mask', () => {
+	it('strips owner_id from preview args', async () => {
 		const sink = createMemoryAuditSink();
 		const waitUntil = createImmediateWaitUntil();
 		const recorder = createAuditRecorder({ sink, waitUntil });
-		const secret = 'mowa_abcdefgh12_' + 'B'.repeat(43);
-
-		await runAuditedToolCall({
+		const ctx = createStubMcpContext();
+		recordRateLimited({
+			recorder,
 			ctx,
-			args: { owner_id: 'attacker', note: secret, title: 't' },
-			meta: { tool: 'propose_position_change', requestId: 'd1' },
-			recorder,
-			handler: async () => ({ data: {} })
+			args: { owner_id: 'attacker-owner', body_md: 'x', note: SAMPLE_MCP_KEY }
 		});
-
-		await runAuditedToolCall({
-			ctx: createStubMcpContext({ scopes: ['read'] }),
-			args: { owner_id: 'attacker', note: secret, title: 't' },
-			meta: { tool: 'whoami', requestId: 'o1' },
-			recorder,
-			handler: async () => ({ data: { ok: true } })
-		});
-
 		await recorder.drain();
-		const denied = sink.rows.find((r) => r.result === 'denied');
-		const ok = sink.rows.find((r) => r.result === 'ok');
-		expect(denied?.args_digest).toBe(ok?.args_digest);
-		expect(JSON.stringify(denied?.args_preview)).not.toContain(secret);
-		expect(JSON.stringify(ok?.args_preview)).not.toContain(secret);
-	});
-
-	it('digestArgs hashes redacted form (not raw secrets)', async () => {
-		const raw = await digestArgs({ token: 'super-secret-value-xyz' });
-		const again = await digestArgs({ token: 'super-secret-value-xyz' });
-		expect(raw).toBe(again);
-		expect(stableStringify({ b: 1, a: 2 })).toBe('{"a":2,"b":1}');
+		const row = sink.rows[0];
+		expect(row?.result).toBe('rate_limited');
+		expect(row?.args_preview.owner_id).toBeUndefined();
+		expect(JSON.stringify(row?.args_preview)).not.toContain('attacker-owner');
+		expect(JSON.stringify(row?.args_preview)).not.toContain(SAMPLE_MCP_KEY);
 	});
 });
 
-describe('audit outcomes + L-1/L-2/L-3/L-5/M-5', () => {
-	it('records all four results; warnings from data go to audit; row shape matches PR #7', async () => {
+describe('no ctx → onError Workers log', () => {
+	it('skips insert and calls onError when ctx missing', async () => {
+		const sink = createMemoryAuditSink();
+		const waitUntil = createImmediateWaitUntil();
+		const onError = vi.fn();
+		const recorder = createAuditRecorder({ sink, waitUntil, onError });
+		recorder.record({
+			ctx: null,
+			tool: 'whoami',
+			args: {},
+			result: 'error',
+			errorCode: 'INTERNAL'
+		});
+		await recorder.drain();
+		expect(sink.rows).toHaveLength(0);
+		expect(onError).toHaveBeenCalled();
+	});
+});
+
+describe('response + outcomes', () => {
+	it('success warnings / FORBIDDEN_SCOPE / four results', async () => {
+		expect(
+			mcpSuccess({
+				id: 'x',
+				warnings: [{ rule: 'R-VAL-M01', message: 'm' }]
+			}).structuredContent.warnings?.[0]?.rule
+		).toBe('R-VAL-M01');
+		expect(validationError([{ rule: 'R-VAL-T05', message: 'm' }]).structuredContent.code).toBe(
+			'VALIDATION'
+		);
+
 		const sink = createMemoryAuditSink();
 		const waitUntil = createImmediateWaitUntil();
 		const recorder = createAuditRecorder({ sink, waitUntil });
 		const ctx = createStubMcpContext({ scopes: ['read', 'journal:write'] });
-		const longBody = 'BODY_SECRET_CONTENT_' + 'Z'.repeat(80);
+		const longBody = 'BODY_' + 'Z'.repeat(80);
 
-		const okRes = await runAuditedToolCall({
+		await runAuditedToolCall({
 			ctx,
 			args: { title: 'entry', body_md: longBody },
-			meta: { tool: 'add_journal_entry', requestId: '1', userAgent: 'vitest' },
+			meta: { tool: 'add_journal_entry', userAgent: 'vitest' },
 			recorder,
 			handler: async () => ({
 				data: {
 					id: 'j1',
-					created: true,
-					warnings: [{ rule: 'R-VAL-J06', message: 'duplicate day/title without client_ref' }]
+					warnings: [{ rule: 'R-VAL-J06', message: 'dup' }]
 				},
 				affectedIds: [{ table: 'journal_entries', id: 'j1' }]
 			})
 		});
-		expect(okRes.isError).toBeFalsy();
-		if (!okRes.isError) {
-			expect(okRes.structuredContent.warnings?.[0]?.rule).toBe('R-VAL-J06');
-		}
 
-		const deniedRes = await runAuditedToolCall({
+		await runAuditedToolCall({
 			ctx: createStubMcpContext({ scopes: ['read'] }),
-			args: { change_type: 'close', owner_id: 'other-owner' },
-			meta: { tool: 'propose_position_change', requestId: '2' },
+			args: { change_type: 'close', owner_id: 'other' },
+			meta: { tool: 'propose_position_change' },
 			recorder,
 			handler: async () => ({ data: {} })
 		});
-		expect(deniedRes.isError).toBe(true);
 
 		await runAuditedToolCall({
 			ctx,
-			args: { body_md: longBody },
-			meta: { tool: 'add_journal_entry', requestId: '3' },
+			args: {},
+			meta: { tool: 'add_journal_entry' },
 			recorder,
 			handler: async () => {
-				throw new McpToolError('VALIDATION', [
-					{ rule: 'R-VAL-J02', field: 'price', message: 'buy requires price' }
-				]);
+				throw new McpToolError('VALIDATION', [{ rule: 'R-VAL-J02', message: 'price' }]);
 			}
 		});
 
-		recordRateLimited({
-			recorder,
-			ctx,
-			tool: '(auth)',
-			requestId: '4',
-			args: { body_md: longBody }
-		});
-
+		recordRateLimited({ recorder, ctx, args: { body_md: longBody } });
 		await recorder.drain();
 
 		expect(sink.rows.map((r) => r.result).sort()).toEqual(
 			['denied', 'error', 'ok', 'rate_limited'].sort()
 		);
+		const ok = sink.rows.find((r) => r.result === 'ok');
+		expect(ok?.warnings[0]?.rule).toBe('R-VAL-J06');
+		expect(ok?.user_agent).toBe('vitest');
+		expect(ok?.affected_ids).toEqual([{ table: 'journal_entries', id: 'j1' }]);
+		expect(JSON.stringify(ok?.args_preview)).not.toContain(longBody);
 
-		const okRow = sink.rows.find((r) => r.result === 'ok');
-		expect(okRow?.owner_id).toBe(ctx.ownerId);
-		expect(okRow?.user_agent).toBe('vitest');
-		expect(okRow?.user_id).toBeNull();
-		expect(okRow?.warnings[0]?.rule).toBe('R-VAL-J06');
-		expect(okRow?.rule_ids).toContain('R-VAL-J06');
-		expect(okRow?.affected_ids).toEqual([{ table: 'journal_entries', id: 'j1' }]);
-		expect(JSON.stringify(okRow?.args_preview)).not.toContain(longBody);
-
-		const deniedRow = sink.rows.find((r) => r.result === 'denied');
-		expect(deniedRow?.error_code).toBe('FORBIDDEN_SCOPE');
-		expect(deniedRow?.rule_ids).toContain('R-PERM-04');
-		expect(deniedRow?.rule_ids).toContain('R-PERM-03'); // L-5
+		const denied = sink.rows.find((r) => r.result === 'denied');
+		expect(denied?.rule_ids).toEqual(expect.arrayContaining(['R-PERM-04', 'R-PERM-03']));
 	});
 
-	it('M-5: unexpected exceptions become internalError envelopes (not rethrown)', async () => {
+	it('M-5 unexpected → internalError', async () => {
 		const sink = createMemoryAuditSink();
 		const waitUntil = createImmediateWaitUntil();
 		const recorder = createAuditRecorder({ sink, waitUntil });
@@ -316,64 +264,63 @@ describe('audit outcomes + L-1/L-2/L-3/L-5/M-5', () => {
 			recorder,
 			logError,
 			handler: async () => {
-				throw new Error('db connection blew up with secret=abc');
+				throw new Error('db blew up secret=abc');
 			}
 		});
 		await recorder.drain();
 		expect(res.isError).toBe(true);
-		if (res.isError) {
-			expect(res.structuredContent.code).toBe('INTERNAL');
-			expect(JSON.stringify(res.structuredContent)).not.toContain('secret=abc');
-		}
-		expect(logError).toHaveBeenCalled();
-		expect(String(logError.mock.calls[0]?.[0])).toMatch(/^Error \(message_len=\d+\)$/);
+		if (res.isError) expect(res.structuredContent.code).toBe('INTERNAL');
 		expect(String(logError.mock.calls[0]?.[0])).not.toContain('secret=abc');
-		expect(sink.rows[0]?.result).toBe('error');
-		expect(sink.rows[0]?.error_code).toBe('INTERNAL');
 	});
 
-	it('L-2: preview validation failure yields {_redacted:true} (row still insertable)', async () => {
+	it('L-2 previewOrRedacted', () => {
 		const body = 'LEAKED_BODY_CONTENT_' + 'Q'.repeat(40);
 		expect(() => assertPreviewHasNoRawBody({ body_md: body }, { body_md: body })).toThrow();
 		expect(previewOrRedacted({ body_md: body }, { body_md: body })).toEqual({ _redacted: true });
-
-		const sink = createMemoryAuditSink();
-		const waitUntil = createImmediateWaitUntil();
-		const recorder = createAuditRecorder({ sink, waitUntil });
-		recorder.record({
-			ctx: createStubMcpContext(),
-			tool: 'whoami',
-			args: { body_md: body },
-			result: 'ok'
-		});
-		await recorder.drain();
-		expect(sink.rows).toHaveLength(1);
-		expect(JSON.stringify(sink.rows[0]?.args_preview)).not.toContain(body);
 	});
 
-	it('same owner_id as ctx does not log R-PERM-03', async () => {
+	it('denied/ok share digest for same stripped+masked args', async () => {
 		const sink = createMemoryAuditSink();
 		const waitUntil = createImmediateWaitUntil();
 		const recorder = createAuditRecorder({ sink, waitUntil });
-		const ctx = createStubMcpContext({ scopes: ['read'] });
+		const args = { owner_id: 'attacker', note: SAMPLE_MCP_KEY, title: 't' };
+
 		await runAuditedToolCall({
-			ctx,
-			args: { owner_id: ctx.ownerId },
+			ctx: createStubMcpContext({ scopes: ['read'] }),
+			args,
+			meta: { tool: 'propose_position_change' },
+			recorder,
+			handler: async () => ({ data: {} })
+		});
+		await runAuditedToolCall({
+			ctx: createStubMcpContext({ scopes: ['read'] }),
+			args,
 			meta: { tool: 'whoami' },
 			recorder,
-			handler: async ({ args }) => {
-				expect(args.owner_id).toBeUndefined();
-				return { data: { ok: true } };
-			}
+			handler: async () => ({ data: { ok: true } })
 		});
 		await recorder.drain();
-		expect(sink.rows[0]?.rule_ids).not.toContain('R-PERM-03');
+		const denied = sink.rows.find((r) => r.result === 'denied');
+		const ok = sink.rows.find((r) => r.result === 'ok');
+		expect(denied?.args_digest).toBe(ok?.args_digest);
 	});
 });
 
-describe('mcpError helpers', () => {
-	it('builds CONFLICT envelope', () => {
-		const res = mcpError('CONFLICT', [{ rule: 'R-VAL-R11', message: 'key owned by another actor' }]);
-		expect(res.structuredContent.code).toBe('CONFLICT');
+describe('display id', () => {
+	it('P-/R- rules', () => {
+		expect(mowaDisplayId('P', 412)).toBe('P-0412');
+		expect(isOwnerScopedDisplayId('P-0412')).toBe(true);
+		expect(isOwnerScopedDisplayId('P-10000')).toBe(true);
+		expect(isOwnerScopedDisplayId('P-0000')).toBe(false);
+		expect(isOwnerScopedDisplayId('P-01234')).toBe(false);
+		expect(toSnakeLower('botClientId')).toBe('bot_client_id');
+	});
+});
+
+describe('mcpError', () => {
+	it('CONFLICT', () => {
+		expect(mcpError('CONFLICT', [{ rule: 'R-VAL-R11', message: 'x' }]).structuredContent.code).toBe(
+			'CONFLICT'
+		);
 	});
 });

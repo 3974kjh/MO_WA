@@ -40,5 +40,28 @@ export default defineConfig(
 		// Override or add rule settings here, such as:
 		// 'svelte/button-has-type': 'error'
 		rules: {}
+	},
+	{
+		// mcp/testing.ts is test/dev only — block production imports (BE-05 Low).
+		files: ['src/**/*.{ts,js}'],
+		ignores: [
+			'src/**/*.{test,spec}.{ts,js}',
+			'src/**/*.svelte.{test,spec}.{ts,js}',
+			'src/lib/server/mcp/testing.ts'
+		],
+		rules: {
+			'no-restricted-imports': [
+				'error',
+				{
+					patterns: [
+						{
+							group: ['**/server/mcp/testing', '$lib/server/mcp/testing'],
+							message:
+								'mcp/testing.ts is test/dev only — do not import from production code'
+						}
+					]
+				}
+			]
+		}
 	}
 );
