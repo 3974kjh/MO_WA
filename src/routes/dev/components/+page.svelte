@@ -765,17 +765,17 @@
 	.cards3 {
 		display: grid;
 		gap: 16px;
-		grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
 	}
 	.cards2 {
 		display: grid;
 		gap: 16px;
-		grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
 	}
 	.states {
 		display: grid;
 		gap: 16px;
-		grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
 		align-items: start;
 	}
 	.unit-note {
