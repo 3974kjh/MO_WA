@@ -1,9 +1,10 @@
 /**
  * Repository clients (design §1 / §2).
  *
- * M-4: Supabase client is stored only in a module-internal WeakMap — never on the
- * RepoClient object (no Symbol/db property to fish out). Import this file only from
- * other repo modules (ESLint blocks direct imports of repo/client outside repo).
+ * M-4: Supabase client is stored only in a module-internal WeakMap (`db.ts`) —
+ * never on the RepoClient object. BotRepoIdentity authenticity is a WeakSet
+ * (see botIdentityBrand). Import this file only from other repo modules
+ * (ESLint blocks direct imports of repo/client outside repo).
  *
  * M-5: Repo create/update must not call runRules.
  */
@@ -11,56 +12,49 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createSupabaseAdminClient } from '$lib/supabase/admin';
 import type { Database } from '$lib/types/database.types';
 import { isBotRepoIdentity, type BotRepoIdentity } from './botIdentityBrand';
+import { bindRepoDb } from './db';
 
 export type { BotRepoIdentity };
 
 export type RepoActor =
-	| { kind: 'user'; ownerId: string; botClientId: null }
-	| { kind: 'bot'; ownerId: string; botClientId: string };
+	| { readonly kind: 'user'; readonly ownerId: string; readonly botClientId: null }
+	| { readonly kind: 'bot'; readonly ownerId: string; readonly botClientId: string };
 
 /** Opaque handle — no db field. */
 export type RepoClient = {
 	readonly actor: RepoActor;
 };
 
-/** Module-internal only — not exported from repo/index. */
-const dbByRepo = new WeakMap<RepoClient, SupabaseClient<Database>>();
-
-/** Internal to `repo/*` — do not re-export. */
-export function getRepoDb(repo: RepoClient): SupabaseClient<Database> {
-	const db = dbByRepo.get(repo);
-	if (!db) throw new Error('[R-SYS-01] invalid RepoClient (no bound database)');
-	return db;
-}
-
-function bindDb(actor: RepoActor, db: SupabaseClient<Database>): RepoClient {
-	const repo: RepoClient = { actor };
-	dbByRepo.set(repo, db);
+function freezeRepo(actor: RepoActor, db: SupabaseClient<Database>): RepoClient {
+	const frozenActor = Object.freeze({ ...actor });
+	const repo = Object.freeze({ actor: frozenActor }) as RepoClient;
+	bindRepoDb(repo, db);
 	return repo;
 }
 
 /** Web session path — RLS enforces owner; still stamp owner_id on writes. */
 export function forUser(supabase: SupabaseClient<Database>, ownerId: string): RepoClient {
 	if (!ownerId) throw new Error('[R-SYS-01] ownerId is required');
-	return bindDb({ kind: 'user', ownerId, botClientId: null }, supabase);
+	return freezeRepo({ kind: 'user', ownerId, botClientId: null }, supabase);
 }
 
 /**
  * MCP bot path — service-role with x-mowa-bot-id (R-PERM-03).
- * Requires a branded {@link BotRepoIdentity} minted by BE-04 auth (plain objects rejected).
- * Owner–bot pair DB lookup remains BE-04.
+ * Requires a WeakSet-minted {@link BotRepoIdentity} from BE-04 auth.
+ * Copies identity values; freezes actor + RepoClient.
  */
 export function forBot(identity: BotRepoIdentity): RepoClient {
 	if (!isBotRepoIdentity(identity)) {
 		throw new Error(
-			'[R-PERM-03] forBot requires a branded BotRepoIdentity from mcp/auth (BE-04)'
+			'[R-PERM-03] forBot requires a minted BotRepoIdentity from mcp/auth (BE-04)'
 		);
 	}
-	const { ownerId, botClientId } = identity;
+	const ownerId = identity.ownerId;
+	const botClientId = identity.botClientId;
 	const db = createSupabaseAdminClient({
 		headers: { 'x-mowa-bot-id': botClientId }
 	});
-	return bindDb({ kind: 'bot', ownerId, botClientId }, db);
+	return freezeRepo({ kind: 'bot', ownerId, botClientId }, db);
 }
 
 /** Fields the server always owns on create (R-SYS-01, R-PERM-03). */

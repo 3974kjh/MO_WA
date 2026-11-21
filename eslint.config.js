@@ -14,7 +14,34 @@ const adminImportMessage =
 	'Import createSupabaseAdminClient only from src/lib/server/repo/** or src/lib/server/mcp/auth.ts (R-SYS-01).';
 
 const repoClientMessage =
-	'Import repo APIs from $lib/server/repo (index), not repo/client or botIdentityBrand (M-4).';
+	'Import repo APIs from $lib/server/repo (index), not repo/client, repo/db, or botIdentityBrand (M-4).';
+
+const brandMessage =
+	'Mint BotRepoIdentity only inside src/lib/server/mcp/auth.ts after mcp_authenticate (BE-04). Do not re-export mint.';
+
+/** L6 dynamic-import blocks for admin + repo internals (kept in supabase/** overrides too). */
+const dynamicImportRestrictedSyntax = [
+	{
+		selector:
+			'ImportExpression[source.type=Literal][source.value=/supabase\\/admin|\\$lib\\/supabase\\/admin|\\.\\/admin(\\.ts)?$/]',
+		message: adminImportMessage
+	},
+	{
+		selector:
+			'ImportExpression[source.type=TemplateLiteral][source.quasis.0.value.raw=/supabase\\/admin|\\$lib\\/supabase\\/admin|\\.\\/admin/]',
+		message: adminImportMessage
+	},
+	{
+		selector:
+			'ImportExpression[source.type=Literal][source.value=/repo\\/(client|db|botIdentityBrand)|\\$lib\\/server\\/repo\\/(client|db|botIdentityBrand)/]',
+		message: repoClientMessage
+	},
+	{
+		selector:
+			'ImportExpression[source.type=TemplateLiteral][source.quasis.0.value.raw=/repo\\/(client|db|botIdentityBrand)|\\$lib\\/server\\/repo\\/(client|db|botIdentityBrand)/]',
+		message: repoClientMessage
+	}
+];
 
 export default defineConfig(
 	includeIgnoreFile(gitignorePath),
@@ -40,9 +67,12 @@ export default defineConfig(
 							message: repoClientMessage
 						},
 						{
+							name: '$lib/server/repo/db',
+							message: repoClientMessage
+						},
+						{
 							name: '$lib/server/repo/botIdentityBrand',
-							message:
-								'Mint BotRepoIdentity only from $lib/server/mcp/auth (BE-04 brand gate).'
+							message: brandMessage
 						}
 					],
 					patterns: [
@@ -59,7 +89,11 @@ export default defineConfig(
 								'**/server/repo/client',
 								'**/server/repo/client.*',
 								'**/repo/client',
-								'**/repo/client.*'
+								'**/repo/client.*',
+								'**/server/repo/db',
+								'**/server/repo/db.*',
+								'**/repo/db',
+								'**/repo/db.*'
 							],
 							message: repoClientMessage
 						},
@@ -70,36 +104,12 @@ export default defineConfig(
 								'**/repo/botIdentityBrand',
 								'**/repo/botIdentityBrand.*'
 							],
-							message:
-								'Mint BotRepoIdentity only from $lib/server/mcp/auth (BE-04 brand gate).'
+							message: brandMessage
 						}
 					]
 				}
 			],
-			// L6: block dynamic / template-literal admin & repo/client bypasses.
-			'no-restricted-syntax': [
-				'error',
-				{
-					selector:
-						'ImportExpression[source.type=Literal][source.value=/supabase\\/admin|\\$lib\\/supabase\\/admin|\\.\\/admin(\\.ts)?$/]',
-					message: adminImportMessage
-				},
-				{
-					selector:
-						'ImportExpression[source.type=TemplateLiteral][source.quasis.0.value.raw=/supabase\\/admin|\\$lib\\/supabase\\/admin|\\.\\/admin/]',
-					message: adminImportMessage
-				},
-				{
-					selector:
-						'ImportExpression[source.type=Literal][source.value=/repo\\/client|\\$lib\\/server\\/repo\\/client/]',
-					message: repoClientMessage
-				},
-				{
-					selector:
-						'ImportExpression[source.type=TemplateLiteral][source.quasis.0.value.raw=/repo\\/client|\\$lib\\/server\\/repo\\/client/]',
-					message: repoClientMessage
-				}
-			]
+			'no-restricted-syntax': ['error', ...dynamicImportRestrictedSyntax]
 		}
 	},
 	{
@@ -114,32 +124,46 @@ export default defineConfig(
 		}
 	},
 	{
-		// repo internals + mcp auth may import admin / brand helpers.
-		files: [
-			'src/lib/server/repo/**/*.{js,ts}',
-			'src/lib/server/mcp/auth.ts',
-			'src/lib/server/mcp/**/*.{js,ts}'
-		],
+		// repo internals + mcp/auth.ts only (not other mcp/* files).
+		files: ['src/lib/server/repo/**/*.{js,ts}', 'src/lib/server/mcp/auth.ts'],
 		rules: {
 			'no-restricted-imports': 'off',
 			'no-restricted-syntax': 'off'
 		}
 	},
 	{
-		// L6: even inside supabase/, block relative ./admin dynamic imports from siblings.
+		// L6: inside supabase/, block static + dynamic ./admin, including interpolated
+		// templates — and keep repo/client dynamic-import blocks (do not overwrite).
 		files: ['src/lib/supabase/**/*.{js,ts}'],
 		ignores: ['src/lib/supabase/admin.ts', 'src/lib/supabase/**/*.spec.ts'],
 		rules: {
-			'no-restricted-syntax': [
+			'no-restricted-imports': [
 				'error',
 				{
-					selector:
-						'ImportExpression[source.type=Literal][source.value=/^\\.\\/?admin(\\.ts)?$/]',
+					paths: [
+						{ name: './admin', message: adminImportMessage },
+						{ name: './admin.ts', message: adminImportMessage },
+						{ name: './admin.js', message: adminImportMessage }
+					],
+					patterns: [
+						{
+							group: ['./**/admin', './admin', './admin.*'],
+							message: adminImportMessage
+						}
+					]
+				}
+			],
+			'no-restricted-syntax': [
+				'error',
+				...dynamicImportRestrictedSyntax,
+				{
+					selector: "ImportDeclaration[source.value=/^\\.\\/?admin(\\.ts)?$/]",
 					message: adminImportMessage
 				},
 				{
+					// import(`./${name}`) / import(`$lib/supabase/${x}`)
 					selector:
-						'ImportExpression[source.type=TemplateLiteral][source.quasis.0.value.raw=/admin/]',
+						'ImportExpression[source.type=TemplateLiteral][source.expressions.length>0]',
 					message: adminImportMessage
 				}
 			]

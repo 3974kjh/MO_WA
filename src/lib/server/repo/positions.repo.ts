@@ -1,9 +1,9 @@
 import type { PositionRow } from '$lib/types/mowa.contract';
 import { archiveRow, restoreRow } from './archive';
-import { getRepoDb, serverCreateStamps, stripClientIdentity, type RepoClient } from './client';
+import { serverCreateStamps, stripClientIdentity, type RepoClient } from './client';
+import { fromRepo } from './db';
 import { requireOwnerId, withOwnerFilter } from './owner';
 import { pickPatchable, POSITION_PATCHABLE } from './patch';
-import { fromTable } from './supabaseTable';
 
 export type PositionCreateInput = Partial<PositionRow> &
 	Pick<PositionRow, 'instrument_id' | 'status' | 'currency'>;
@@ -13,7 +13,7 @@ export async function listPositions(
 	opts: { includeArchived?: boolean } = {}
 ): Promise<{ data: PositionRow[]; error: Error | null }> {
 	const ownerId = requireOwnerId(repo);
-	let q = fromTable(getRepoDb(repo), 'positions').select('*');
+	let q = fromRepo(repo, 'positions').select('*');
 	q = withOwnerFilter(q, ownerId);
 	if (!opts.includeArchived) q = q.is('archived_at', null);
 	const { data, error } = await q;
@@ -30,10 +30,7 @@ export async function createPosition(
 		...stripClientIdentity(input as Record<string, unknown>),
 		...stamps
 	};
-	const { data, error } = await fromTable(getRepoDb(repo), 'positions')
-		.insert(row)
-		.select('*')
-		.single();
+	const { data, error } = await fromRepo(repo, 'positions').insert(row).select('*').single();
 	return { data: (data as PositionRow | null) ?? null, error: error as Error | null };
 }
 
@@ -44,7 +41,7 @@ export async function updatePosition(
 ): Promise<{ data: PositionRow | null; error: Error | null }> {
 	const ownerId = requireOwnerId(repo);
 	const safe = pickPatchable(patch as Record<string, unknown>, POSITION_PATCHABLE);
-	let q = fromTable(getRepoDb(repo), 'positions').update(safe).eq('id', id);
+	let q = fromRepo(repo, 'positions').update(safe).eq('id', id);
 	q = withOwnerFilter(q, ownerId);
 	const { data, error } = await q.select('*').single();
 	return { data: (data as PositionRow | null) ?? null, error: error as Error | null };

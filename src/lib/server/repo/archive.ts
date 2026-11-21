@@ -4,9 +4,8 @@
  * Missing id or other-owner rows must not report success.
  */
 import type { RepoClient } from './client';
-import { getRepoDb } from './client';
+import { fromRepo } from './db';
 import { requireOwnerId, withOwnerFilter } from './owner';
-import { fromTable } from './supabaseTable';
 
 export type ArchivableTable =
 	| 'reports'
@@ -28,9 +27,7 @@ async function updateArchivedAt(
 		return { error: new Error('[R-SYS-01] id is required for archive/restore') };
 	}
 	const ownerId = requireOwnerId(repo);
-	let q = fromTable(getRepoDb(repo), table)
-		.update({ archived_at: archivedAt })
-		.eq('id', id);
+	let q = fromRepo(repo, table).update({ archived_at: archivedAt }).eq('id', id);
 	q = withOwnerFilter(q, ownerId);
 	const { data, error } = await q.select('id').maybeSingle();
 	if (error) return { error: error as Error };

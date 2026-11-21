@@ -3,16 +3,47 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import * as repoIndex from './index';
-import { forBot, forUser, stripClientIdentity, type RepoClient } from './client';
-import { mintBotRepoIdentity } from './botIdentityBrand';
+import * as mcpAuth from '../mcp/auth';
+import {
+	forBot,
+	forUser,
+	serverCreateStamps,
+	stripClientIdentity,
+	type RepoClient
+} from './client';
+import { mintBotRepoIdentity, isBotRepoIdentity } from './botIdentityBrand';
 import { pickPatchable, POSITION_PATCHABLE, SYSTEM_PATCH_BLOCKLIST } from './patch';
 import { restoreRow, archiveRow } from './archive';
 
+describe('repo identity stamps (R-SYS-01, R-PERM-03)', () => {
+	it('server fills owner_id and source_bot_id for bot', () => {
+		expect(
+			serverCreateStamps({
+				kind: 'bot',
+				ownerId: 'owner-1',
+				botClientId: 'bot-9'
+			})
+		).toEqual({ owner_id: 'owner-1', source_bot_id: 'bot-9' });
+	});
+
+	it('user writes have null source_bot_id', () => {
+		expect(
+			serverCreateStamps({
+				kind: 'user',
+				ownerId: 'owner-1',
+				botClientId: null
+			})
+		).toEqual({ owner_id: 'owner-1', source_bot_id: null });
+	});
+});
+
 describe('repo identity / M-4', () => {
-	it('does not export getRepoDb or REPO_DB from the public index', () => {
+	it('does not export getRepoDb, REPO_DB, or mint from public surfaces', () => {
 		expect('getRepoDb' in repoIndex).toBe(false);
 		expect('REPO_DB' in repoIndex).toBe(false);
 		expect('mintBotRepoIdentity' in repoIndex).toBe(false);
+		expect('fromRepo' in repoIndex).toBe(false);
+		expect('mintBotRepoIdentity' in mcpAuth).toBe(false);
 	});
 
 	it('stores db only in WeakMap — Symbol/property probe cannot build unscoped select', () => {
@@ -33,10 +64,11 @@ describe('repo identity / M-4', () => {
 		const repo = forUser(fakeDb, 'owner-1');
 		expect(Object.keys(repo)).toEqual(['actor']);
 		expect(Object.getOwnPropertySymbols(repo)).toEqual([]);
+		expect(Object.isFrozen(repo)).toBe(true);
+		expect(Object.isFrozen(repo.actor)).toBe(true);
 		expect('db' in repo).toBe(false);
 		expect((repo as RepoClient & { db?: unknown }).db).toBeUndefined();
 
-		// Symbol-key fishing / Object.values cannot recover the client for from('reports').select('*')
 		for (const sym of Object.getOwnPropertySymbols(repo)) {
 			const maybe = (repo as Record<symbol, unknown>)[sym] as
 				| { from?: (t: string) => { select: (c: string) => unknown } }
@@ -52,15 +84,33 @@ describe('repo identity / M-4', () => {
 		expect(fromCalled).toBe(false);
 	});
 
-	it('rejects plain objects for forBot (brand required)', () => {
+	it('rejects plain objects, Symbol brands, spreads, and post-mint mutation for forBot', () => {
 		expect(() =>
 			forBot({ ownerId: 'o', botClientId: 'b' } as never)
-		).toThrow(/branded BotRepoIdentity/i);
+		).toThrow(/minted BotRepoIdentity/i);
+
+		const brand = Symbol('fake');
+		expect(() =>
+			forBot({ ownerId: 'o', botClientId: 'b', [brand]: brand } as never)
+		).toThrow(/minted BotRepoIdentity/i);
+
+		const legit = mintBotRepoIdentity('owner-1', 'bot-9');
+		expect(isBotRepoIdentity(legit)).toBe(true);
+		expect(Object.isFrozen(legit)).toBe(true);
+
+		const spoofed = { ...legit, ownerId: 'other-owner' };
+		expect(isBotRepoIdentity(spoofed)).toBe(false);
+		expect(() => forBot(spoofed as never)).toThrow(/minted BotRepoIdentity/i);
+
+		expect(() => {
+			(legit as { ownerId: string }).ownerId = 'mutated';
+		}).toThrow();
+		expect(legit.ownerId).toBe('owner-1');
 	});
 
-	it('accepts branded identity shape from mint (auth path)', () => {
+	it('accepts minted identity and copies values into a frozen RepoClient', () => {
 		const identity = mintBotRepoIdentity('owner-1', 'bot-9');
-		// Admin config missing in unit env — still proves brand gate passed
+		// Admin config missing in unit env — brand gate passed before admin throws
 		expect(() => forBot(identity)).toThrow(/SUPABASE|placeholder|configured|required|Refusing/i);
 	});
 
@@ -154,6 +204,7 @@ describe('ESLint M-4 / L6 restrictions', () => {
 	it('blocks direct repo/client import and template-literal admin import', () => {
 		const clientProbe = join(process.cwd(), 'src/lib/server/_be03_client_probe.ts');
 		const adminProbe = join(process.cwd(), 'src/lib/server/_be03_admin_probe.ts');
+		const mcpMintProbe = join(process.cwd(), 'src/lib/server/mcp/_be03_mint_probe.ts');
 		writeFileSync(
 			clientProbe,
 			`import { forUser } from '$lib/server/repo/client';\nvoid forUser;\n`
@@ -162,30 +213,33 @@ describe('ESLint M-4 / L6 restrictions', () => {
 			adminProbe,
 			`const x = await import(\`$lib/supabase/admin\`);\nvoid x;\n`
 		);
+		writeFileSync(
+			mcpMintProbe,
+			`import { mintBotRepoIdentity } from '$lib/server/repo/botIdentityBrand';\nvoid mintBotRepoIdentity;\n`
+		);
 		try {
 			let failed = false;
 			try {
-				execFileSync('pnpm', ['exec', 'eslint', clientProbe, adminProbe], {
-					encoding: 'utf8',
-					cwd: process.cwd()
-				});
+				execFileSync(
+					'pnpm',
+					['exec', 'eslint', clientProbe, adminProbe, mcpMintProbe],
+					{ encoding: 'utf8', cwd: process.cwd() }
+				);
 			} catch (err) {
 				failed = true;
 				const out = `${(err as { stdout?: string }).stdout ?? ''}${(err as { stderr?: string }).stderr ?? ''}`;
 				expect(out).toMatch(/repo\/client|M-4/);
 				expect(out).toMatch(/supabase\/admin|R-SYS-01/);
+				expect(out).toMatch(/botIdentityBrand|mcp_authenticate|BE-04/);
 			}
 			expect(failed).toBe(true);
 		} finally {
-			try {
-				unlinkSync(clientProbe);
-			} catch {
-				/* ignore */
-			}
-			try {
-				unlinkSync(adminProbe);
-			} catch {
-				/* ignore */
+			for (const p of [clientProbe, adminProbe, mcpMintProbe]) {
+				try {
+					unlinkSync(p);
+				} catch {
+					/* ignore */
+				}
 			}
 		}
 	});

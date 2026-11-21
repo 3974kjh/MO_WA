@@ -1,8 +1,12 @@
 /**
- * MCP auth (BE-04). Brand mint for repo `forBot` lives here so plain objects cannot
- * construct {@link BotRepoIdentity}. Pair verification via `mcp_authenticate` is BE-04.
+ * MCP auth (BE-04).
+ *
+ * After a successful `mcp_authenticate`, this module will call
+ * `mintBotRepoIdentity` from `repo/botIdentityBrand` and pass the frozen
+ * identity to `forBot`. Mint is intentionally **not** re-exported — callers
+ * outside auth must not construct BotRepoIdentity.
  */
-export {
-	mintBotRepoIdentity,
-	type BotRepoIdentity
-} from '../repo/botIdentityBrand';
+export type { BotRepoIdentity } from '../repo/botIdentityBrand';
+
+// BE-04 will import mintBotRepoIdentity here only (not re-export):
+// import { mintBotRepoIdentity } from '../repo/botIdentityBrand';

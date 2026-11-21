@@ -1,9 +1,9 @@
 import type { ReportRow } from '$lib/types/mowa.contract';
 import { archiveRow, restoreRow } from './archive';
-import { getRepoDb, serverCreateStamps, stripClientIdentity, type RepoClient } from './client';
+import { serverCreateStamps, stripClientIdentity, type RepoClient } from './client';
+import { fromRepo } from './db';
 import { requireOwnerId, withOwnerFilter } from './owner';
 import { pickPatchable, REPORT_PATCHABLE } from './patch';
-import { fromTable } from './supabaseTable';
 
 export type ReportCreateInput = Partial<ReportRow> &
 	Pick<ReportRow, 'kind' | 'slug' | 'title' | 'report_date' | 'body_md' | 'domain'>;
@@ -14,7 +14,7 @@ export async function listReports(
 	opts: { includeArchived?: boolean } = {}
 ): Promise<{ data: ReportRow[]; error: Error | null }> {
 	const ownerId = requireOwnerId(repo);
-	let q = fromTable(getRepoDb(repo), 'reports').select('*');
+	let q = fromRepo(repo, 'reports').select('*');
 	q = withOwnerFilter(q, ownerId);
 	if (!opts.includeArchived) q = q.is('archived_at', null);
 	const { data, error } = await q;
@@ -26,7 +26,7 @@ export async function getReportById(
 	id: string
 ): Promise<{ data: ReportRow | null; error: Error | null }> {
 	const ownerId = requireOwnerId(repo);
-	let q = fromTable(getRepoDb(repo), 'reports').select('*').eq('id', id);
+	let q = fromRepo(repo, 'reports').select('*').eq('id', id);
 	q = withOwnerFilter(q, ownerId);
 	const { data, error } = await q.maybeSingle();
 	return { data: (data as ReportRow | null) ?? null, error: error as Error | null };
@@ -42,10 +42,7 @@ export async function createReport(
 		...stripClientIdentity(input as Record<string, unknown>),
 		...stamps
 	};
-	const { data, error } = await fromTable(getRepoDb(repo), 'reports')
-		.insert(row)
-		.select('*')
-		.single();
+	const { data, error } = await fromRepo(repo, 'reports').insert(row).select('*').single();
 	return { data: (data as ReportRow | null) ?? null, error: error as Error | null };
 }
 
@@ -57,7 +54,7 @@ export async function updateReport(
 ): Promise<{ data: ReportRow | null; error: Error | null }> {
 	const ownerId = requireOwnerId(repo);
 	const safe = pickPatchable(patch as Record<string, unknown>, REPORT_PATCHABLE);
-	let q = fromTable(getRepoDb(repo), 'reports').update(safe).eq('id', id);
+	let q = fromRepo(repo, 'reports').update(safe).eq('id', id);
 	q = withOwnerFilter(q, ownerId);
 	const { data, error } = await q.select('*').single();
 	return { data: (data as ReportRow | null) ?? null, error: error as Error | null };
