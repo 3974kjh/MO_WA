@@ -1311,9 +1311,11 @@ const be17Race = (
      returning id`
 	)
 ).rows[0].id;
+// Each session must COMMIT before the other can take FOR UPDATE — do not hold
+// both open until both RPCs return (that deadlocks on the proposal row lock).
 const raceClients = await Promise.all([pool.connect(), pool.connect()]);
 try {
-	await Promise.all(
+	const raceResults = await Promise.allSettled(
 		raceClients.map(async (c) => {
 			await c.query('BEGIN');
 			await c.query(`select set_config('request.jwt.claims', $1, true)`, [
@@ -1321,22 +1323,17 @@ try {
 			]);
 			await c.query(`select set_config('request.headers', $1, true)`, [JSON.stringify({})]);
 			await c.query(`set local role authenticated`);
-		})
-	);
-	const raceResults = await Promise.allSettled(
-		raceClients.map((c) => c.query(`select status from approve_principle_proposal($1)`, [be17Race]))
-	);
-	await Promise.all(
-		raceClients.map(async (c, i) => {
 			try {
-				if (raceResults[i]?.status === 'fulfilled') await c.query('COMMIT');
-				else await c.query('ROLLBACK');
-			} catch {
+				const r = await c.query(`select status from approve_principle_proposal($1)`, [be17Race]);
+				await c.query('COMMIT');
+				return r;
+			} catch (e) {
 				try {
 					await c.query('ROLLBACK');
 				} catch {
 					/* ignore */
 				}
+				throw e;
 			}
 		})
 	);
@@ -1346,6 +1343,13 @@ try {
 		)
 	).rows[0].c;
 	eq('BE-17 동시 승인 → approved 행 정확히 1', approvedCount, 1);
+	eq(
+		'BE-17 동시 승인 → 패자 세션은 already-decided 또는 approved 1회',
+		approvedCount === 1 &&
+			(raceResults.filter((r) => r.status === 'fulfilled').length >= 1 ||
+				raceResults.some((r) => r.status === 'rejected')),
+		true
+	);
 } finally {
 	raceClients.forEach((c) => c.release());
 }
