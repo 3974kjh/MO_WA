@@ -145,6 +145,66 @@ describe('BE-11 approve action', () => {
 		expect(result.status).toBe(400);
 		expect(result.data.ruleIds).toContain('R-VAL-M03');
 	});
+
+	/** H-2: never coerce bad overrides to {} (would apply bot proposed_values). */
+	it.each([
+		['broken JSON', '{qty:'],
+		['array', '[1,2]'],
+		['JSON null string', 'null'],
+		['number', '42'],
+		['boolean true', 'true'],
+		['empty string', '']
+	] as const)('rejects %s overrides with 400 R-PERM-13 and skips RPC', async (_label, raw) => {
+		const form = new FormData();
+		form.set('id', 'p1');
+		form.set('overrides', raw);
+		const result = (await handleApprove(fakeSupabase({}), 'owner', form)) as {
+			status: number;
+			data: { ruleIds: string[]; message: string };
+		};
+		expect(result.status).toBe(400);
+		expect(result.data.ruleIds).toContain('R-PERM-13');
+		expect(approveProposalRpc).not.toHaveBeenCalled();
+	});
+
+	it('rejects File overrides with 400 R-PERM-13 and skips RPC', async () => {
+		const form = new FormData();
+		form.set('id', 'p1');
+		form.set('overrides', new File(['{"qty":1}'], 'overrides.json', { type: 'application/json' }));
+		const result = (await handleApprove(fakeSupabase({}), 'owner', form)) as {
+			status: number;
+			data: { ruleIds: string[] };
+		};
+		expect(result.status).toBe(400);
+		expect(result.data.ruleIds).toContain('R-PERM-13');
+		expect(approveProposalRpc).not.toHaveBeenCalled();
+	});
+
+	it('omitted overrides field still allows approve (empty object)', async () => {
+		vi.mocked(approveProposalRpc).mockResolvedValue({
+			data: {
+				id: 'p1',
+				status: 'approved',
+				display_id: 'P-0001',
+				base_version: 1,
+				applied_values: { qty: 1 },
+				proposed_values: { qty: 1 },
+				change_type: 'set_qty_avg',
+				attention_started_at: null,
+				acknowledged_at: null
+			},
+			error: null
+		});
+		const form = new FormData();
+		form.set('id', 'p1');
+		// no overrides key
+		const result = await handleApprove(fakeSupabase({}), 'owner', form);
+		expect(result).toMatchObject({ ok: true });
+		expect(approveProposalRpc).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ overrides: {} })
+		);
+	});
 });
 
 describe('BE-19 correct / ack actions', () => {

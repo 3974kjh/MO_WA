@@ -25,18 +25,57 @@ import {
 import type { Database } from '$lib/types/database.types';
 import { failFromDbError, failValidation, isConflictDbError } from './actionErrors';
 
-function parseOverrides(raw: FormDataEntryValue | null): Record<string, unknown> {
-	if (raw == null || raw === '') return {};
-	if (typeof raw !== 'string') return {};
-	try {
-		const parsed = JSON.parse(raw) as unknown;
-		if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-			return parsed as Record<string, unknown>;
-		}
-	} catch {
-		/* fall through */
+/**
+ * Parse form `overrides` for approve_proposal (H-2 / R-PERM-13).
+ *
+ * - Field omitted (`null` from FormData.get) → `{}` (no user edit intent).
+ * - Any present value that is not a JSON object → 400 R-PERM-13.
+ *   Rejects: empty string, File, broken JSON, arrays, numbers, booleans,
+ *   JSON null / `"null"`, non-object strings. Never silently coerce to `{}`
+ *   (that would approve the bot's proposed_values instead of the user's edits).
+ * - `{}` and plain objects are allowed (further key checks in validateOverrides).
+ */
+export function parseOverrides(
+	raw: FormDataEntryValue | null
+):
+	| { ok: true; overrides: Record<string, unknown> }
+	| { ok: false; ruleId: 'R-PERM-13'; message: string } {
+	// Omitted field only — empty string is a present-but-invalid value (H-2).
+	if (raw == null) {
+		return { ok: true, overrides: {} };
 	}
-	return {};
+	if (typeof raw !== 'string') {
+		return {
+			ok: false,
+			ruleId: 'R-PERM-13',
+			message: '[R-PERM-13] overrides must be a JSON object'
+		};
+	}
+	if (raw === '') {
+		return {
+			ok: false,
+			ruleId: 'R-PERM-13',
+			message: '[R-PERM-13] overrides must be a JSON object'
+		};
+	}
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw) as unknown;
+	} catch {
+		return {
+			ok: false,
+			ruleId: 'R-PERM-13',
+			message: '[R-PERM-13] overrides must be a JSON object'
+		};
+	}
+	if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+		return {
+			ok: false,
+			ruleId: 'R-PERM-13',
+			message: '[R-PERM-13] overrides must be a JSON object'
+		};
+	}
+	return { ok: true, overrides: parsed as Record<string, unknown> };
 }
 
 async function loadProposalMeta(
@@ -82,7 +121,10 @@ export async function handleApprove(
 
 	const noteRaw = form.get('note');
 	const note = typeof noteRaw === 'string' && noteRaw.trim() ? noteRaw.trim() : null;
-	const overrides = parseOverrides(form.get('overrides'));
+	const parsedOverrides = parseOverrides(form.get('overrides'));
+	if (!parsedOverrides.ok) {
+		return failValidation(400, parsedOverrides.ruleId, parsedOverrides.message);
+	}
 
 	const meta = await loadProposalMeta(supabase, ownerId, id);
 	if (!meta) return fail(404, { ok: false as const, message: 'proposal not found', ruleIds: [] });
@@ -90,7 +132,7 @@ export async function handleApprove(
 	const validated = validateOverrides({
 		changeType: meta.change_type,
 		proposedByType: meta.proposed_by_type,
-		overrides,
+		overrides: parsedOverrides.overrides,
 		assetType: meta.asset_type as 'stock' | 'etf' | 'bond' | 'cash' | null
 	});
 	if (!validated.ok) {
