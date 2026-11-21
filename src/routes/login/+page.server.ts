@@ -3,7 +3,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { ensureUserProfile } from '$lib/server/auth';
 
 export const load: PageServerLoad = async ({ locals }) => {
-	if (locals.session) redirect(303, '/');
+	if (locals.user) redirect(303, '/');
 };
 
 export const actions: Actions = {

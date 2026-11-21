@@ -1,14 +1,18 @@
 import { env as privateEnv } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
+import { isUsableSupabasePublicConfig } from './publicConfig';
 
-const fallbackUrl = 'https://example.supabase.co';
-const fallbackAnonKey = 'public-anon-key';
+export { isUsableSupabasePublicConfig };
 
 export function getSupabasePublicConfig() {
+	const url = publicEnv.PUBLIC_SUPABASE_URL;
+	const anonKey = publicEnv.PUBLIC_SUPABASE_ANON_KEY;
+	const configured = isUsableSupabasePublicConfig(url, anonKey);
+
 	return {
-		url: publicEnv.PUBLIC_SUPABASE_URL || fallbackUrl,
-		anonKey: publicEnv.PUBLIC_SUPABASE_ANON_KEY || fallbackAnonKey,
-		configured: Boolean(publicEnv.PUBLIC_SUPABASE_URL && publicEnv.PUBLIC_SUPABASE_ANON_KEY)
+		url: configured ? (url as string).trim() : '',
+		anonKey: configured ? (anonKey as string).trim() : '',
+		configured
 	};
 }
 
