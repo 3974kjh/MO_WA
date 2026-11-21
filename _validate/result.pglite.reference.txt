@@ -237,7 +237,7 @@ draft ok  20261125000910_revoke_anon_all.sql
   ✓ TRUNCATE reports denied to service_role → permission denied for table reports
   ✓ TRUNCATE instruments denied to service_role → permission denied for table instruments
   ✓ TRUNCATE display_sequences denied to service_role → permission denied for table display_sequences
-  ✓ supabase_admin default-priv DO from 000100 is safe when role exists but user lacks USAGE
+  ✓ default-priv DOs from 000100+000910 are safe as non-postgres without USAGE
   ✓ new function is not executable by anon (global PUBLIC EXECUTE revoked)
   ✓ new function remains executable by authenticated
   ✓ new table: authenticated lacks TRUNCATE by default
