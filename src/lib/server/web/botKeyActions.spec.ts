@@ -50,7 +50,8 @@ import {
 	handleIssueBotKey,
 	handleRevokeBotKey,
 	handleSetBotKeyExpiry,
-	handleSetBotKeyRateLimit
+	handleSetBotKeyRateLimit,
+	parseOptionalIso
 } from './botKeyActions';
 
 const ownerId = '22222222-2222-4222-8222-222222222222';
@@ -308,6 +309,134 @@ describe('handleSetBotKeyExpiry / setRateLimit', () => {
 			expect.anything(),
 			expect.objectContaining({ rateLimitPerMin: 30 })
 		);
+	});
+});
+
+describe('QA Low-1: expires_at must carry an offset (R-SYS-02 · R-VAL-T02)', () => {
+	const INVALID = 'expires_at must be a valid ISO datetime';
+
+	it.each([
+		'2026-11-30T10:00',
+		'2026-11-30T10:00:00',
+		'2026-11-30T10:00:00.000',
+		'2026-11-30T10:00:00.123456',
+		'2026-11-30 10:00',
+		'2026-11-30 10:00:00',
+		'2026-11-30',
+		'2026-11-30T10:00+0900',
+		'2026-11-30T10:00+09',
+		'2026-11-30T10:00 +09:00',
+		'2026-02-30T10:00+09:00',
+		'2026-11-30T24:00+09:00',
+		'2026-11-30T10:00+15:00',
+		'Mon, 30 Nov 2026 10:00:00 GMT',
+		'not-a-date'
+	])('rejects %s without inferring an offset', (raw) => {
+		expect(parseOptionalIso(raw)).toEqual({ error: INVALID });
+	});
+
+	it.each([
+		['2026-11-30T10:00+09:00', '2026-11-30T01:00:00.000Z'],
+		['2026-11-30T10:00:00+09:00', '2026-11-30T01:00:00.000Z'],
+		['2026-11-30T10:00:00.000+09:00', '2026-11-30T01:00:00.000Z'],
+		['2026-11-30T01:00:00.000Z', '2026-11-30T01:00:00.000Z'],
+		['2026-11-30T01:00Z', '2026-11-30T01:00:00.000Z'],
+		['2027-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'],
+		['2028-02-29T09:00+09:00', '2028-02-29T00:00:00.000Z'],
+		['2026-11-29T20:00-05:00', '2026-11-30T01:00:00.000Z']
+	])('accepts %s as instant %s', (raw, iso) => {
+		expect(parseOptionalIso(raw)).toBe(iso);
+	});
+
+	it('empty string clears the optional expiry (null)', () => {
+		expect(parseOptionalIso('')).toBeNull();
+	});
+
+	it('issue: naive datetime-local value is rejected (no-JS submit), RPC not called', async () => {
+		const result = await handleIssueBotKey(
+			{} as never,
+			ownerId,
+			fd({ name: 'preview-importer', profile: 'importer', expires_at: '2026-11-30T10:00' })
+		);
+		expect(result).toMatchObject({
+			status: 400,
+			data: expect.objectContaining({ ok: false, message: INVALID, ruleIds: ['R-PERM-10'] })
+		});
+		expect(issueBotClientRpc).not.toHaveBeenCalled();
+	});
+
+	it('issue: +09:00 is stored as the KST 10:00 instant', async () => {
+		issueBotClientRpc.mockResolvedValue({ data: publicBot(), error: null });
+		const result = await handleIssueBotKey(
+			{} as never,
+			ownerId,
+			fd({ name: 'preview-importer', profile: 'importer', expires_at: '2026-11-30T10:00+09:00' })
+		);
+		expect(result).toMatchObject({ ok: true });
+		expect(issueBotClientRpc).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ expiresAt: '2026-11-30T01:00:00.000Z' })
+		);
+	});
+
+	it('issue: empty expiry on a non-importer profile stays null', async () => {
+		issueBotClientRpc.mockResolvedValue({ data: publicBot(), error: null });
+		await handleIssueBotKey(
+			{} as never,
+			ownerId,
+			fd({ name: 'preview-finance-manager', profile: 'finance-manager', expires_at: '' })
+		);
+		expect(issueBotClientRpc).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ expiresAt: null })
+		);
+	});
+
+	it('setExpiry: naive value is rejected before any DB call', async () => {
+		const result = await handleSetBotKeyExpiry(
+			{} as never,
+			ownerId,
+			fd({ id: botId, expires_at: '2026-11-30T10:00' })
+		);
+		expect(result).toMatchObject({
+			status: 400,
+			data: expect.objectContaining({ ok: false, message: INVALID })
+		});
+		expect(listBotClients).not.toHaveBeenCalled();
+		expect(setBotClientExpiry).not.toHaveBeenCalled();
+	});
+
+	it('setExpiry: +09:00 stores the KST instant; Z is accepted as-is', async () => {
+		listBotClients.mockResolvedValue({ data: [publicBot({ profile: 'importer' })], error: null });
+		setBotClientExpiry.mockResolvedValue({ data: publicBot(), error: null });
+		await handleSetBotKeyExpiry(
+			{} as never,
+			ownerId,
+			fd({ id: botId, expires_at: '2026-11-30T10:00+09:00' })
+		);
+		await handleSetBotKeyExpiry(
+			{} as never,
+			ownerId,
+			fd({ id: botId, expires_at: '2026-11-30T01:00:00.000Z' })
+		);
+		expect(setBotClientExpiry).toHaveBeenNthCalledWith(1, expect.anything(), {
+			id: botId,
+			expiresAt: '2026-11-30T01:00:00.000Z'
+		});
+		expect(setBotClientExpiry).toHaveBeenNthCalledWith(2, expect.anything(), {
+			id: botId,
+			expiresAt: '2026-11-30T01:00:00.000Z'
+		});
+	});
+
+	it('setExpiry: empty clears a non-importer expiry (null)', async () => {
+		listBotClients.mockResolvedValue({ data: [publicBot()], error: null });
+		setBotClientExpiry.mockResolvedValue({ data: publicBot(), error: null });
+		await handleSetBotKeyExpiry({} as never, ownerId, fd({ id: botId, expires_at: '' }));
+		expect(setBotClientExpiry).toHaveBeenCalledWith(expect.anything(), {
+			id: botId,
+			expiresAt: null
+		});
 	});
 });
 

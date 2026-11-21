@@ -7,6 +7,7 @@
 	 */
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
+	import type { SubmitFunction } from '@sveltejs/kit';
 	import type { ActionData, PageData } from './$types';
 	import Banner from '$lib/components/ui/Banner.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -19,6 +20,7 @@
 	import { THEME_LABEL, type ThemeMode } from '$lib/theme/theme';
 	import { themeState } from '$lib/theme/themeState.svelte';
 	import {
+		applyKstOffset,
 		expiryRequired,
 		FINANCE_MANAGER_PROFILE,
 		profileLabel,
@@ -72,6 +74,17 @@
 	const scopeChoices = $derived(selectableScopes(profile, defaults));
 	let picked = $derived<string[]>([...scopeChoices]);
 	const scopesValue = $derived(JSON.stringify(picked));
+
+	// ——— 만료 시각: KST 벽시계 → +09:00 (QA Low-1) ———
+	// datetime-local은 오프셋을 담을 수 없으니 화면 값은 두고, 실제로 보내는 FormData만 바꾼다.
+	// formdata 이벤트는 JS가 있는 native 제출과 enhance의 new FormData(form) 모두에서 발생한다.
+	// enhance 콜백에서도 한 번 더 적용한다(멱등). JS가 없으면 원래 값이 가고 서버가 거부한다.
+	function onExpiryFormData(e: FormDataEvent) {
+		applyKstOffset(e.formData);
+	}
+	const kstEnhance: SubmitFunction = ({ formData }) => {
+		applyKstOffset(formData);
+	};
 
 	// ——— 폐기 확인 ———
 	type Bot = PageData['botClients'][number];
@@ -130,7 +143,14 @@
 	<Card>
 		<h2 class="h2" id="bots-heading">봇 키</h2>
 
-		<form method="POST" action="?/issue" class="issue" data-testid="bot-issue-form" use:enhance>
+		<form
+			method="POST"
+			action="?/issue"
+			class="issue"
+			data-testid="bot-issue-form"
+			onformdata={onExpiryFormData}
+			use:enhance={kstEnhance}
+		>
 			<label>
 				이름
 				<input name="name" required maxlength="120" placeholder="예: 재무 봇" />
@@ -209,7 +229,14 @@
 						</div>
 						{#if !bot.revoked_at}
 							<div class="acts">
-								<form method="POST" action="?/setExpiry" class="inline" use:enhance>
+								<form
+									method="POST"
+									action="?/setExpiry"
+									class="inline"
+									data-testid="set-expiry-form"
+									onformdata={onExpiryFormData}
+									use:enhance={kstEnhance}
+								>
 									<input type="hidden" name="id" value={bot.id} />
 									<input
 										name="expires_at"

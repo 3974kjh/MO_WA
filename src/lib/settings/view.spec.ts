@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
 	ACTION_FALLBACK_MESSAGE,
+	applyKstOffset,
 	auditFilterActive,
 	expiryRequired,
 	formatArgsPreview,
 	parseAuditFilter,
 	selectableScopes,
 	settingsErrorMessage,
+	withKstOffset,
 	ARGS_PREVIEW_MAX
 } from './view';
 
@@ -18,6 +20,7 @@ describe('settingsErrorMessage: 한글화 + 규칙 ID 비노출', () => {
 		['name is required'],
 		['rate_limit_per_min must be an integer between 1 and 600'],
 		['bot client not found or already revoked'],
+		['expires_at must be a valid ISO datetime'],
 		['server_misconfigured']
 	])('%s', (raw) => {
 		const out = settingsErrorMessage(raw);
@@ -83,5 +86,42 @@ describe('formatArgsPreview', () => {
 		expect(formatArgsPreview({ a: 1 })).toContain('"a": 1');
 		expect(formatArgsPreview(null)).toBe('');
 		expect(formatArgsPreview({ t: 'x'.repeat(5000) }).length).toBe(ARGS_PREVIEW_MAX + 1);
+	});
+});
+
+describe('QA Low-1: 만료 입력은 KST(+09:00)로 보낸다', () => {
+	it('만료 형식 오류는 한글 안내로 바뀐다', () => {
+		expect(settingsErrorMessage('expires_at must be a valid ISO datetime')).toBe(
+			'만료 시각 형식이 올바르지 않아요.'
+		);
+	});
+
+	it.each([
+		['2026-11-30T10:00', '2026-11-30T10:00+09:00'],
+		['2026-11-30T10:00:30', '2026-11-30T10:00:30+09:00'],
+		['2026-11-30T10:00:30.500', '2026-11-30T10:00:30.500+09:00'],
+		['', ''],
+		['2026-11-30T10:00+09:00', '2026-11-30T10:00+09:00'],
+		['2026-11-30T01:00:00.000Z', '2026-11-30T01:00:00.000Z'],
+		['2026-11-30 10:00', '2026-11-30 10:00']
+	])('withKstOffset(%j) → %j', (input, out) => {
+		expect(withKstOffset(input)).toBe(out);
+	});
+
+	it('applyKstOffset은 FormData만 바꾸고 빈 값은 그대로 둔다', () => {
+		const a = new FormData();
+		a.set('expires_at', '2026-11-30T10:00');
+		applyKstOffset(a);
+		applyKstOffset(a); // 멱등
+		expect(a.get('expires_at')).toBe('2026-11-30T10:00+09:00');
+
+		const b = new FormData();
+		b.set('expires_at', '');
+		applyKstOffset(b);
+		expect(b.get('expires_at')).toBe('');
+
+		const c = new FormData();
+		applyKstOffset(c);
+		expect(c.has('expires_at')).toBe(false);
 	});
 });

@@ -26,6 +26,26 @@ export function expiryRequired(profile: string): boolean {
 	return profile === 'importer';
 }
 
+/** 만료 입력(datetime-local)은 KST 벽시계 시각. 오프셋 없는 값 형태(초·소수 초 선택). */
+const NAIVE_LOCAL_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/;
+export const KST_OFFSET = '+09:00';
+
+/**
+ * QA Low-1: datetime-local 값에 항상 `+09:00`을 붙인다(브라우저 시간대는 쓰지 않는다).
+ * 빈 값은 그대로, 이미 오프셋이 있거나 형식이 다른 값도 그대로 둔다(서버가 판단).
+ */
+export function withKstOffset(value: string): string {
+	return NAIVE_LOCAL_DATETIME_RE.test(value) ? `${value}${KST_OFFSET}` : value;
+}
+
+/** 제출 직전 FormData의 만료 값을 KST 오프셋이 붙은 값으로 바꾼다. 화면의 입력값은 건드리지 않는다. */
+export function applyKstOffset(formData: FormData, key = 'expires_at'): void {
+	const v = formData.get(key);
+	if (typeof v !== 'string') return;
+	const next = withKstOffset(v.trim());
+	if (next !== v) formData.set(key, next);
+}
+
 /** 해당 프로필에서 고를 수 있는 권한 범위(제안 권한은 finance-manager 밖에서는 제외). */
 export function selectableScopes(profile: string, defaults: readonly string[]): string[] {
 	if (profile === FINANCE_MANAGER_PROFILE) return [...defaults];

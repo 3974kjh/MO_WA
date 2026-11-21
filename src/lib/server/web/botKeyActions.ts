@@ -35,10 +35,38 @@ function formString(form: FormData, key: string): string {
 	return typeof v === 'string' ? v.trim() : '';
 }
 
-function parseOptionalIso(raw: string): string | null | { error: string } {
+/**
+ * QA Low-1 (R-SYS-02 · R-VAL-T02): only ISO 8601 datetimes WITH an explicit offset (`Z` or `±HH:MM`).
+ * Offset-less (naive) values are rejected — never inferred as KST or UTC. `Date.parse` alone would
+ * accept a naive `datetime-local` value as UTC on Workers and store a KST wall time 9 hours late.
+ */
+const ISO_WITH_OFFSET_RE =
+	/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(Z|[+-](\d{2}):(\d{2}))$/;
+const EXPIRES_AT_INVALID = 'expires_at must be a valid ISO datetime';
+
+export function parseOptionalIso(raw: string): string | null | { error: string } {
 	if (raw === '') return null;
+	const m = ISO_WITH_OFFSET_RE.exec(raw);
+	if (!m) return { error: EXPIRES_AT_INVALID };
+	const [, ys, mos, ds, hs, mis, ss, zone, ohs, oms] = m;
+	const y = Number(ys);
+	const mo = Number(mos);
+	const d = Number(ds);
+	const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+	const daysInMonth = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1] ?? 0;
+	if (
+		d < 1 ||
+		d > daysInMonth ||
+		Number(hs) > 23 ||
+		Number(mis) > 59 ||
+		(ss !== undefined && Number(ss) > 59) ||
+		(zone !== 'Z' && (Number(ohs) > 14 || Number(oms) > 59))
+	) {
+		return { error: EXPIRES_AT_INVALID };
+	}
+	// Offset is present and fields are in range — only now is Date.parse unambiguous.
 	const t = Date.parse(raw);
-	if (Number.isNaN(t)) return { error: 'expires_at must be a valid ISO datetime' };
+	if (Number.isNaN(t)) return { error: EXPIRES_AT_INVALID };
 	return new Date(t).toISOString();
 }
 

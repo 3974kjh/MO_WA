@@ -5,7 +5,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { flushSync } from 'svelte';
 
-vi.mock('$app/forms', () => ({ enhance: () => ({ destroy() {} }) }));
+const { submitFns } = vi.hoisted(() => ({
+	submitFns: new Map<string, (input: { formData: FormData }) => unknown>()
+}));
+vi.mock('$app/forms', () => ({
+	enhance: (node: HTMLFormElement, submit?: (input: { formData: FormData }) => unknown) => {
+		if (submit) submitFns.set(node.getAttribute('action') ?? '', submit);
+		return { destroy() {} };
+	}
+}));
 
 import Page from './+page.svelte';
 
@@ -166,6 +174,54 @@ describe('FE-09 설정 화면', () => {
 		});
 		const t = text(container.querySelector('[data-testid="bot-action-error"]'));
 		expect(t).toContain('만료일');
+		expect(text(container)).not.toMatch(/R-[A-Z]+-\d+/);
+		expect(text(container)).not.toContain('expires_at');
+	});
+
+	it('만료 시각: 제출 FormData에 +09:00을 붙이고 화면 값은 그대로 둔다(native·enhance)', () => {
+		const { container } = render(Page, { data: makeData() });
+		const issueForm = container.querySelector('[data-testid="bot-issue-form"]') as HTMLFormElement;
+		const expiryForm = container.querySelector(
+			'[data-testid="set-expiry-form"]'
+		) as HTMLFormElement;
+		for (const form of [issueForm, expiryForm]) {
+			const input = form.querySelector('input[name="expires_at"]') as HTMLInputElement;
+			expect(input.type).toBe('datetime-local');
+
+			// 빈 값은 그대로
+			input.value = '';
+			expect(new FormData(form).get('expires_at')).toBe('');
+
+			input.value = '2026-11-30T10:00';
+			// native 제출 경로: formdata 이벤트(new FormData(form)도 같은 이벤트를 낸다)
+			const posted = new FormData(form);
+			expect(posted.get('expires_at')).toBe('2026-11-30T10:00+09:00');
+			expect(input.value).toBe('2026-11-30T10:00');
+
+			// enhance 경로: 콜백이 받은 FormData도 +09:00(이미 붙었으면 다시 붙이지 않음)
+			const submit = submitFns.get(form.getAttribute('action') ?? '');
+			expect(submit).toBeTypeOf('function');
+			const raw = new FormData();
+			raw.set('expires_at', '2026-11-30T10:00');
+			submit!({ formData: raw });
+			expect(raw.get('expires_at')).toBe('2026-11-30T10:00+09:00');
+			submit!({ formData: posted });
+			expect(posted.get('expires_at')).toBe('2026-11-30T10:00+09:00');
+			expect(input.value).toBe('2026-11-30T10:00');
+		}
+	});
+
+	it('만료 형식 오류는 한글로, 규칙 ID·필드명 비노출', () => {
+		const { container } = render(Page, {
+			data: makeData(),
+			form: {
+				ok: false,
+				message: 'expires_at must be a valid ISO datetime',
+				ruleIds: ['R-PERM-10']
+			} as never
+		});
+		const t = text(container.querySelector('[data-testid="bot-action-error"]'));
+		expect(t).toBe('만료 시각 형식이 올바르지 않아요.');
 		expect(text(container)).not.toMatch(/R-[A-Z]+-\d+/);
 		expect(text(container)).not.toContain('expires_at');
 	});
