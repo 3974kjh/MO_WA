@@ -8,7 +8,7 @@ const root = new URL('../../../../', import.meta.url).pathname;
 
 /**
  * L-4: RENDERER_VERSION ↔ 렌더러·sanitize 스키마 묶음 스냅샷.
- * render.ts·schema.ts가 바뀌면 이 지문이 달라진다. 그때는 cache.ts의 RENDERER_VERSION을 올리고
+ * render.ts·schema.ts가 바뀌면 이 지문이 달라진다. 그때는 cacheRead.ts의 RENDERER_VERSION을 올리고
  * 아래 표에 `새 버전: 새 지문`을 추가한다(이전 캐시 값이 새 렌더러 결과로 쓰이지 않게).
  */
 const SNAPSHOT: Record<string, string> = {

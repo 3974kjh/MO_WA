@@ -3,7 +3,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * SanitizedHtml 브랜드는 sanitize 직후(render.ts)와 검사된 캐시 히트(cache.ts)에서만 만든다.
+ * SanitizedHtml 브랜드는 sanitize 직후(render.ts)와 검사된 캐시 히트(cacheRead.ts)에서만 만든다.
  * L-1(FE-15 리뷰): 정규식 한 줄 비교 대신 모든 import·export-from·동적 import 지정자를 실제 경로로 풀어 비교하고
  * (`./../brand.js`, `../markdown/brand.ts`, `$lib/server/markdown/brand.js` 등), 꺾쇠 캐스트 `<SanitizedHtml>x`도 막는다.
  */
@@ -44,12 +44,15 @@ function hasBrandCast(src: string): boolean {
 }
 
 describe('SanitizedHtml 브랜드 생성 위치', () => {
-	it('brand.ts는 render.ts·cache.ts만 import한다(경로를 풀어서 비교)', () => {
+	it('brand.ts는 render.ts·cacheRead.ts만 import한다(경로를 풀어서 비교)', () => {
 		const hits = sourceFiles(join(root, 'src'))
 			.filter((p) => importsBrand(p, readFileSync(p, 'utf8')))
 			.map((p) => relative(root, p))
 			.sort();
-		expect(hits).toEqual(['src/lib/server/markdown/cache.ts', 'src/lib/server/markdown/render.ts']);
+		expect(hits).toEqual([
+			'src/lib/server/markdown/cacheRead.ts',
+			'src/lib/server/markdown/render.ts'
+		]);
 	});
 	it('src 어디에서도 SanitizedHtml 캐스트(as·꺾쇠)는 brand.ts에만 있다', () => {
 		const hits = sourceFiles(join(root, 'src'))

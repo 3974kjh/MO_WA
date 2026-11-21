@@ -113,13 +113,13 @@ describe('리포트 렌더 캐시', () => {
 		const key = reportCacheKey(report, opts);
 		store.map.set(key, {
 			key,
-			bodyBlocks: { a: '<p>저장된 값</p>', b: '', hasSplit: false },
+			bodyBlocks: { a: '<h2 id="h-a">A</h2><p>저장된 값</p>', b: '', hasSplit: false },
 			toc: [{ id: 'h-a', text: 'A', level: 2, part: 'A' }]
 		});
 		const spy = vi.spyOn(render, 'renderReport');
 		const r = await renderReportCached(report, store, opts);
 		expect(spy).not.toHaveBeenCalled();
-		expect(r.a).toBe('<p>저장된 값</p>');
+		expect(r.a).toBe('<h2 id="h-a">A</h2><p>저장된 값</p>');
 		expect(r.toc).toEqual([{ id: 'h-a', text: 'A', level: 2, part: 'A' }]);
 	});
 	it.each<[string, unknown]>([

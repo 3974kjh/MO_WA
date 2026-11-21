@@ -13,16 +13,15 @@
  * - 키가 다르거나 형태가 틀리면 미스: 마크다운 + sanitize를 다시 하고 저장한다.
  * - 고정 문구 대체(상한 초과·렌더 실패)는 저장하지 않는다.
  * - 저장소는 주입한다(ReportCacheStore). 여기에는 저장 안 함(createNoStoreReportCache)·메모리(테스트·dev) 구현만 둔다.
- *   DB 저장소(`reports.body_blocks`·`toc`, 새 컬럼 없음)는 FE-04에서 **연결하지 않았다**: body_blocks·toc 컬럼에
- *   authenticated·봇(service role) 모두 쓸 수 있어 쓰기 경로 계약을 DB가 보장하지 못한다. BE-07 컬럼 권한·쓰기 시점 렌더가
- *   원격에 적용된 뒤 연결한다. 이 모듈은 DB를 부르지 않는다.
+ *   DB 컬럼(`reports.body_blocks`·`toc`)은 BE-07 RPC `mowa_set_report_render_cache`(service_role)만 쓰고,
+ *   운영 읽기(`/briefings/[date]`)는 렌더러 없는 cacheRead.ts의 readStoredRender()로 읽기만 한다. 이 모듈은 DB를 부르지 않는다.
  */
 import { renderReport, type RenderOptions } from './render';
-import { asSanitized } from './brand';
+import { RENDERER_VERSION, readCachedRender, reportCacheKey } from './cacheRead';
 import type { RenderedReport, SanitizedHtml, TocItem } from '$lib/markdown/types';
 
-/** 렌더러·sanitize 스키마·후처리·캐시 히트 규칙이 바뀌면 반드시 올린다(캐시 키에 들어감) */
-export const RENDERER_VERSION = 'fe15-r4';
+/** 키·저장 값 검사는 렌더러 없는 cacheRead.ts에 있다(운영 읽기 경로가 render.ts를 끌어오지 않게) */
+export { RENDERER_VERSION, reportCacheKey };
 
 /** 저장 형식(`reports.body_blocks`·`toc`에 들어갈 값). 렌더 파이프라인만 만든다 */
 export interface CachedRender {
@@ -47,79 +46,6 @@ export interface ReportSource {
 
 export { RENDER_FIELDS, isRenderFieldKey, stripRenderFields } from './renderFields';
 
-/** 렌더 옵션 지문(FNV-1a 32bit). 용어 사전·허용 호스트가 바뀌면 키가 달라진다 */
-function optionsFingerprint(opts: RenderOptions): string {
-	const glossary = opts.glossary
-		? Object.keys(opts.glossary)
-				.sort()
-				.map((k) => [k, opts.glossary?.[k] ?? ''])
-		: [];
-	const json = JSON.stringify([
-		glossary,
-		[...(opts.imageHosts ?? [])].map((h) => h.toLowerCase()).sort(),
-		[...(opts.siteHosts ?? [])].map((h) => h.toLowerCase()).sort()
-	]);
-	let h = 0x811c9dc5;
-	for (let i = 0; i < json.length; i++) {
-		h ^= json.charCodeAt(i);
-		h = Math.imul(h, 0x01000193) >>> 0;
-	}
-	return h.toString(16).padStart(8, '0');
-}
-
-/**
- * 캐시 키(L-2). 구분자 `:`가 id·version 값에 섞여 서로 다른 리포트가 같은 키가 되지 않도록
- * id는 encodeURIComponent로 인코딩하고(`:` → `%3A`), version은 0 이상의 정수만 받는다.
- */
-export function reportCacheKey(
-	report: Pick<ReportSource, 'id' | 'version'>,
-	opts: RenderOptions = {}
-): string {
-	const id = String(report.id);
-	if (id.length === 0) throw new Error('reportCacheKey: empty id');
-	const version = String(report.version);
-	if (!/^(0|[1-9]\d{0,9})$/.test(version)) throw new Error('reportCacheKey: invalid version');
-	return `report:${encodeURIComponent(id)}:v${version}:${RENDERER_VERSION}:${optionsFingerprint(opts)}`;
-}
-
-const TOC_ID = /^h-[\p{L}\p{N}-]{1,120}$/u;
-
-function isTocItem(t: unknown): t is TocItem {
-	if (typeof t !== 'object' || t === null) return false;
-	const o = t as Record<string, unknown>;
-	return (
-		typeof o.id === 'string' &&
-		TOC_ID.test(o.id) &&
-		typeof o.text === 'string' &&
-		o.text.trim().length > 0 &&
-		(o.level === 2 || o.level === 3) &&
-		(o.part === 'A' || o.part === 'B')
-	);
-}
-
-/**
- * 저장소 값 검사: 키 일치 + 형태 + 목차 형식(항목 하나라도 틀리면 전체 미스).
- * 통과한 값만 SanitizedHtml이 된다(렌더 파이프라인이 기록한 값이라는 쓰기 경로 계약에 기댄다).
- */
-function readCached(v: unknown, key: string): RenderedReport | null {
-	if (typeof v !== 'object' || v === null) return null;
-	const o = v as Record<string, unknown>;
-	if (o.key !== key) return null;
-	const bb = o.bodyBlocks as Record<string, unknown> | null | undefined;
-	if (typeof bb !== 'object' || bb === null) return null;
-	if (typeof bb.a !== 'string' || typeof bb.b !== 'string' || typeof bb.hasSplit !== 'boolean')
-		return null;
-	if (!Array.isArray(o.toc) || !o.toc.every(isTocItem)) return null;
-	const ids = new Set(o.toc.map((t) => t.id));
-	if (ids.size !== o.toc.length) return null;
-	return {
-		a: asSanitized(bb.a),
-		b: asSanitized(bb.b),
-		hasSplit: bb.hasSplit,
-		toc: o.toc.map((t) => ({ id: t.id, text: t.text, level: t.level, part: t.part }))
-	};
-}
-
 /**
  * 캐시를 거쳐 렌더한다. 히트면 저장 값을 그대로(재-sanitize·재렌더 없음), 미스면 renderReport() 후 저장.
  * 고정 문구 대체(상한 초과·렌더 실패)는 저장하지 않는다.
@@ -130,7 +56,7 @@ export async function renderReportCached(
 	opts: RenderOptions = {}
 ): Promise<RenderedReport> {
 	const key = reportCacheKey(report, opts);
-	const hit = readCached(await store.get(key), key);
+	const hit = readCachedRender(await store.get(key), key);
 	if (hit) return hit;
 	const rendered = renderReport(report.body, opts);
 	if (!rendered.fallback) {
