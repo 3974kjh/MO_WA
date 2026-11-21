@@ -6,7 +6,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { describe, expect, it } from 'vitest';
 import { forUser } from './client';
-import { listBriefingsWithKospi, listJournalPage } from './webLoads.repo';
+import { listBriefingsWithKospi, listInstrumentLabels, listJournalPage } from './webLoads.repo';
+import { listIndicatorSeries } from './market.repo';
 
 const OWNER = '00000000-0000-4000-8000-0000000000aa';
 
@@ -146,5 +147,44 @@ describe('FE-10 listJournalPage: count·page 요청 모두 같은 owner·필터'
 			);
 			expect(r.params.get('archived_at')).toBe('is.null');
 		}
+	});
+});
+
+describe('FE-03 홈 보조 load', () => {
+	it('listIndicatorSeries: owner·key 조건, 최신 N개를 오름차순으로, 숫자 아닌 값은 뺀다', async () => {
+		const { repo, requests } = stubClient({
+			market_indicators: [
+				{ as_of: '2026-11-20', value: '11.5' },
+				{ as_of: '2026-11-19', value: null },
+				{ as_of: '2026-11-18', value: 10 }
+			]
+		});
+		const { data, error } = await listIndicatorSeries(repo, 'kospi', 500);
+		expect(error).toBeNull();
+		expect(data).toEqual([
+			{ as_of: '2026-11-18', value: 10 },
+			{ as_of: '2026-11-20', value: 11.5 }
+		]);
+		const [r] = requests;
+		expectOwnerOnly(r.params);
+		expect(r.params.get('key')).toBe('eq.kospi');
+		expect(r.params.get('order')).toBe('as_of.desc');
+		expect(r.params.get('limit')).toBe('60');
+	});
+
+	it('listInstrumentLabels: id 중복 제거, owner 조건, 빈 목록이면 요청 없음', async () => {
+		const empty = stubClient();
+		expect(await listInstrumentLabels(empty.repo, [])).toEqual({ data: [], error: null });
+		expect(empty.requests).toHaveLength(0);
+
+		const { repo, requests } = stubClient({
+			instruments: [{ id: 'a', name: '가', ticker: 'A' }]
+		});
+		const { data } = await listInstrumentLabels(repo, ['a', 'a', 'b']);
+		expect(data).toEqual([{ id: 'a', name: '가', ticker: 'A' }]);
+		expect(requests).toHaveLength(1);
+		expectOwnerOnly(requests[0].params);
+		expect(requests[0].params.get('id')).toBe('in.(a,b)');
+		expect(requests[0].params.get('select')).toBe('id,name,ticker');
 	});
 });

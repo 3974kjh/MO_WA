@@ -59,6 +59,33 @@ export async function getLatestIndicator(
 	return { data: (data as MarketIndicatorLite | null) ?? null, error: error as Error | null };
 }
 
+/** FE-03 코스피 추이: 최근 `limit`개 기록(as_of 오름차순). 기록이 없는 날은 채우지 않는다. */
+export const INDICATOR_SERIES_MAX = 60;
+
+export async function listIndicatorSeries(
+	repo: RepoClient,
+	key: string,
+	limit = 30
+): Promise<{ data: Array<{ as_of: string; value: number }>; error: Error | null }> {
+	const ownerId = requireOwnerId(repo);
+	const n = Math.max(1, Math.min(INDICATOR_SERIES_MAX, Math.trunc(limit)));
+	let q = fromRepo(repo, 'market_indicators')
+		.select('as_of, value')
+		.eq('key', key)
+		.order('as_of', { ascending: false })
+		.limit(n);
+	q = withOwnerFilter(q, ownerId);
+	const { data, error } = await q;
+	if (error) return { data: [], error: error as Error };
+	const rows = ((data ?? []) as Array<{ as_of: string; value: number | string | null }>)
+		.map((r) => ({
+			as_of: r.as_of,
+			value: r.value == null || r.value === '' ? NaN : Number(r.value)
+		}))
+		.filter((r) => typeof r.as_of === 'string' && Number.isFinite(r.value));
+	return { data: rows.reverse(), error: null };
+}
+
 /**
  * G-6: kospi change_pct for each report_date (as_of date match).
  * Returns map report_date → change_pct (null when missing).

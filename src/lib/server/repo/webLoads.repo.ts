@@ -353,9 +353,19 @@ export async function listPositionCards(
 	};
 }
 
-export async function loadDashboardValuation(repo: RepoClient) {
-	const { data: positions, error } = await listPositionCards(repo);
-	if (error) return { data: null, error };
+/**
+ * FE-03: 이미 읽은 포지션 카드(listPositionCards)를 넘기면 다시 읽지 않는다.
+ * 넘기지 않으면 예전처럼 직접 읽는다.
+ */
+export async function loadDashboardValuation(repo: RepoClient, preloaded?: PositionCard[]) {
+	let positions: PositionCard[];
+	if (preloaded) {
+		positions = preloaded;
+	} else {
+		const res = await listPositionCards(repo);
+		if (res.error) return { data: null, error: res.error };
+		positions = res.data;
+	}
 
 	const instrumentIds = positions.map((p) => p.instrument_id);
 	const { data: prices, error: priceErr } = await listLatestPrices(repo, instrumentIds);
@@ -379,6 +389,23 @@ export async function loadDashboardValuation(repo: RepoClient) {
 	});
 
 	return { data: valuation, error: null };
+}
+
+export type InstrumentLabel = { id: string; name: string; ticker: string };
+
+/** FE-03 홈 카드용 종목 이름·코드(id → label). 보관된 종목도 이름은 보여 준다. */
+export async function listInstrumentLabels(
+	repo: RepoClient,
+	instrumentIds: string[]
+): Promise<{ data: InstrumentLabel[]; error: Error | null }> {
+	const ids = [...new Set(instrumentIds.filter(Boolean))];
+	if (ids.length === 0) return { data: [], error: null };
+	const ownerId = requireOwnerId(repo);
+	let q = fromRepo(repo, 'instruments').select('id, name, ticker').in('id', ids);
+	q = withOwnerFilter(q, ownerId);
+	const { data, error } = await q;
+	if (error) return { data: [], error: error as Error };
+	return { data: (data ?? []) as InstrumentLabel[], error: null };
 }
 
 export type BriefingListItem = {
