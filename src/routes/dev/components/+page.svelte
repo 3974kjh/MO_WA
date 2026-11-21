@@ -4,6 +4,10 @@
 	 * design/components.html 과 같은 절 순서로 실제 Svelte 컴포넌트를 렌더한다. 차트(FE-14)·리포트 본문(FE-15)·승인 큐(FE-07)는 해당 티켓에서 추가.
 	 */
 	import { resolve } from '$app/paths';
+	import BarChart from '$lib/components/charts/BarChart.svelte';
+	import DonutChart from '$lib/components/charts/DonutChart.svelte';
+	import LineChart from '$lib/components/charts/LineChart.svelte';
+	import Sparkline from '$lib/components/charts/Sparkline.svelte';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import StatusBadge from '$lib/components/ui/StatusBadge.svelte';
 	import Banner from '$lib/components/ui/Banner.svelte';
@@ -25,6 +29,14 @@
 	import { toast } from '$lib/components/ui/toast.svelte';
 	import type { Col, SheetVariant } from '$lib/components/ui/types';
 	import { contrastRatio } from '$lib/dev/contrast';
+	import {
+		kospiDaily,
+		kospiSeries,
+		pnlNegativeOnly,
+		sparkDown,
+		sparkUp,
+		weights
+	} from '$lib/fixtures/charts';
 	import { formatQty } from '$lib/format/number';
 	import { formatKstShort } from '$lib/format/datetime';
 	import {
@@ -161,9 +173,11 @@
 		<nav class="cs-nav" aria-label="섹션">
 			<a href="#color">색</a><a href="#type">타이포</a><a href="#space">간격·반경</a><a href="#btn"
 				>버튼·입력·배지</a
-			><a href="#card">카드·지표</a><a href="#table">표</a><a href="#money">금액</a><a href="#state"
-				>상태</a
-			><a href="#sheet">시트</a><a href="#list">목록</a><a href="#nav">내비게이션</a>
+			><a href="#card">카드·지표</a><a href="#table">표</a><a href="#money">금액</a><a href="#chart"
+				>차트</a
+			><a href="#state">상태</a><a href="#sheet">시트</a><a href="#list">목록</a><a href="#nav"
+				>내비게이션</a
+			>
 		</nav>
 		<SegmentedControl
 			ariaLabel="화면 모드"
@@ -438,6 +452,47 @@
 				tone="sign"
 			/> / <Money value={-2_271_309} tone="sign" />
 		</p>
+	</section>
+
+	<section class="sec" id="chart">
+		<h2>차트</h2>
+		<p class="lead">
+			카테고리 색은 chart-1~8, 등락은 빨강/파랑. 모바일(&lt;480): 높이 190, X축 눈금 4개 이내,
+			탭하면 아래 값 카드. 도넛은 범례 표가 주 읽기 면이고 6% 미만·8조각 초과는 ‘기타’.
+		</p>
+		<div class="charts">
+			<Card title="선 + 영역" headingLevel={3}>
+				<LineChart
+					ariaLabel="코스피 추이"
+					labels={kospiSeries.map((s) => s[0])}
+					series={[{ name: '코스피', values: kospiSeries.map((s) => s[1]) }]}
+					area
+					refLine={{ v: 5000, label: '5,000' }}
+					digits={0}
+				/>
+			</Card>
+			<Card title="막대 (일별 등락률)" headingLevel={3}>
+				<BarChart ariaLabel="코스피 일별 등락률" items={kospiDaily} digits={2} />
+			</Card>
+			<Card title="막대 (음수만)" headingLevel={3}>
+				<BarChart ariaLabel="평균 단가 대비 손익" items={pnlNegativeOnly} />
+			</Card>
+			<Card title="도넛 (비중)" headingLevel={3}>
+				<DonutChart ariaLabel="자산 비중" items={weights} total={24_141_484} sub="평가금액 기준" />
+			</Card>
+			<Card title="스파크라인" headingLevel={3}>
+				<p class="spark-demo">
+					<span>상승 <Sparkline values={sparkUp} w={100} label="상승 예" /></span>
+					<span>하락 <Sparkline values={sparkDown} w={100} label="하락 예" /></span>
+					<span
+						>코스피 8일 <Sparkline
+							values={kospiSeries.slice(-8).map((s) => s[1])}
+							label="코스피 8일 추이"
+						/></span
+					>
+				</p>
+			</Card>
+		</div>
 	</section>
 
 	<section class="sec" id="state">
@@ -766,6 +821,17 @@
 		display: grid;
 		gap: 16px;
 		grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+	}
+	.charts {
+		display: grid;
+		gap: 16px;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+	}
+	.spark-demo {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 16px 24px;
+		align-items: center;
 	}
 	.cards2 {
 		display: grid;
