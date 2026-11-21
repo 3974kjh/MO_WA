@@ -54,7 +54,7 @@
 				style={`left: ${fillPercent}%`}
 			></div>
 			<div class="pointer-events-none absolute inset-0 flex justify-between px-px">
-				{#each periods as _, tickIndex (tickIndex)}
+				{#each periods as period, tickIndex (period)}
 					<span
 						class="mt-[2px] h-1 w-px rounded-full transition-colors duration-500 {tickIndex <= index
 							? 'bg-primary/50'
