@@ -35,8 +35,8 @@ export const REPORT_PATCHABLE = [
 	'tickers',
 	'meta',
 	'status',
-	'generated_at',
-	'toc'
+	'generated_at'
+	// `toc`·`body_blocks`는 렌더 파이프라인만 채운다(FE-04, stripRenderFields). 패치로 받지 않는다.
 ] as const;
 
 export const POSITION_PATCHABLE = [

@@ -12,15 +12,17 @@
  * - CachedRender의 HTML은 SanitizedHtml 타입이라, 어댑터가 일반 string으로 만들어 set()에 넣을 수 없다.
  * - 키가 다르거나 형태가 틀리면 미스: 마크다운 + sanitize를 다시 하고 저장한다.
  * - 고정 문구 대체(상한 초과·렌더 실패)는 저장하지 않는다.
- * - 저장소는 주입한다(ReportCacheStore). 여기에는 메모리 구현만 둔다. 실제 저장소
- *   (`reports.body_blocks`·`toc`, 새 컬럼 없음)는 FE-04에서 붙인다. 이 모듈은 DB를 부르지 않는다.
+ * - 저장소는 주입한다(ReportCacheStore). 여기에는 저장 안 함(createNoStoreReportCache)·메모리(테스트·dev) 구현만 둔다.
+ *   DB 저장소(`reports.body_blocks`·`toc`, 새 컬럼 없음)는 FE-04에서 **연결하지 않았다**: body_blocks·toc 컬럼에
+ *   authenticated·봇(service role) 모두 쓸 수 있어 쓰기 경로 계약을 DB가 보장하지 못한다. BE-07 컬럼 권한·쓰기 시점 렌더가
+ *   원격에 적용된 뒤 연결한다. 이 모듈은 DB를 부르지 않는다.
  */
 import { renderReport, type RenderOptions } from './render';
 import { asSanitized } from './brand';
 import type { RenderedReport, SanitizedHtml, TocItem } from '$lib/markdown/types';
 
 /** 렌더러·sanitize 스키마·후처리·캐시 히트 규칙이 바뀌면 반드시 올린다(캐시 키에 들어감) */
-export const RENDERER_VERSION = 'fe15-r3';
+export const RENDERER_VERSION = 'fe15-r4';
 
 /** 저장 형식(`reports.body_blocks`·`toc`에 들어갈 값). 렌더 파이프라인만 만든다 */
 export interface CachedRender {
@@ -43,23 +45,7 @@ export interface ReportSource {
 	body: string;
 }
 
-/** 렌더 결과로 채우는 필드. 외부(클라이언트·봇) 입력에 있으면 버린다 */
-export const RENDER_FIELDS = ['body_blocks', 'toc', 'bodyBlocks'] as const;
-type RenderField = (typeof RENDER_FIELDS)[number];
-
-/**
- * 쓰기 경로 계약: 클라이언트·봇이 보낸 리포트 입력에서 렌더 결과 필드(`body_blocks`·`toc`)를 지운다.
- * FE-04/BE 어댑터는 저장 전에 반드시 이 함수를 거치고, 렌더 결과는 renderReportCached가 채운다.
- */
-export function stripRenderFields<T extends Record<string, unknown>>(
-	input: T
-): Omit<T, RenderField> {
-	const out: Record<string, unknown> = {};
-	for (const [k, v] of Object.entries(input)) {
-		if (!(RENDER_FIELDS as readonly string[]).includes(k)) out[k] = v;
-	}
-	return out as Omit<T, RenderField>;
-}
+export { RENDER_FIELDS, isRenderFieldKey, stripRenderFields } from './renderFields';
 
 /** 렌더 옵션 지문(FNV-1a 32bit). 용어 사전·허용 호스트가 바뀌면 키가 달라진다 */
 function optionsFingerprint(opts: RenderOptions): string {
@@ -81,11 +67,19 @@ function optionsFingerprint(opts: RenderOptions): string {
 	return h.toString(16).padStart(8, '0');
 }
 
+/**
+ * 캐시 키(L-2). 구분자 `:`가 id·version 값에 섞여 서로 다른 리포트가 같은 키가 되지 않도록
+ * id는 encodeURIComponent로 인코딩하고(`:` → `%3A`), version은 0 이상의 정수만 받는다.
+ */
 export function reportCacheKey(
 	report: Pick<ReportSource, 'id' | 'version'>,
 	opts: RenderOptions = {}
 ): string {
-	return `report:${report.id}:v${report.version}:${RENDERER_VERSION}:${optionsFingerprint(opts)}`;
+	const id = String(report.id);
+	if (id.length === 0) throw new Error('reportCacheKey: empty id');
+	const version = String(report.version);
+	if (!/^(0|[1-9]\d{0,9})$/.test(version)) throw new Error('reportCacheKey: invalid version');
+	return `report:${encodeURIComponent(id)}:v${version}:${RENDERER_VERSION}:${optionsFingerprint(opts)}`;
 }
 
 const TOC_ID = /^h-[\p{L}\p{N}-]{1,120}$/u;
@@ -149,16 +143,48 @@ export async function renderReportCached(
 	return rendered;
 }
 
-/** 메모리 저장소(테스트·로컬 개발용). 운영 저장소가 아니다 */
-export function createMemoryReportCache(): ReportCacheStore & {
-	readonly map: Map<string, unknown>;
-} {
+/**
+ * 저장하지 않는 저장소(FE-04 기본값). 히트가 없고, 미스 때 렌더 결과를 어디에도 쓰지 않는다.
+ * DB 저장소(`reports.body_blocks`·`toc`)는 BE-07 컬럼 권한(service role 렌더 경로만 쓰기)과 쓰기 시점 렌더가
+ * 원격에 적용된 뒤에만 연결한다. 그 전까지 운영 코드가 쓸 수 있는 저장소는 이것뿐이다.
+ */
+export function createNoStoreReportCache(): ReportCacheStore {
+	return {
+		get: () => undefined,
+		set: () => {}
+	};
+}
+
+/** 메모리 저장소 기본 상한(항목 수, L-4) */
+export const MEMORY_CACHE_MAX_ENTRIES = 64;
+
+/**
+ * 메모리 저장소(테스트·로컬 개발용). **운영 저장소가 아니다**(조건 c): 운영 빌드(import.meta.env.PROD)에서 만들면 예외를 던지고,
+ * 운영 코드에서 import하지 않는지 cache.spec.ts가 src 전체를 검사한다.
+ * 상한을 넘으면 가장 오래 쓰지 않은 항목부터 지운다(LRU, L-4).
+ */
+export function createMemoryReportCache(
+	opts: { maxEntries?: number } = {}
+): ReportCacheStore & { readonly map: Map<string, unknown> } {
+	if (import.meta.env?.PROD) throw new Error('createMemoryReportCache: not for production');
+	const max = Math.max(1, Math.floor(opts.maxEntries ?? MEMORY_CACHE_MAX_ENTRIES));
 	const map = new Map<string, unknown>();
 	return {
 		map,
-		get: (key) => map.get(key),
+		get: (key) => {
+			if (!map.has(key)) return undefined;
+			const v = map.get(key);
+			map.delete(key);
+			map.set(key, v);
+			return v;
+		},
 		set: (key, value) => {
+			map.delete(key);
 			map.set(key, structuredClone(value));
+			while (map.size > max) {
+				const oldest = map.keys().next().value as string;
+				map.delete(oldest);
+			}
 		}
 	};
 }

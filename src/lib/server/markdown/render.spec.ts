@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { fromHtml } from 'hast-util-from-html';
 import { visit } from 'unist-util-visit';
-import { largeBriefing, sampleBriefing, sampleGlossary } from '$lib/fixtures/report';
+import { GLOSSARY } from '$lib/content/glossary';
+import { largeBriefing, sampleBriefing } from '$lib/fixtures/report';
 import { renderReport, sanitizeFragment, slugify } from './render';
 import { ALLOWED_TAGS } from './schema';
 
@@ -249,7 +250,7 @@ describe('헤딩 id·목차·표·지시문·용어', () => {
 	it('용어 풀이: 첫 등장 한 번만, 제목·링크·코드 안은 건드리지 않는다', () => {
 		const r = renderReport(
 			'## 사이드카\n\n[사이드카](https://a.example) `사이드카` 오늘 사이드카, 또 사이드카',
-			{ glossary: sampleGlossary }
+			{ glossary: GLOSSARY }
 		);
 		expect(r.a.match(/class="gloss"/g)?.length).toBe(1);
 		expect(r.a).toContain('<h2 id="h-사이드카">사이드카</h2>');
@@ -262,11 +263,11 @@ describe('성능 (Workers CPU 한도)', () => {
 	it('40KB 브리핑 렌더 회귀 경보: 가장 빠른 회차 50ms·중앙값 100ms 미만', () => {
 		const src = largeBriefing();
 		expect(new TextEncoder().encode(src).length).toBeGreaterThanOrEqual(40 * 1024);
-		for (let i = 0; i < 3; i++) renderReport(src, { glossary: sampleGlossary }); // 워밍업(JIT)
+		for (let i = 0; i < 3; i++) renderReport(src, { glossary: GLOSSARY }); // 워밍업(JIT)
 		const times: number[] = [];
 		for (let i = 0; i < 9; i++) {
 			const t0 = performance.now();
-			const r = renderReport(src, { glossary: sampleGlossary });
+			const r = renderReport(src, { glossary: GLOSSARY });
 			times.push(performance.now() - t0);
 			expect(r.hasSplit).toBe(true);
 		}
