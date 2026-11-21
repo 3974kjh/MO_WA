@@ -1,0 +1,25 @@
+-- ⚠️ GATED · 되돌릴 수 없음 · 자동 적용 금지 (확장자 .sql.txt → apply-migrations.mjs가 읽지 않음)
+-- 실행 조건: (1) spike/design 승인 (2) 백업 덤프 완료 + 건수 검증 리포트 (3) PM·사용자 명시 승인
+-- 승인 후 파일명을 supabase/migrations/2026MMDDhhmmss_drop_legacy_finance.sql 로 옮겨 적용.
+begin;
+-- 안전장치: 백업 확인 테이블에 오늘자 기록이 없으면 중단
+do $$
+begin
+  if not exists (select 1 from public.mowa_backup_log where kind = 'legacy_finance_dump' and verified = true) then
+    raise exception 'legacy backup not verified; abort drop';
+  end if;
+end
+$$;
+drop table if exists public.liability_payments;
+drop table if exists public.asset_valuations;
+drop table if exists public.liabilities;
+drop table if exists public.snapshots;
+drop table if exists public.goals;
+drop table if exists public.cashflow_items;
+drop table if exists public.assets;
+drop table if exists public.asset_categories;
+drop type if exists public.asset_category;
+drop type if exists public.asset_currency;
+drop type if exists public.cashflow_direction;
+drop type if exists public.cashflow_cadence;
+commit;
