@@ -64,7 +64,7 @@
 	.tile {
 		display: block;
 		background: var(--color-surface);
-		border: 1px solid var(--color-line);
+		border: 1px solid var(--color-card-line);
 		border-radius: var(--radius-md);
 		padding: 14px 16px;
 		box-shadow: var(--shadow-card);

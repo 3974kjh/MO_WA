@@ -51,7 +51,7 @@
 	/* 터치 영역 ≥40px: 시각 높이 32px + 위아래 히트 영역 확장 */
 	@media (pointer: coarse) {
 		.chip {
-			min-height: 40px;
+			min-height: var(--size-touch);
 		}
 	}
 </style>

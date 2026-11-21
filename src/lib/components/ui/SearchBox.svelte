@@ -44,7 +44,7 @@
 		border: 1px solid var(--color-line-strong);
 		border-radius: var(--radius-sm);
 		padding: 0 12px;
-		height: 40px;
+		height: var(--size-touch);
 		color: var(--color-subtle);
 		min-width: 0;
 	}

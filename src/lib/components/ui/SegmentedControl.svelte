@@ -45,7 +45,7 @@
 	}
 	@media (pointer: coarse) {
 		button {
-			min-height: 40px;
+			min-height: var(--size-touch);
 		}
 	}
 </style>
