@@ -213,7 +213,7 @@ describe('A/B 분리 (G-11)', () => {
 
 describe('헤딩 id·목차·표·지시문·용어', () => {
 	it('헤딩 id는 h- 접두 한글 slug, 중복은 -2', () => {
-		const used = new Map<string, number>();
+		const used = new Set<string>();
 		expect(slugify('A-1 오늘 시장 한눈에', used)).toBe('h-a-1-오늘-시장-한눈에');
 		expect(slugify('A-1 오늘 시장 한눈에', used)).toBe('h-a-1-오늘-시장-한눈에-2');
 		expect(slugify('!!!', used)).toBe('h-section');
@@ -259,7 +259,7 @@ describe('헤딩 id·목차·표·지시문·용어', () => {
 });
 
 describe('성능 (Workers CPU 한도)', () => {
-	it('40KB 브리핑을 50ms 안에 렌더한다', () => {
+	it('40KB 브리핑 렌더 회귀 경보: 가장 빠른 회차 50ms·중앙값 100ms 미만', () => {
 		const src = largeBriefing();
 		expect(new TextEncoder().encode(src).length).toBeGreaterThanOrEqual(40 * 1024);
 		for (let i = 0; i < 3; i++) renderReport(src, { glossary: sampleGlossary }); // 워밍업(JIT)

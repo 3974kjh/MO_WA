@@ -6,15 +6,15 @@
 	 * - 용어 풀이(.gloss): PC는 title 툴팁, 탭·Enter·Space면 하단 시트로 설명을 연다.
 	 */
 	import Sheet from '$lib/components/ui/Sheet.svelte';
-	import type { RenderedReport, ReportMode } from '$lib/markdown/types';
+	import type { ReportMode, SanitizedHtml } from '$lib/markdown/types';
 
 	let {
 		report,
 		mode = 'detail',
 		class: className = ''
 	}: {
-		/** 서버 renderReport() 결과(sanitize 완료). 다른 출처의 HTML을 넣지 않는다 */
-		report: Pick<RenderedReport, 'a' | 'b' | 'hasSplit'>;
+		/** 서버 renderReport() 결과(sanitize 완료). a·b는 SanitizedHtml 브랜드 타입이라 일반 string을 넣을 수 없다 */
+		report: { a: SanitizedHtml; b: SanitizedHtml; hasSplit: boolean };
 		mode?: ReportMode;
 		class?: string;
 	} = $props();
