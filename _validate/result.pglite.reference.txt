@@ -1,3 +1,7 @@
+resetting local stack (migrations only; GATED stays .sql.txt)…
+draft ok  20260529190000_initial_mo_wa_schema.sql
+draft ok  20260529200000_profiles_trigger_tags_maturity.sql
+draft ok  20260529203000_cashflow_projection_inputs.sql
 draft ok  20261125000050_backup_log.sql
 draft ok  20261125000100_core_helpers.sql
 draft ok  20261125000200_instruments_portfolio.sql
@@ -9,6 +13,7 @@ draft ok  20261125000650_principle_proposals.sql
 draft ok  20261125000700_rls.sql
 draft ok  20261125000800_functions.sql
 draft ok  20261125000900_profiles_hardening.sql
+draft ok  20261125000910_revoke_anon_all.sql
 
 [권한·승인 큐]
   ✓ PM확정: positions:propose 스코프는 finance-manager 프로필만 → new row for relation "bot_clients" violates check constraint "bot_clients_propose_only_fm"
@@ -39,8 +44,8 @@ draft ok  20261125000900_profiles_hardening.sql
   ✓ R-PERM-13: 같은 대상 새 제안 → 이전 pending superseded
   ✓ R-PERM-13: 승인 전 positions 값 불변
   ✓ R-PERM-05: 봇이 approve 호출 → permission denied for function approve_proposal
-  ✓ R-PERM-05: 봇이 상태를 approved로 위조 → [R-PERM-05] bots cannot approve/reject/hold proposals
-  ✓ R-PERM-01: 다른 봇이 제안 취소 → [R-PERM-01] bots can only cancel their own proposals
+  ✓ R-PERM-05: 봇이 상태를 approved로 위조 → [R-PERM-05] bots can only cancel their own pending/on_hold proposals
+  ✓ R-PERM-01: 다른 봇이 제안 취소 → [R-PERM-05] bots can only cancel their own pending/on_hold proposals
   ✓ 타 사용자 승인 불가 → proposal not found
   ✓ 사용자도 제안 행 직접 수정 불가 → permission denied for table position_proposals
   ✓ R-VAL-M03/Q-15: 소수 수량 override 거부(기본) → [R-VAL-M03] fractional qty not allowed for stock
@@ -62,11 +67,11 @@ draft ok  20261125000900_profiles_hardening.sql
   ✓ 표시 ID 불변(update 거부) → [DISPLAY-ID] display_no and owner_id are immutable
   ✓ display_sequences는 사용자·봇 직접 접근 불가 → permission denied for table display_sequences
   ✓ display_sequences는 봇도 직접 접근 불가 → permission denied for table display_sequences
-  ✓ G-1: 봇은 on_hold 설정 불가 → [R-PERM-05] bots cannot approve/reject/hold proposals
+  ✓ G-1: 봇은 on_hold 설정 불가 → [R-PERM-05] bots can only cancel their own pending/on_hold proposals
   ✓ G-1: 사용자 보류 → on_hold
   ✓ G-1: on_hold는 만료 제외
   ✓ Q-29 사용자는 봇 제안을 철회(cancel) 못 함 → 거절만 → [R-PERM-05] users reject bot proposals instead of cancelling them (Q-29)
-  ✓ Q-29 다른 봇은 on_hold 제안 취소 불가 → [R-PERM-01] bots can only cancel their own proposals
+  ✓ Q-29 다른 봇은 on_hold 제안 취소 불가 → [R-PERM-05] bots can only cancel their own pending/on_hold proposals
   ✓ G-1: 보류 해제 → pending, 만료 재계산
   ✓ G-1: on_hold에서 바로 거절 가능
   ✓ PM 2026-11-21: 사용자 정정은 직접 insert 불가(큐에 pending으로 쌓지 않음) → permission denied for table position_proposals
@@ -84,7 +89,7 @@ draft ok  20261125000900_profiles_hardening.sql
   ✓ 사용자는 다른 사람 명의 제안 불가 → permission denied for table position_proposals
   ✓ Q-29 제안한 봇은 자기 on_hold 제안을 cancelled로
   ✓ Q-29 사용자 정정 행(approved)은 철회 대상 아님 → proposal is already approved
-  ✓ Q-29 봇은 사용자 제안 취소 불가 → [R-PERM-05] bots cannot approve/reject/hold proposals
+  ✓ Q-29 봇은 사용자 제안 취소 불가 → [R-PERM-05] bots can only cancel their own pending/on_hold proposals
   ✓ Q-32 watch_only=true면 trigger_price 금지 → new row for relation "positions" violates check constraint "positions_watch_only_no_trigge
   ✓ Q-32 현대차 이전: watch_only=true, trigger_price=null, status 그대로
   ✓ Q-32 watch_only 변경도 감사 로그 before/after
@@ -136,7 +141,7 @@ draft ok  20261125000900_profiles_hardening.sql
   ✓ 근거 없는 원칙 제안 → new row for relation "principle_proposals" violates check constraint "principle_proposals_
   ✓ R-VAL-P10 원칙 제안의 없는 report_id 근거 → [R-VAL-P10] evidence references a missing report/journal entry
   ✓ R-PERM-05 봇이 원칙 제안 승인 → permission denied for function approve_principle_proposal
-  ✓ R-PERM-01 다른 봇이 원칙 제안 취소 → [R-PERM-01] bots can only cancel their own proposals
+  ✓ R-PERM-01 다른 봇이 원칙 제안 취소 → [R-PERM-05] bots can only cancel their own pending/on_hold proposals
   ✓ Q-01 사용자도 원칙 제안 삭제 불가 → permission denied for table principle_proposals
   ✓ G-1 원칙 제안도 보류 가능(on_hold)
   ✓ 사용자 작성 원칙 제안(웹 세션)
@@ -147,7 +152,7 @@ draft ok  20261125000900_profiles_hardening.sql
   ✓ 원칙: 사용자는 봇 제안을 cancel 못 함(R-VAL-P14) → [R-PERM-05] users reject bot proposals instead of cancelling them (Q-29)
   ✓ 원칙 conflict 확인(ack): 상태 유지 + acknowledged_at
   ✓ 원칙: 사용자는 자기 제안 cancel
-  ✓ 봇은 확인(ack) 필드를 쓸 수 없음 → [R-PERM-05] bots cannot approve/reject/hold proposals
+  ✓ 봇은 확인(ack) 필드를 쓸 수 없음 → [R-PERM-05] bots can only cancel their own pending/on_hold proposals
   ✓ attention_started_at은 conflict 진입 시 자동 기록
   ✓ 확인 필요 그룹 포함(ack 전)
   ✓ acknowledge_proposal: 상태 유지 + 그룹에서 빠짐
@@ -180,6 +185,23 @@ draft ok  20261125000900_profiles_hardening.sql
   ✓ R-VAL-M07 좌표 범위 → new row for relation "re_complexes" violates check constraint "re_complexes_lat_check"
   ✓ re_complexes external_source+external_id(PM확정 Q-09)
 
+[PostgREST]
+  ✓ anon key denied select on every public table (SQLSTATE 42501)
+  ✓ R-PERM-03 PostgREST: service_role without x-mowa-bot-id cannot update positions → {"code":"42501","details":null,"hint":null,"message":"[R-PERM-03] missing bot identity"}
+  ✓ PostgREST: service_role + x-mowa-bot-id can patch bot-writable memo
+
+[M-2·M-3·L-1 hardening]
+  ✓ M-2: 봇이 직접 superseded 표시 불가 → [R-PERM-05] bots cannot mark proposals superseded (server-only)
+  ✓ M-2: 다른 봇이 cancelled로 위조 불가 → [R-PERM-05] bots can only cancel their own pending/on_hold proposals
+  ✓ M-2: 봇 cancelled 시 다른 컬럼 변경 불가 → [R-PERM-05] bots can only cancel their own pending/on_hold proposals
+  ✓ M-2: 서버 supersede(새 제안)는 이전 pending을 superseded
+  ✓ M-2: 최신 제안은 pending 유지
+  ✓ M-3: mcp_audit_log TRUNCATE 거부 → [R-SYS-05] mcp_audit_log cannot be truncated
+  ✓ M-3: report_revisions DELETE 거부 → [R-SYS-05] report_revisions is append-only (no update/delete)
+  ✓ M-3: mowa_backup_log verified UPDATE 거부 → [R-SYS-05] mowa_backup_log is append-only (no update/delete)
+  ✓ L-1: authenticated는 다른 owner settings 읽기 불가 → [R-PERM-01] cannot read another owner's settings
+  ✓ authenticated는 bot_clients 직접 insert 불가 → permission denied for table bot_clients
+
 [인증·감사]
   ✓ R-SYS-05 감사 로그 append-only → [R-SYS-05] mcp_audit_log is append-only
   ✓ R-PERM-10 mcp_authenticate ok + profile
@@ -192,8 +214,10 @@ draft ok  20261125000900_profiles_hardening.sql
   ✓ 승인/거절 감사 행 존재
 
 [GATED drop]
-  ✓ 백업 검증 기록 없으면 drop 중단 → legacy backup not verified; abort drop
+  ✓ 백업 검증 기록 없으면 drop 중단 → ERROR:  legacy backup not verified; abort drop
+CONTEXT:  PL/pgSQL function inline_code_blo
+  ✓ row_counts 불일치면 drop 중단 → ERROR:  legacy backup row_counts mismatch; abort drop (log={"assets": 999}, live={"goals":
   ✓ 검증 기록 후 drop 실행
   ✓ 레거시 테이블 제거·profiles 유지
 
-RESULT pass=172 fail=0
+RESULT pass=186 fail=0

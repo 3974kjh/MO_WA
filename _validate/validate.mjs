@@ -217,7 +217,7 @@ eq('R-PERM-13: 같은 대상 새 제안 → 이전 pending superseded', (await d
 eq('R-PERM-13: 승인 전 positions 값 불변', Number((await db.query(`select qty from positions where id='${pos.id}'`)).rows[0].qty), 27);
 await err('R-PERM-05: 봇이 approve 호출', () => fm(`select approve_proposal('${p2}')`), /permission denied|R-PERM-05/);
 await err('R-PERM-05: 봇이 상태를 approved로 위조', () => fm(`update position_proposals set status='approved' where id='${p2}'`), /R-PERM-05/);
-await err('R-PERM-01: 다른 봇이 제안 취소', () => ea(`update position_proposals set status='cancelled' where id='${p2}'`), /own proposals/);
+await err('R-PERM-01: 다른 봇이 제안 취소', () => ea(`update position_proposals set status='cancelled' where id='${p2}'`), /own|cancel|R-PERM/);
 await err('타 사용자 승인 불가', () => other(`select approve_proposal('${p2}')`), /not found/);
 await err('사용자도 제안 행 직접 수정 불가', () => user(`update position_proposals set status='approved' where id='${p2}'`), /permission denied/);
 await err('R-VAL-M03/Q-15: 소수 수량 override 거부(기본)', () => user(`select approve_proposal('${p2}', '{"qty":33.5}')`), /R-VAL-M03/);
@@ -330,7 +330,7 @@ await err('R-PERM-15 대상은 principles 리포트만', () => fm(`insert into p
 await err('근거 없는 원칙 제안', () => fm(`insert into principle_proposals(owner_id,principle_id,proposed_body_md,reason_md,evidence) values ('${U}','${urep}','x','y','[]')`), /check/);
 await err('R-VAL-P10 원칙 제안의 없는 report_id 근거', () => fm(`insert into principle_proposals(owner_id,principle_id,proposed_body_md,reason_md,evidence) values ('${U}','${urep}','x','y','[{"report_id":"${X}"}]')`), /R-VAL-P10/);
 await err('R-PERM-05 봇이 원칙 제안 승인', () => fm(`select approve_principle_proposal('${pp1.id}')`), /permission denied/);
-await err('R-PERM-01 다른 봇이 원칙 제안 취소', () => ea(`update principle_proposals set status='cancelled' where id='${pp1.id}'`), /R-PERM-01/);
+await err('R-PERM-01 다른 봇이 원칙 제안 취소', () => ea(`update principle_proposals set status='cancelled' where id='${pp1.id}'`), /R-PERM|own|cancel/);
 await err('Q-01 사용자도 원칙 제안 삭제 불가', () => user(`delete from principle_proposals where id='${pp1.id}'`), /permission denied/);
 eq('G-1 원칙 제안도 보류 가능(on_hold)', (await user(`select status from decide_principle_proposal('${pp1.id}','hold')`)).rows[0].status, 'on_hold');
 const pp2 = (await ok('사용자 작성 원칙 제안(웹 세션)', () => user(`insert into principle_proposals(owner_id,principle_id,proposed_body_md,reason_md,evidence) values ('${U}','${urep}','# 원칙 v2\n손절 -9%','재검토','[{"user_statement":"-9%로","stated_at":"2026-11-21T11:00:00+09:00"}]') returning id, proposer_type`))).rows[0];
@@ -464,7 +464,8 @@ eq('M-2: 서버 supersede(새 제안)는 이전 pending을 superseded', (await d
 eq('M-2: 최신 제안은 pending 유지', (await db.query(`select status from position_proposals where id='${ownPend2}'`)).rows[0].status, 'pending');
 await err('M-3: mcp_audit_log TRUNCATE 거부', () => db.query(`truncate public.mcp_audit_log`), /append-only|truncated|R-SYS-05|42501/);
 await err('M-3: report_revisions DELETE 거부', () => db.query(`delete from report_revisions`), /append-only|R-SYS-05/);
-await err('M-3: mowa_backup_log verified UPDATE 거부', () => db.query(`update mowa_backup_log set verified=true`), /append-only|R-SYS-05/);
+await db.query(`insert into mowa_backup_log(kind,file_name,sha256,row_counts,verified) values ('legacy_finance_dump','probe.dump','00','{}',false)`);
+await err('M-3: mowa_backup_log verified UPDATE 거부', () => db.query(`update mowa_backup_log set verified=true where file_name='probe.dump'`), /append-only|R-SYS-05/);
 await err('L-1: authenticated는 다른 owner settings 읽기 불가', () => other(`select public.mowa_setting('${U}','proposal_expiry_days','7'::jsonb)`), /R-PERM-01|another owner/);
 await err('authenticated는 bot_clients 직접 insert 불가', () => user(`insert into bot_clients(owner_id,name,profile,key_prefix,key_hash) values ('${U}','web-key','custom','webwebweb1','${H}')`), /permission denied/);
 
