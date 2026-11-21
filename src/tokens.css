@@ -1,10 +1,10 @@
-/* MO_WA 디자인 토큰 확정본 v1.1 — Tailwind v4 (@theme) · 라이트/다크
+/* MO_WA 디자인 토큰 확정본 v1.2 — Tailwind v4 (@theme) · 라이트/다크
  * 사용: src/app.css 에서  @import "tailwindcss";  다음에 이 파일 내용을 붙이거나 @import "./tokens.css";
  * 유틸리티 예: bg-canvas bg-surface text-text text-muted border-line text-up text-down bg-up-soft font-num
  * 한국 관례: 상승=빨강(up) / 하락=파랑(down). 색만으로 구분하지 말고 ▲▼ + 부호를 병기한다.
  * 테마(확정): 기본은 OS 설정(prefers-color-scheme). 사용자 토글은 <html data-theme="light|dark">로 덮어씀(localStorage 'mowa-theme').
  * 폰트(확정): Pretendard Variable 서브셋 self-host. @font-face 는 이 파일이 아니라 handoff-fe.md §폰트 의 pretendard.css 를 사용.
- * 상태: 확정본 v1.1 (2026-11-21 사용자 결정 반영). 디자인 방향=차분한 틸 금융 도구. (paper·애플풍 팔레트는 폐기되어 제거됨)
+ * 상태: 확정본 v1.2 (2026-11-21 사용자 결정 반영). 디자인 방향=차분한 틸 금융 도구. (paper·애플풍 팔레트는 폐기되어 제거됨)
  */
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
@@ -17,8 +17,9 @@
 
   /* ── 타입 스케일 (rem, 기준 16px) — 행간 포함 ── */
   --text-xs: 0.75rem;   --text-xs--line-height: 1.0rem;     /* 12 캡션·배지 */
-  --text-sm: 0.8125rem; --text-sm--line-height: 1.25rem;    /* 13 표·보조 */
-  --text-base: 0.9375rem; --text-base--line-height: 1.5rem; /* 15 UI 본문 */
+  --text-sm: 0.8125rem; --text-sm--line-height: 1.25rem;    /* 13 표·보조 (v1.1 유지 — 사용자 결정 2026-11-21) */
+  --text-table: 0.8125rem; --text-table--line-height: 1.25rem; /* 13 표 전용(현재 sm과 같음) */
+  --text-base: 0.9375rem; --text-base--line-height: 1.5rem; /* 15 UI 본문 (v1.1 유지 — 사용자 결정 2026-11-21) */
   --text-md: 1rem;      --text-md--line-height: 1.7rem;     /* 16 리포트 본문(행간 1.7) */
   --text-lg: 1.125rem;  --text-lg--line-height: 1.6rem;     /* 18 카드 제목 */
   --text-xl: 1.375rem;  --text-xl--line-height: 1.85rem;    /* 22 섹션 제목 */
@@ -31,7 +32,7 @@
   /* ── 반경 ── */
   --radius-xs: 4px;   /* 배지·태그 */
   --radius-sm: 6px;   /* 입력·버튼 */
-  --radius-md: 10px;  /* 카드·표 */
+  --radius-md: 12px;  /* 카드·표 (v1.2: 10→12) */
   --radius-lg: 14px;  /* 시트·모달 */
   --radius-full: 999px;
 
@@ -41,6 +42,11 @@
   --breakpoint-xl: 80rem;   /* 1280 */
 
   /* ── 레이아웃 ── */
+  --size-topbar: 3.75rem;    /* 60 PC 상단바 */
+  --size-topbar-m: 3.25rem;  /* 52 모바일 상단바 */
+  --size-touch: 2.5rem;      /* 40 클릭 영역 하한 (v1.1 유지). 모바일 주요 액션만 44 */
+  --size-tabbar: 3.25rem;    /* 52 하단 탭 높이 + safe-area */
+  --sheet-max-h: 86dvh;      /* 시트 최대 높이: vh 금지, dvh */
   --size-sidebar: 15rem;     /* 240 */
   --size-sidebar-rail: 4.5rem; /* 태블릿 아이콘 레일 72 */
   --size-toc: 14rem;         /* 224 */
@@ -88,9 +94,11 @@
   --color-chart-axis: #5D6676;
 
   /* ── 그림자 ── */
-  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.05), 0 1px 1px rgb(16 24 40 / 0.03);
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.06), 0 2px 8px rgb(16 24 40 / 0.06); /* 카드: 연한 2층 그림자 */
+  --color-card-line: transparent;   /* 라이트: 카드 테두리 없음, 그림자만 */
   --shadow-pop: 0 8px 24px rgb(16 24 40 / 0.12), 0 2px 6px rgb(16 24 40 / 0.06);
   --shadow-sheet: 0 -8px 32px rgb(16 24 40 / 0.18);
+  --color-scrim: rgb(8 10 16 / 0.5);  /* 시트·모달 스크림 (bg-scrim) */
 
   /* ── 모션 ── */
   --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
@@ -136,9 +144,10 @@
   --color-chart-8: #566275;
   --color-chart-grid: #262C39;
   --color-chart-axis: #8E97A8;
-  --shadow-card: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 2px 8px rgb(0 0 0 / 0.3); --color-card-line: rgb(255 255 255 / 0.07);
   --shadow-pop: 0 8px 28px rgb(0 0 0 / 0.55);
   --shadow-sheet: 0 -8px 32px rgb(0 0 0 / 0.6);
+  --color-scrim: rgb(0 0 0 / 0.64);  /* 다크 캔버스 #0D1017 위에서도 보이도록 */
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]):not([data-theme="dark"]) {
@@ -153,8 +162,8 @@
     --color-chart-1: #4FC4B8; --color-chart-2: #F2B544; --color-chart-3: #8F9CF2; --color-chart-4: #B79AE0;
     --color-chart-5: #5FC3CC; --color-chart-6: #E6896B; --color-chart-7: #8E97A8; --color-chart-8: #566275;
     --color-chart-grid: #262C39; --color-chart-axis: #8E97A8;
-    --shadow-card: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px rgb(0 0 0 / 0.4);
-    --shadow-pop: 0 8px 28px rgb(0 0 0 / 0.55); --shadow-sheet: 0 -8px 32px rgb(0 0 0 / 0.6);
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 2px 8px rgb(0 0 0 / 0.3); --color-card-line: rgb(255 255 255 / 0.07);
+    --shadow-pop: 0 8px 28px rgb(0 0 0 / 0.55); --shadow-sheet: 0 -8px 32px rgb(0 0 0 / 0.6); --color-scrim: rgb(0 0 0 / 0.64);
   }
 }
 
