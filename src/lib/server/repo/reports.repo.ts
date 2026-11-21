@@ -1,10 +1,10 @@
 import type { ReportRow } from '$lib/types/mowa.contract';
+import { stripRenderFields } from '$lib/server/markdown/renderFields';
 import { archiveRow, restoreRow } from './archive';
 import { serverCreateStamps, stripClientIdentity, type RepoClient } from './client';
 import { fromRepo, rpcFromRepo } from './db';
 import { requireOwnerId, withOwnerFilter } from './owner';
 import { pickPatchable, REPORT_PATCHABLE } from './patch';
-import { stripRenderFields } from '$lib/server/markdown/cache';
 
 export type ReportCreateInput = Partial<ReportRow> &
 	Pick<ReportRow, 'kind' | 'slug' | 'title' | 'report_date' | 'body_md' | 'domain'>;
@@ -86,8 +86,10 @@ export async function replaceReportSources(
 	return { error: (error as Error | null) ?? null };
 }
 
-/** Create report — server fills owner_id + source_bot_id (R-PERM-03). No runRules here (M-5).
- * body_blocks/toc are always stripped (BE-07); use setReportRenderCache after insert. */
+/**
+ * Create report — server fills owner_id + source_bot_id (R-PERM-03). No runRules here (M-5).
+ * body_blocks/toc (and name variants) are stripped (FE-04 / BE-07); use setReportRenderCache after insert.
+ */
 export async function createReport(
 	repo: RepoClient,
 	input: ReportCreateInput
@@ -104,7 +106,7 @@ export async function createReport(
 	return { data: (data as ReportRow | null) ?? null, error: error as Error | null };
 }
 
-/** Update only report patchable fields (M-3). body_blocks/toc never pass through. */
+/** Update only report patchable fields (M-3). Render result fields never pass through. */
 export async function updateReport(
 	repo: RepoClient,
 	id: string,
@@ -119,7 +121,7 @@ export async function updateReport(
 }
 
 /**
- * Write-time render cache via SECURITY DEFINER RPC (column GRANTs revoked on reports).
+ * Write-time render cache via SECURITY DEFINER RPC (sets mowa.render_cache_write GUC).
  * Only the server render path should call this — never trust client/bot args.
  */
 export async function setReportRenderCache(

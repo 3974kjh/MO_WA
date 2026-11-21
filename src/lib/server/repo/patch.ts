@@ -36,7 +36,7 @@ export const REPORT_PATCHABLE = [
 	'meta',
 	'status',
 	'generated_at'
-	// body_blocks / toc: NOT patchable — only mowa_set_report_render_cache (BE-07 column grants)
+	// body_blocks / toc: NOT patchable — only mowa_set_report_render_cache + GUC (BE-07 / FE-04)
 ] as const;
 
 export const POSITION_PATCHABLE = [

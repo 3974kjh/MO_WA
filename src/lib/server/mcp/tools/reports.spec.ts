@@ -13,7 +13,8 @@ const db = vi.hoisted(() => ({
 	updated: [] as Array<{ id: string; patch: Row }>,
 	renderCaches: [] as Array<{ id: string; body_blocks: unknown; toc: unknown }>,
 	archivedIds: [] as string[],
-	replaceError: null as Error | null
+	replaceError: null as Error | null,
+	cacheError: null as Error | null
 }));
 
 vi.mock('$lib/server/repo', () => {
@@ -55,6 +56,7 @@ vi.mock('$lib/server/repo', () => {
 			id: string,
 			columns: { body_blocks: unknown; toc: unknown }
 		) => {
+			if (db.cacheError) return { error: db.cacheError };
 			db.renderCaches.push({ id, ...columns });
 			const row = db.reports.find((r) => r.id === id);
 			if (row) {
@@ -171,6 +173,7 @@ beforeEach(() => {
 	db.renderCaches = [];
 	db.archivedIds = [];
 	db.replaceError = null;
+	db.cacheError = null;
 	renderReport.mockClear();
 });
 
@@ -456,8 +459,8 @@ describe('upsert_report — validation', () => {
 	});
 });
 
-describe('upsert_report — render cache (fe15-r3 + column RPC)', () => {
-	it('ignores client body_blocks/toc/bodyBlocks; create/update omit them; RPC writes fe15-r3', async () => {
+describe('upsert_report — render cache (fe15-r4 + column RPC)', () => {
+	it('ignores client body_blocks/toc/bodyBlocks; create/update omit them; RPC writes fe15-r4', async () => {
 		const h = await harness();
 		dataOf(
 			await h.call(
@@ -479,7 +482,7 @@ describe('upsert_report — render cache (fe15-r3 + column RPC)', () => {
 			key: string;
 			bodyBlocks: { a: string; hasSplit: boolean };
 		};
-		expect(blocks.key).toContain('fe15-r3');
+		expect(blocks.key).toContain('fe15-r4');
 		expect(blocks.bodyBlocks.a).not.toContain('evil');
 		expect(blocks.bodyBlocks.a).toContain('본문입니다');
 		expect((cache.toc as Array<{ text: string }>).map((t) => t.text)).toEqual(['시장']);
@@ -495,7 +498,7 @@ describe('upsert_report — render cache (fe15-r3 + column RPC)', () => {
 		expect(db.updated[0].patch.body_blocks).toBeUndefined();
 		const cache = db.renderCaches[1];
 		expect((cache.toc as Array<{ text: string }>).map((t) => t.text)).toEqual(['새 제목']);
-		expect((cache.body_blocks as { key: string }).key).toContain('fe15-r3');
+		expect((cache.body_blocks as { key: string }).key).toContain('fe15-r4');
 	});
 
 	it('render failure still saves body_md but clears the cache via RPC', async () => {
@@ -527,6 +530,16 @@ describe('upsert_report — render cache (fe15-r3 + column RPC)', () => {
 		dataOf(await h.call('upsert_report', dailyArgs()));
 		expect(db.renderCaches[0].body_blocks).toBeNull();
 		expect(db.renderCaches[0].toc).toEqual([]);
+	});
+
+	it('cache RPC failure (42883) soft-skips: upsert succeeds, body_md saved, warning only', async () => {
+		db.cacheError = Object.assign(new Error('function does not exist'), { code: '42883' });
+		const h = await harness();
+		const out = dataOf(await h.call('upsert_report', dailyArgs()));
+		expect(out.created).toBe(true);
+		expect(db.created[0].body_md).toContain('본문입니다');
+		expect(db.renderCaches).toHaveLength(0);
+		expect(out.warnings?.some((w) => w.rule === 'R-SYS-01')).toBe(true);
 	});
 });
 

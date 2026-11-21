@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	applyBriefingFilter,
 	applyJournalFilter,
+	briefingTextFilter,
 	ilikeAnyOf,
 	ilikeValue,
 	tagArrayLiteral
@@ -29,11 +30,23 @@ describe('FE-10 검색어 → or() 값', () => {
 	it('PostgREST 예약 문자·LIKE 와일드카드·따옴표를 지운다', () => {
 		expect(ilikeValue('a,title.eq.x)')).toBe('"%a title.eq.x%"');
 		expect(ilikeValue('"%_*\\:')).toBeNull();
-		// Nit: 작은따옴표는 큰따옴표 값 안에서 의미가 없어 그대로 둔다.
-		expect(ilikeValue("it's")).toBe('"%it\'s%"');
+		// Nit: 작은따옴표는 큰따옴표 값 안에서 의미가 없어 그대로 둔다 — 제거 후 남는 글자만.
+		expect(ilikeValue("it's")).toBe('"%it s%"');
 		expect(ilikeAnyOf(['headline', 'title'], 'a),owner_id.neq.(b')).toBe(
 			'headline.ilike."%a owner id.neq. b%",title.ilike."%a owner id.neq. b%"'
 		);
+	});
+});
+
+describe('briefingTextFilter', () => {
+	it('or() 예약 문자를 지워 전문 검색 값에도 주입할 수 없다', () => {
+		expect(briefingTextFilter('a),owner_id.neq.(b')).toBe(
+			'search_tsv.wfts(simple)."a owner id.neq. b",title.ilike."%a owner id.neq. b%",headline.ilike."%a owner id.neq. b%"'
+		);
+		expect(briefingTextFilter('"%_*')).toBeNull();
+	});
+	it('여러 단어는 공백 하나로 묶인다', () => {
+		expect(briefingTextFilter('  금리   인하 ')).toContain('search_tsv.wfts(simple)."금리 인하"');
 	});
 });
 
@@ -44,11 +57,11 @@ describe('applyBriefingFilter', () => {
 		applyBriefingFilter(q, undefined);
 		expect(q.calls).toEqual([]);
 	});
-	it('q → headline/title ilike, tag → contains, month → 범위', () => {
+	it('q → search_tsv 전문 검색 + title(pg_trgm)/headline 부분 일치, tag → contains 리터럴, month → 범위', () => {
 		const q = recorder();
 		applyBriefingFilter(q, { q: 'FOMC', tag: 'CPI', month: '2026-12' });
 		expect(q.calls).toEqual([
-			['or', 'headline.ilike."%FOMC%",title.ilike."%FOMC%"'],
+			['or', 'search_tsv.wfts(simple)."FOMC",title.ilike."%FOMC%",headline.ilike."%FOMC%"'],
 			['contains', 'tags', '{"CPI"}'],
 			['gte', 'report_date', '2026-12-01'],
 			['lt', 'report_date', '2027-01-01']

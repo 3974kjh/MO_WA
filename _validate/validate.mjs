@@ -1957,7 +1957,7 @@ await err(
 	/append-only|R-SYS-05/
 );
 
-console.log('\n[BE-07 render cache column grants]');
+console.log('\n[BE-07 render cache column grants + GUC trigger]');
 eq(
 	'authenticated lacks UPDATE(body_blocks) on reports',
 	(
@@ -1986,6 +1986,15 @@ eq(
 	false
 );
 eq(
+	'authenticated retains UPDATE(title) on reports',
+	(
+		await db.query(
+			`select has_column_privilege('authenticated', 'public.reports', 'title', 'UPDATE') as ok`
+		)
+	).rows[0].ok,
+	true
+);
+eq(
 	'service_role can EXECUTE mowa_set_report_render_cache',
 	(
 		await db.query(
@@ -2003,18 +2012,59 @@ eq(
 	).rows[0].ok,
 	false
 );
-await err(
-	'bot PostgREST path cannot UPDATE reports.body_blocks directly',
-	() => fm(`update reports set body_blocks='{"evil":true}'::jsonb where id='${rep}'`),
-	/permission denied|body_blocks/
+await ok('authenticated can UPDATE reports.title (non-render column)', () =>
+	user(`update reports set title='user-title-ok' where id='${rep}'`)
 );
-await ok('service_role render RPC can write body_blocks/toc', () =>
-	asBot(null)(
+await ok('authenticated can archive/restore via archived_at', async () => {
+	await user(`update reports set archived_at=now() where id='${rep}'`);
+	await user(`update reports set archived_at=null where id='${rep}'`);
+});
+await err(
+	'authenticated cannot UPDATE reports.body_blocks',
+	() => user(`update reports set body_blocks='{"evil":1}'::jsonb where id='${rep}'`),
+	/permission denied|body_blocks|R-PERM-01/
+);
+await err(
+	'bot PostgREST path cannot UPDATE reports.body_blocks directly (no GUC)',
+	() => fm(`update reports set body_blocks='{"evil":true}'::jsonb where id='${rep}'`),
+	/permission denied|body_blocks|R-PERM-01/
+);
+await err(
+	'service_role without render GUC cannot UPDATE body_blocks',
+	() =>
+		asBot(FM)(
+			`update reports set body_blocks='{"evil":true}'::jsonb, toc='[]'::jsonb where id='${rep}'`
+		),
+	/permission denied|body_blocks|R-PERM-01/
+);
+await err(
+	'render RPC without bot header → missing bot identity',
+	() =>
+		asBot(null)(
+			`select public.mowa_set_report_render_cache('${rep}', '${U}', '{"key":"k","bodyBlocks":{"a":"<p>x</p>","b":"","hasSplit":false}}'::jsonb, '[]'::jsonb)`
+		),
+	/R-PERM-03|missing bot identity/
+);
+await ok('owning bot render RPC writes body_blocks/toc (GUC path)', () =>
+	fm(
 		`select public.mowa_set_report_render_cache('${rep}', '${U}', '{"key":"k","bodyBlocks":{"a":"<p>x</p>","b":"","hasSplit":false}}'::jsonb, '[]'::jsonb)`
 	)
 );
 eq(
 	'render RPC wrote body_blocks.key',
+	(await db.query(`select body_blocks->>'key' as k from reports where id='${rep}'`)).rows[0].k,
+	'k'
+);
+await err(
+	'other bot render RPC on foreign report is rejected',
+	() =>
+		ea(
+			`select public.mowa_set_report_render_cache('${rep}', '${U}', '{"key":"other","bodyBlocks":{"a":"","b":"","hasSplit":false}}'::jsonb, '[]'::jsonb)`
+		),
+	/R-PERM-01|bots can only modify/
+);
+eq(
+	'other-bot RPC did not overwrite body_blocks.key',
 	(await db.query(`select body_blocks->>'key' as k from reports where id='${rep}'`)).rows[0].k,
 	'k'
 );

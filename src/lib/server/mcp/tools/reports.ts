@@ -504,7 +504,21 @@ export async function upsertReportHandler(input: ToolHandlerInput): Promise<Tool
 	});
 	const renderColumns = cache ? cachedRenderToDbColumns(cache) : clearedRenderColumns();
 	const cacheResult = await setReportRenderCache(repo, saved.id, renderColumns);
-	if (cacheResult.error) throwMappedDbError(cacheResult.error);
+	const warnings = [...v.warnings];
+	const ruleIds = [...v.ruleIds];
+	// Cache write is best-effort: body_md already persisted. Missing RPC (42883) or other
+	// cache failures must not fail upsert_report (audit still records ok; no secrets logged).
+	if (cacheResult.error) {
+		const code =
+			typeof (cacheResult.error as { code?: unknown }).code === 'string'
+				? (cacheResult.error as { code: string }).code
+				: 'unknown';
+		console.error(`[BE-07] render cache write skipped code=${code}`);
+		warnings.push(
+			issue('R-SYS-01', 'render cache write skipped; body_md saved without body_blocks/toc')
+		);
+		ruleIds.push('R-SYS-01');
+	}
 
 	return {
 		data: {
@@ -512,9 +526,9 @@ export async function upsertReportHandler(input: ToolHandlerInput): Promise<Tool
 			version: saved.version,
 			created
 		},
-		warnings: v.warnings,
+		warnings,
 		affectedIds: [{ table: 'reports', id: saved.id }],
-		ruleIds: v.ruleIds
+		ruleIds
 	};
 }
 

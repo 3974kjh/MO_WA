@@ -1,11 +1,11 @@
 /**
- * BE-07 write-time render cache — aligns with FE-15 hardening (`fe15-r3`).
+ * BE-07 write-time render cache — aligns with FE-04 / FE-15 (`fe15-r4`).
  *
- * Uses the shared FE module (`$lib/server/markdown/cache.ts`):
+ * Uses the shared FE module (`$lib/server/markdown/cache.ts` + `renderFields.ts`):
  * - RENDERER_VERSION / stripRenderFields / CachedRender / reportCacheKey
  * - fallback (`too-large` | `render-error`) is never cached
  * - memory store is NOT used in production; DB columns are written only via
- *   `mowa_set_report_render_cache` (column GRANTs revoked from bots/authenticated)
+ *   `mowa_set_report_render_cache` (GUC `mowa.render_cache_write` + column GRANTs)
  */
 import {
 	RENDERER_VERSION,

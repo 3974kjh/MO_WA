@@ -20,9 +20,9 @@ vi.mock('$lib/server/markdown/render', async (importOriginal) => {
 	};
 });
 
-describe('BE-07 CachedRender write-time (fe15-r3)', () => {
-	it('RENDERER_VERSION is fe15-r3 and matches FE cache module', () => {
-		expect(RENDERER_VERSION).toBe('fe15-r3');
+describe('BE-07 CachedRender write-time (fe15-r4)', () => {
+	it('RENDERER_VERSION is fe15-r4 and matches FE cache module', () => {
+		expect(RENDERER_VERSION).toBe('fe15-r4');
 		expect(RENDERER_VERSION).toBe(FE_VERSION);
 	});
 
@@ -33,8 +33,8 @@ describe('BE-07 CachedRender write-time (fe15-r3)', () => {
 			body_md: '# A. 요약\n\n본문\n\n# B. 상세 근거\n\n세부'
 		});
 		expect(r).not.toBeNull();
-		expect(r!.key).toContain('fe15-r3');
-		expect(r!.key).toContain('11111111-1111-4111-8111-111111111111');
+		expect(r!.key).toContain('fe15-r4');
+		expect(r!.key).toContain(encodeURIComponent('11111111-1111-4111-8111-111111111111'));
 		expect(typeof r!.bodyBlocks.a).toBe('string');
 		expect(typeof r!.bodyBlocks.hasSplit).toBe('boolean');
 		expect(Array.isArray(r!.toc)).toBe(true);
