@@ -108,14 +108,13 @@ describe('FE-07 portfolio load', () => {
 			data: {
 				positions: [],
 				principles: [
-					card({
+					principle({
 						id: 'ra',
 						display_id: 'R-0008',
-						change_type: 'principle',
 						status: 'expired',
-						position_id: null,
-						proposed_values: {},
-						current_values: {},
+						clause_ref: '4-1',
+						body_preview: '확인 필요 원칙 본문',
+						body_truncated: true,
 						attention_started_at: '2026-11-21T00:00:00Z'
 					})
 				]
@@ -162,8 +161,19 @@ describe('FE-07 portfolio load', () => {
 			approval_version: null
 		});
 		expect(out.history.items).toMatchObject([{ id: 'rh', kind: 'principle', status: 'rejected' }]);
+		// 확인 필요 원칙 카드도 principleToQueueItem: 본문 미리보기·잘림·조항이 다른 목록과 같다
 		expect(out.attentionNeeded).toMatchObject([
-			{ id: 'ra', kind: 'principle', display_id: 'R-0008', status: 'expired' }
+			{
+				id: 'ra',
+				kind: 'principle',
+				display_id: 'R-0008',
+				status: 'expired',
+				change_type: 'principle',
+				clause_ref: '4-1',
+				body_preview: '확인 필요 원칙 본문',
+				body_truncated: true,
+				reason: '원칙 이유'
+			}
 		]);
 	});
 

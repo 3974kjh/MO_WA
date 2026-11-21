@@ -377,7 +377,7 @@ export async function listAttentionNeeded(
 	repo: RepoClient,
 	now: Date = new Date()
 ): Promise<{
-	data: { positions: ProposalCard[]; principles: ProposalCard[] };
+	data: { positions: ProposalCard[]; principles: PrincipleCard[] };
 	error: Error | null;
 }> {
 	const filter = attentionNeededFilter(now);
@@ -392,7 +392,7 @@ export async function listAttentionNeeded(
 	pq = withOwnerFilter(pq, ownerId);
 
 	let rq = fromRepo(repo, 'principle_proposals')
-		.select('*')
+		.select(PRINCIPLE_LIST_COLUMNS)
 		.in('status', [...filter.statuses])
 		.is('acknowledged_at', null)
 		.gt('attention_started_at', filter.attentionStartedAfter)
@@ -414,52 +414,8 @@ export async function listAttentionNeeded(
 	}
 
 	const positions = await enrichProposals(repo, (posRes.data ?? []) as RawProposal[]);
-	const prinRows = (prinRes.data ?? []) as Array<
-		AttentionLike & {
-			id: string;
-			display_id: string | null;
-			proposed_by_type: string;
-			proposed_by: string | null;
-			created_at: string;
-			expires_at: string;
-			held_at: string | null;
-			decided_at: string | null;
-			base_version: number;
-		}
-	>;
-	const botNames = await botNameMap(
-		repo,
-		prinRows.filter((r) => r.proposed_by_type === 'bot' && r.proposed_by).map((r) => r.proposed_by!)
-	);
-	const principles: ProposalCard[] = prinRows.map((r) => ({
-		id: r.id,
-		display_id: r.display_id ?? '',
-		change_type: 'principle',
-		status: r.status,
-		calc_note: null,
-		reason_md: (r as { reason_md?: string | null }).reason_md ?? null,
-		decision_note: (r as { decision_note?: string | null }).decision_note ?? null,
-		proposed_by_type: r.proposed_by_type,
-		proposer_name: proposerDisplayName({
-			proposed_by_type: r.proposed_by_type,
-			botName: r.proposed_by ? botNames.get(r.proposed_by) : null
-		}),
-		evidence_chips: evidenceChips((r as { evidence?: unknown }).evidence),
-		attention_started_at: r.attention_started_at ?? null,
-		acknowledged_at: r.acknowledged_at ?? null,
-		base_version: r.base_version,
-		approval_version: null,
-		would_conflict: false,
-		proposed_values: {},
-		applied_values: null,
-		current_values: null,
-		position_id: null,
-		instrument_id: null,
-		created_at: r.created_at,
-		expires_at: r.expires_at,
-		held_at: r.held_at,
-		decided_at: r.decided_at
-	}));
+	// FE-07: 원칙은 확인 대기·지난 내역과 같은 매퍼(평문 미리보기 앞 2000자·잘림·조항).
+	const principles = await principleCards(repo, (prinRes.data ?? []) as unknown as RawPrinciple[]);
 
 	return { data: { positions, principles }, error: null };
 }

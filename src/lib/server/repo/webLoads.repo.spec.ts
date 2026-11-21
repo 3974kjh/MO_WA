@@ -11,6 +11,7 @@ import {
 	listInstrumentLabels,
 	listInstrumentMeta,
 	listJournalPage,
+	listAttentionNeeded,
 	listPrincipleHistory,
 	listPrincipleQueue,
 	listProposalHistory,
@@ -317,5 +318,52 @@ describe('FE-07 변경 요청 보조 load', () => {
 			);
 		}
 		expect(pr[1].params.get('order')).toBe('decided_at.desc.nullslast,created_at.desc');
+	});
+
+	it('listAttentionNeeded: 원칙은 같은 매퍼(앞 2000자 평문·잘림·조항), 명시 컬럼, owner 조건', async () => {
+		const long = '나'.repeat(PRINCIPLE_BODY_PREVIEW_MAX + 1);
+		const { repo, requests } = stubClient({
+			position_proposals: [],
+			principle_proposals: [
+				{
+					id: 'ra',
+					display_id: 'R-0005',
+					status: 'conflict',
+					clause_ref: '1-3',
+					proposed_body_md: long,
+					reason_md: '확인 이유',
+					decision_note: null,
+					proposed_by_type: 'user',
+					proposed_by: null,
+					evidence: [],
+					attention_started_at: '2026-11-21T00:00:00Z',
+					acknowledged_at: null,
+					base_version: 2,
+					created_at: '2026-11-20T00:00:00Z',
+					held_at: null,
+					decided_at: '2026-11-21T00:00:00Z'
+				}
+			]
+		});
+		const { data, error } = await listAttentionNeeded(repo, new Date('2026-11-22T00:00:00Z'));
+		expect(error).toBeNull();
+		expect(data.principles).toHaveLength(1);
+		const p = data.principles[0];
+		expect(p).toMatchObject({
+			display_id: 'R-0005',
+			status: 'conflict',
+			clause_ref: '1-3',
+			body_truncated: true,
+			reason_md: '확인 이유',
+			proposer_name: '나'
+		});
+		expect([...p.body_preview]).toHaveLength(PRINCIPLE_BODY_PREVIEW_MAX);
+		const pr = requests.filter((r) => r.table === 'principle_proposals');
+		expect(pr).toHaveLength(1);
+		expectOwnerOnly(pr[0].params);
+		expect(pr[0].params.get('select')).not.toBe('*');
+		expect(pr[0].params.get('select')).toContain('proposed_body_md');
+		expect(pr[0].params.get('select')).toContain('clause_ref');
+		expect(requests.every((r) => r.method === 'GET' || r.method === 'HEAD')).toBe(true);
 	});
 });

@@ -111,7 +111,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		historyError: publicListError('portfolio.history', historyErr),
 		holdings,
 		positionsError: publicListError('portfolio.positions', positions.error),
-		attentionNeeded: [...attentionCards.map(view), ...principleAttention.map(view)].sort(
+		attentionNeeded: [
+			...attentionCards.map(view),
+			...principleAttention.map(principleToQueueItem)
+		].sort(
 			(a, b) =>
 				Date.parse(b.attention_started_at ?? b.created_at) -
 				Date.parse(a.attention_started_at ?? a.created_at)

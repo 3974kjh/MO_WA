@@ -500,7 +500,14 @@ describe('FE-07 변경 요청 렌더', () => {
 					],
 					total: 3
 				},
-				attentionNeeded: [principleItem({ id: 'r4', display_id: 'R-0054', status: 'conflict' })]
+				attentionNeeded: [
+					principleItem({
+						id: 'r4',
+						display_id: 'R-0054',
+						status: 'conflict',
+						body_truncated: true
+					})
+				]
 			} as never
 		});
 		(cardOf(container, 'R-0051').querySelector('[data-action="reject"]') as HTMLElement).click();
@@ -513,6 +520,10 @@ describe('FE-07 변경 요청 렌더', () => {
 		await vi.advanceTimersByTimeAsync(0);
 		const att = cardOf(container, 'R-0054');
 		expect(text(att)).toContain('반영 안 됨(기록 달라짐)');
+		// 확인 필요 원칙 카드도 본문 평문 미리보기를 보인다
+		expect(att.querySelector('[data-testid="principle-body"]')).not.toBeNull();
+		expect(text(att)).toContain('새 원칙 본문 줄');
+		expect(text(att)).toContain('본문이 길어 앞부분만 보여요');
 		(att.querySelector('[data-action="ack"]') as HTMLElement).click();
 		await vi.advanceTimersByTimeAsync(0);
 		const calls = (fetchSpy.mock.calls as [string, RequestInit][]).map(([u, i]) => [
