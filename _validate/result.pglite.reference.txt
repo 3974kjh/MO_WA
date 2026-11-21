@@ -203,6 +203,20 @@ draft ok  20261125000910_revoke_anon_all.sql
   ✓ L-1: authenticated는 다른 owner settings 읽기 불가 → [R-PERM-01] cannot read another owner's settings
   ✓ authenticated는 bot_clients 직접 insert 불가 → permission denied for table bot_clients
 
+[instrument_id same-owner]
+  ✓ other-owner instrument rejected on positions → [R-PERM-01] instrument_id must belong to the same owner
+  ✓ other-owner instrument rejected on price_snapshots → [R-PERM-01] instrument_id must belong to the same owner
+  ✓ other-owner instrument rejected on journal_entries → [R-PERM-01] instrument_id must belong to the same owner
+  ✓ other-owner instrument rejected on decisions → [R-PERM-01] instrument_id must belong to the same owner
+  ✓ other-owner instrument rejected on events → [R-PERM-01] instrument_id must belong to the same owner
+  ✓ other-owner instrument rejected on report_instruments → [R-PERM-01] instrument_id must belong to the same owner
+  ✓ other-owner instrument rejected on position_proposals → instrument not found
+  ✓ same-owner instrument allowed on positions
+  ✓ same-owner instrument allowed on price_snapshots
+  ✓ same-owner instrument allowed on report_instruments
+  ✓ same-owner instrument allowed on journal_entries
+  ✓ price_snapshots keeps unique (instrument_id, as_of)
+
 [M-4 tenant · revoked/expired · CASCADE · TRUNCATE]
   ✓ M-4: revoked U bot cannot modify X positions → [R-PERM-03] bot identity invalid, revoked, or expired
   ✓ M-4: X finance-manager can update own X position memo
@@ -219,6 +233,12 @@ draft ok  20261125000910_revoke_anon_all.sql
   ✓ M-4: FM cannot write targets_valuation (equity-analyst only) → [R-PERM-04] targets_valuation is equity-analyst only (Q-25)
   ✓ TRUNCATE positions denied to service_role → permission denied for table positions
   ✓ TRUNCATE bot_clients denied to service_role → permission denied for table bot_clients
+  ✓ TRUNCATE principle_proposals denied to service_role → permission denied for table principle_proposals
+  ✓ TRUNCATE reports denied to service_role → permission denied for table reports
+  ✓ TRUNCATE instruments denied to service_role → permission denied for table instruments
+  ✓ TRUNCATE display_sequences denied to service_role → permission denied for table display_sequences
+  ✓ default privileges: no PUBLIC EXECUTE on new functions
+  ✓ service_role lacks TRUNCATE on owned-data tables
   ✓ anon cannot execute mowa_assert_bot_tenant → permission denied for function mowa_assert_bot_tenant
   ✓ pre-delete: revision + audit exist for Z
   ✓ account deletion CASCADE past immutable triggers
@@ -244,4 +264,4 @@ CONTEXT:  PL/pgSQL function inline_code_blo
   ✓ 검증 기록 후 drop 실행
   ✓ 레거시 테이블 제거·profiles 유지
 
-RESULT pass=207 fail=0
+RESULT pass=225 fail=0
