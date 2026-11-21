@@ -60,7 +60,7 @@
 	<div class="donut">
 		<svg viewBox="0 0 {SIZE} {SIZE}" width={SIZE} height={SIZE} role="img" aria-label={summary}>
 			<g transform="translate({SIZE / 2} {SIZE / 2})">
-				{#each arcs as a (a.slice.label)}
+				{#each arcs as a, ai (ai)}
 					<path d={a.d} fill={a.slice.color} />
 				{/each}
 			</g>
@@ -79,7 +79,7 @@
 	<table class="leg-table">
 		<caption class="sr-only">{ariaLabel} 범례</caption>
 		<tbody>
-			{#each slices as s (s.label)}
+			{#each slices as s, si (si)}
 				<tr>
 					<th scope="row">
 						<i style:background={s.color} aria-hidden="true"></i>{s.label}

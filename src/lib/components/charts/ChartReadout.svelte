@@ -33,7 +33,7 @@
 				<button type="button" class="close" aria-label="값 카드 닫기" onclick={onclose}>✕</button>
 			{/if}
 		</div>
-		{#each rows as r (r.name)}
+		{#each rows as r, ri (ri)}
 			<div class="row">
 				<span class="name"
 					>{#if r.color}<i style:background={r.color} aria-hidden="true"></i>{/if}{r.name}</span
@@ -45,7 +45,7 @@
 {:else}
 	<div class="readout tooltip" style:left="{left}px" aria-hidden="true">
 		<b>{title}</b>
-		{#each rows as r (r.name)}
+		{#each rows as r, ri (ri)}
 			<div class="row">
 				<span class="name"
 					>{#if r.color}<i style:background={r.color}></i>{/if}{r.name}</span
@@ -87,8 +87,8 @@
 		gap: 8px;
 	}
 	.close {
-		min-width: 32px;
-		min-height: 32px;
+		min-width: var(--size-touch);
+		min-height: var(--size-touch);
 		color: var(--color-muted);
 	}
 	.row {

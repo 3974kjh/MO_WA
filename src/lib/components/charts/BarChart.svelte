@@ -49,7 +49,9 @@
 	const m = { l: 44, r: 8, t: 18, b: 26 };
 	let n = $derived(items.length);
 	let fmtValue = $derived((v: number) => signedNumber(v, digits));
-	let fmtUnit = $derived((v: number) => signedNumber(v, digits) + unit);
+	let fmtUnit = $derived((v: number) =>
+		Number.isFinite(v) ? signedNumber(v, digits) + unit : signedNumber(v, digits)
+	);
 
 	let geo = $derived.by(() => {
 		if (n === 0) return null;
@@ -110,7 +112,11 @@
 	let active = $derived(mobile ? selected : hover);
 </script>
 
-<div class="bar-chart {className}" {@attach observeWidth((w) => (width = w || 600))}>
+<div
+	class="bar-chart {className}"
+	style:--chart-h="{height ?? BAR_DEFAULT_HEIGHT}px"
+	{@attach observeWidth((w) => (width = w || 600))}
+>
 	<!-- 포인터 보조 읽기(툴팁·값 카드). 같은 값은 키보드·낭독기용 숨김 데이터 표로 제공한다. -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="plot" onpointermove={onmove} onpointerleave={() => (hover = null)} onpointerup={onup}>
@@ -185,14 +191,23 @@
 	.bar-chart {
 		position: relative;
 		width: 100%;
+		/* SSR 첫 렌더에서도 폭(<480)에 맞는 높이를 CSS로 잡아 CLS를 줄인다 */
+		container-type: inline-size;
 	}
 	.plot {
 		position: relative;
 		touch-action: pan-y;
+		height: var(--chart-h);
+	}
+	@container (max-width: 479.98px) {
+		.plot {
+			height: 190px;
+		}
 	}
 	.chart {
 		display: block;
 		width: 100%;
+		height: 100%;
 	}
 	.chart text {
 		font-family: var(--font-num);
