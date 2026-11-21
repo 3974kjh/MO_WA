@@ -384,6 +384,7 @@ export async function loadDashboardValuation(repo: RepoClient) {
 export type BriefingListItem = {
 	id: string;
 	kind: string;
+	slug: string;
 	headline: string | null;
 	title: string;
 	report_date: string;
@@ -407,7 +408,7 @@ export async function listBriefingsWithKospi(
 	if (countErr) return { data: toPageResult([], 0, params), error: countErr as Error };
 
 	let q = fromRepo(repo, 'reports')
-		.select('id, kind, headline, title, report_date, tags')
+		.select('id, kind, slug, headline, title, report_date, tags')
 		.in('kind', ['daily_brief', 'weekly_report'])
 		.is('archived_at', null);
 	q = applyBriefingFilter(q, filter);
@@ -421,6 +422,7 @@ export async function listBriefingsWithKospi(
 	const rows = (data ?? []) as Array<{
 		id: string;
 		kind: string;
+		slug: string;
 		headline: string | null;
 		title: string;
 		report_date: string;
@@ -438,6 +440,55 @@ export async function listBriefingsWithKospi(
 		kospi_change_pct: kospiMap.get(r.report_date) ?? null
 	}));
 	return { data: toPageResult(items, count ?? 0, params), error: null };
+}
+
+export type BriefingSource = { label: string; publisher: string; accessed_at: string };
+
+/**
+ * FE-04 상세 메타(daily_brief, slug `daily`, 날짜 하나). **본문(body_md)·렌더 결과(body_blocks·toc)는 받지 않는다.**
+ * 운영 상세는 렌더 캐시 쓰기 권한(BE-07)이 준비될 때까지 본문을 렌더하지 않는다(무료 Workers CPU 한도).
+ */
+export type BriefingDetailMeta = {
+	id: string;
+	title: string;
+	headline: string | null;
+	summary: string | null;
+	report_date: string;
+	tags: string[];
+	version: number;
+	generated_at: string | null;
+	updated_at: string;
+	sources: BriefingSource[];
+};
+
+export async function getDailyBriefingMeta(
+	repo: RepoClient,
+	reportDate: string
+): Promise<{ data: BriefingDetailMeta | null; error: Error | null }> {
+	const ownerId = requireOwnerId(repo);
+	let q = fromRepo(repo, 'reports')
+		.select('id, title, headline, summary, report_date, tags, version, generated_at, updated_at')
+		.eq('kind', 'daily_brief')
+		.eq('slug', 'daily')
+		.eq('report_date', reportDate)
+		.is('archived_at', null);
+	q = withOwnerFilter(q, ownerId);
+	const { data, error } = await q.maybeSingle();
+	if (error) return { data: null, error: error as Error };
+	if (!data) return { data: null, error: null };
+	const row = data as Omit<BriefingDetailMeta, 'sources'>;
+
+	let sq = fromRepo(repo, 'report_sources')
+		.select('label, publisher, accessed_at')
+		.eq('report_id', row.id)
+		.order('sort', { ascending: true });
+	sq = withOwnerFilter(sq, ownerId);
+	const { data: src, error: srcErr } = await sq;
+	if (srcErr) return { data: null, error: srcErr as Error };
+	return {
+		data: { ...row, tags: row.tags ?? [], sources: (src ?? []) as BriefingSource[] },
+		error: null
+	};
 }
 
 export async function listJournalPage(

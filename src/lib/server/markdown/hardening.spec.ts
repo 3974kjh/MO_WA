@@ -105,7 +105,15 @@ describe('Low-3 같은 출처 이미지 경로(허용 목록 /img·/report-asset
 		'/report-assets-x/a.png',
 		'/a.png',
 		'/img%2f..%2fapi',
-		'/img/a b.png'
+		'/img/a b.png',
+		// L-3: 디코딩 뒤 '%'가 남는 이중 인코딩
+		'/img/%252e%252e/api/mcp',
+		'/img/%2525',
+		// Nit: 전각 점·`..;` 변형
+		'/img/．．/api',
+		'/img/%EF%BC%8E%EF%BC%8E/api',
+		'/img/..;x/api',
+		'/img/.;/a.png'
 	];
 	it.each(denied)('마크다운 이미지 %s 는 제거', (src) => {
 		expect(imgSrcs(renderReport(`![a](<${src}>)`).a)).toEqual([]);

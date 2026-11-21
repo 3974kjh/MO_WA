@@ -1,12 +1,8 @@
 /**
  * 리포트 렌더러(FE-15) 개발·테스트용 픽스처. 서비스 데이터가 아니다(SAMPLE DATA).
  * 실데이터 body_md는 BE-06/BE-11 load가 준다. 구조는 rules §2-2 D1(# A. 요약 / # B. 상세 근거)을 따른다.
+ * 용어 풀이 사전은 `$lib/content/glossary.ts`(FE-04)에 있다.
  */
-export const sampleGlossary: Record<string, string> = {
-	사이드카: '선물 가격이 5% 넘게 움직이면 프로그램 매매 주문을 5분간 멈추는 장치',
-	LOC: '장 마감 가격으로 체결되는 지정가 주문(Limit On Close)'
-};
-
 export const sampleBriefing = `> 생성 2026-11-20 17:36~ KST · 국내 종가는 KRX 정규장 종가, 미국 지표는 11/19(현지) 종가 · 투자 권유 아님
 
 # A. 요약

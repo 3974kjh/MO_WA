@@ -220,9 +220,12 @@ function fixLinks(tree: Root, siteHosts: readonly string[]) {
 /**
  * 같은 출처 이미지 경로 검사(Low-3·Low-5).
  * - 원문에 공백·제어 문자·`\\`가 있으면 거부(브라우저가 지우거나 바꿔 해석이 달라질 수 있는 입력)
- * - 퍼센트 디코딩 뒤 `.`·`..` 세그먼트가 있으면 거부(`/x/../api`, `/%2e%2e/api`)
+ * - 퍼센트 디코딩 뒤 `.`·`..` 세그먼트가 있으면 거부(`/x/../api`, `/%2e%2e/api`, 전각 점·`..;x` 변형 포함)
+ * - 한 번 디코딩한 뒤에도 `%`가 남으면 거부(이중 인코딩 `/img/%252e%252e`, L-3)
  * - 해석된 경로의 첫 세그먼트가 IMAGE_PATH_ALLOW에 정확히 일치할 때만 허용(`/imgx`, `/IMG`, `/img;x`는 거부)
  */
+const DOT_SEGMENT = /^\.{1,2}(;.*)?$/;
+
 function sameOriginImageOk(src: string): boolean {
 	if (!src.startsWith('/') || src.startsWith('//')) return false;
 	if (hasUnsafeUrlChar(src)) return false;
@@ -233,7 +236,10 @@ function sameOriginImageOk(src: string): boolean {
 		return false;
 	}
 	if (hasUnsafeUrlChar(decoded)) return false;
-	if (decoded.split('/').some((seg) => seg === '.' || seg === '..')) return false;
+	// L-3: 한 번 디코딩한 뒤에도 '%'가 남으면(이중 인코딩 `%252e` 등) 거부
+	if (decoded.includes('%')) return false;
+	// `.`·`..` 세그먼트, 그리고 Nit: NFKC로 점이 되는 글자(전각 `．`)·`..;x` 같은 변형도 거부
+	if (decoded.split('/').some((seg) => DOT_SEGMENT.test(seg.normalize('NFKC')))) return false;
 	const u = resolveUrl(src);
 	if (!u || !isSameOrigin(u)) return false;
 	let first: string;

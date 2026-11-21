@@ -1,12 +1,15 @@
 <script lang="ts">
-	// FE-10: 목록 검색·URL 상태(?q=&tag=&month=). 카드 디자인·상세 링크·페이지 이동은 FE-04에서 채운다.
+	// FE-10: 목록 검색·URL 상태(?q=&tag=&month=). FE-04: 월 그룹(sticky 헤더)·행 전체 링크·등락률(PC)·페이지 이동.
 	import { beforeNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { untrack } from 'svelte';
 	import type { PageData } from './$types';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import ErrorState from '$lib/components/ui/ErrorState.svelte';
+	import Delta from '$lib/components/ui/Delta.svelte';
 	import FilterChip from '$lib/components/ui/FilterChip.svelte';
+	import MonthGroupList from '$lib/components/ui/MonthGroupList.svelte';
+	import Tag from '$lib/components/ui/Tag.svelte';
 	import SearchBox from '$lib/components/ui/SearchBox.svelte';
 	import { gotoListSearch } from '$lib/routing/listNav';
 	import { createSearchSync } from '$lib/routing/searchSync';
@@ -16,10 +19,16 @@
 		SEARCH_DEBOUNCE_MS,
 		type BriefingQuery
 	} from '$lib/routing/listQuery';
+	import {
+		briefingDetailPath,
+		dateParts,
+		groupByMonth,
+		headlineText
+	} from '$lib/routing/briefings';
+
+	type BriefingListItem = PageData['briefings']['items'][number];
 
 	let { data }: { data: PageData } = $props();
-
-	const HEADLINE_MISSING = 'headline 미입력';
 
 	// 입력 중인 글자(끝 공백 포함)는 지키고, 뒤로 가기 등으로 URL이 바뀌었을 때만 맞춘다.
 	let qInput = $state('');
@@ -45,11 +54,11 @@
 	 * 쿼리 이동. 대기 중인 디바운스는 먼저 취소하고, 입력창의 현재 글자를 같은 이동에 싣는다
 	 * (200ms 뒤 이전 q가 이 이동을 덮어쓰지 않도록).
 	 */
-	function navigate(next: Partial<BriefingQuery>, replaceState = false) {
+	function navigate(next: Partial<BriefingQuery>, replaceState = false, pageNo?: number) {
 		box?.cancel();
 		if (next.q !== undefined) qInput = next.q;
 		const q = next.q ?? qInput;
-		const search = briefingSearch({ ...data.query, ...next, q });
+		const search = briefingSearch({ ...data.query, ...next, q }, { page: pageNo });
 		const done = () => sync.settled(q);
 		sync.sent(q);
 		const nav = gotoListSearch(resolve('/briefings'), search, replaceState);
@@ -63,6 +72,9 @@
 			(t, i, all) => isValidTag(t) && all.indexOf(t) === i
 		)
 	);
+	let groups = $derived(groupByMonth(data.briefings.items));
+	let pageNo = $derived(data.briefings.page);
+	let totalPages = $derived(data.briefings.totalPages);
 	let filtered = $derived(Boolean(data.query.q || data.query.tag || data.query.month));
 </script>
 
@@ -118,16 +130,53 @@
 		{/snippet}
 	</EmptyState>
 {:else}
-	<ul class="list" data-testid="briefing-list">
-		{#each data.briefings.items as b (b.id)}
-			<li>
-				<span class="date num">{b.report_date}</span>
-				<span class="headline" class:missing={!b.headline?.trim()}
-					>{b.headline?.trim() || HEADLINE_MISSING}</span
-				>
-			</li>
-		{/each}
-	</ul>
+	<div class="groups" data-testid="briefing-list">
+		<MonthGroupList {groups} itemKey={(b) => b.id}>
+			{#snippet item(b: BriefingListItem)}
+				{@const path = briefingDetailPath(b)}
+				{@const d = dateParts(b.report_date)}
+				{@const hl = headlineText(b.headline)}
+				{#snippet row()}
+					<span class="date-col num">
+						{#if d}<b>{d.day}</b><span>{d.month}월 {d.weekday}</span>{:else}{b.report_date}{/if}
+					</span>
+					<span class="body">
+						<span class="headline" class:missing={hl.missing}>{hl.text}</span>
+						{#if b.tags.length}
+							<span class="tags">
+								{#each b.tags as t (t)}<Tag>{t}</Tag>{/each}
+							</span>
+						{/if}
+					</span>
+					{#if b.kospi_change_pct != null}
+						<span class="pct hide-sm"><Delta value={b.kospi_change_pct} /></span>
+					{/if}
+				{/snippet}
+				{#if path}
+					<a class="item" href={resolve(path)}>{@render row()}</a>
+				{:else}
+					<div class="item">{@render row()}</div>
+				{/if}
+			{/snippet}
+		</MonthGroupList>
+	</div>
+	{#if totalPages > 1}
+		<nav class="pager" aria-label="페이지">
+			<button
+				type="button"
+				class="btn"
+				disabled={pageNo <= 1}
+				onclick={() => navigate({}, false, pageNo - 1)}>이전</button
+			>
+			<span class="num text-sm">{pageNo} / {totalPages}</span>
+			<button
+				type="button"
+				class="btn"
+				disabled={pageNo >= totalPages}
+				onclick={() => navigate({}, false, pageNo + 1)}>다음</button
+			>
+		</nav>
+	{/if}
 {/if}
 
 <style>
@@ -164,32 +213,75 @@
 		font-size: var(--text-sm);
 		color: var(--color-muted);
 	}
-	.list {
+	.item {
+		display: flex;
+		align-items: center;
+		gap: 14px;
+		min-height: 56px;
+		padding: 12px 16px;
+		color: inherit;
+		text-decoration: none;
+	}
+	a.item:hover {
+		background: var(--color-surface-2);
+	}
+	.date-col {
 		display: flex;
 		flex-direction: column;
-		border: 1px solid var(--color-line);
-		border-radius: var(--radius-sm);
-		background: var(--color-surface);
-	}
-	.list li {
-		display: flex;
-		gap: 12px;
-		padding: 12px 16px;
-		border-top: 1px solid var(--color-line);
-	}
-	.list li:first-child {
-		border-top: 0;
-	}
-	.date {
-		color: var(--color-muted);
+		align-items: center;
 		flex: none;
+		width: 44px;
+		color: var(--color-muted);
+		font-size: var(--text-xs);
+	}
+	.date-col b {
+		font-size: 1.125rem;
+		font-weight: 700;
+		color: var(--color-text);
+	}
+	.body {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		flex: 1;
+		min-width: 0;
 	}
 	.headline {
 		font-weight: 600;
+		line-height: 1.4rem;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		overflow: hidden;
+		overflow-wrap: anywhere;
 	}
 	.headline.missing {
 		color: var(--color-muted);
 		font-weight: 400;
+	}
+	.tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+	.pct {
+		flex: none;
+		min-width: 64px;
+		text-align: right;
+		font-size: var(--text-sm);
+	}
+	@media (max-width: 767px) {
+		.hide-sm {
+			display: none;
+		}
+	}
+	.pager {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		gap: 12px;
+		margin-top: 16px;
 	}
 	.btn {
 		min-height: var(--size-touch);
@@ -198,5 +290,8 @@
 		border-radius: var(--radius-sm);
 		background: var(--color-surface);
 		color: var(--color-text);
+	}
+	.btn:disabled {
+		opacity: 0.5;
 	}
 </style>
