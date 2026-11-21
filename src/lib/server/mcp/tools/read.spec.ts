@@ -601,7 +601,7 @@ describe('registered via runAuditedToolCall', () => {
 	});
 
 	it('tools/list for a key without read exposes nothing', async () => {
-		const { body } = await rpc(['journal:write'], 'tools/list');
+		const { body } = await rpc(['prices:write'], 'tools/list');
 		expect(body.result.tools).toEqual([]);
 	});
 

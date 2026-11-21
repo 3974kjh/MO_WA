@@ -1,5 +1,6 @@
 import type { McpContext } from '../types';
 import { ALL_MCP_TOOL_NAMES, filterToolsByScopes } from '../scopes';
+import { registerJournalTools } from './journal';
 import { registerPortfolioTools } from './portfolio';
 import { registerReadTools } from './read';
 import { registerReportsTools } from './reports';
@@ -20,9 +21,10 @@ export function toolsForContext(ctx: Pick<McpContext, 'scopes'>): string[] {
 	return filterToolsByScopes(ALL_MCP_TOOL_NAMES, ctx);
 }
 
-/** Register every implemented tool the key's scopes allow. BE-06 read tools are live; BE-07/08 write handlers (BE-09~10 next) land here. */
+/** Register every implemented tool the key's scopes allow. BE-06 read tools are live; BE-07/08/09 write handlers (BE-10 next) land here. */
 export function registerAllMcpTools(reg: ToolRegistrationContext): void {
 	registerReadTools(reg);
 	registerPortfolioTools(reg);
 	registerReportsTools(reg);
+	registerJournalTools(reg);
 }
