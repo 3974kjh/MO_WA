@@ -71,12 +71,13 @@ export const BOT_ARCHIVE_AUDIT_LIMIT = 500;
 
 /**
  * '보관한 사람' 표시용: since 이후 봇의 보관 도구 성공 기록(명시 열, owner 필터, 최신순 limit).
+ * limit+1건을 읽어 상한에 걸렸는지(truncated) 알린다. 걸렸으면 data는 최신 limit건뿐이다.
  */
 export async function listBotArchiveAudits(
 	repo: RepoClient,
 	since: string,
 	limit: number = BOT_ARCHIVE_AUDIT_LIMIT
-): Promise<{ data: BotArchiveAudit[]; error: Error | null }> {
+): Promise<{ data: BotArchiveAudit[]; truncated: boolean; error: Error | null }> {
 	const ownerId = requireOwnerId(repo);
 	let q = fromRepo(repo, 'mcp_audit_log')
 		.select('bot_client_id, tool, affected_ids, created_at')
@@ -85,7 +86,8 @@ export async function listBotArchiveAudits(
 		.in('tool', Object.values(BOT_ARCHIVE_TOOL))
 		.gte('created_at', since);
 	q = withOwnerFilter(q, ownerId);
-	const { data, error } = await q.order('created_at', { ascending: false }).limit(limit);
-	if (error) return { data: [], error: error as Error };
-	return { data: (data ?? []) as BotArchiveAudit[], error: null };
+	const { data, error } = await q.order('created_at', { ascending: false }).limit(limit + 1);
+	if (error) return { data: [], truncated: false, error: error as Error };
+	const rows = (data ?? []) as BotArchiveAudit[];
+	return { data: rows.slice(0, limit), truncated: rows.length > limit, error: null };
 }
