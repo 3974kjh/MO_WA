@@ -7,6 +7,7 @@ import {
 	listBriefingsWithKospi,
 	loadDashboardValuation
 } from '$lib/server/repo';
+import { INFO_LOAD_ERROR, publicListError } from '$lib/server/web/listError';
 
 /**
  * 홈(`/`) — (app) 셸 안. BE-11 dashboard valuation + kospi + recent briefings.
@@ -30,7 +31,7 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 			email: locals.user.email ?? null
 		},
 		valuation: valuation.data,
-		valuationError: valuation.error?.message ?? null,
+		valuationError: publicListError('home.valuation', valuation.error, INFO_LOAD_ERROR),
 		kospi: kospi.data,
 		recentBriefings: recentBriefings.data.items.slice(0, 5)
 	};

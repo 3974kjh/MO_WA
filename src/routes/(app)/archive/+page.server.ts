@@ -2,6 +2,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { forUser, listJournalEntries, listPositions, listReports } from '$lib/server/repo';
 import { handleRestore } from '$lib/server/web/proposalActions';
 import { requireUser } from '$lib/server/web/requireUser';
+import { publicListError } from '$lib/server/web/listError';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const user = requireUser(locals.user);
@@ -21,7 +22,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		reports: onlyArchived(reports.data),
 		positions: onlyArchived(positions.data),
 		journal: onlyArchived(journal.data),
-		error: reports.error?.message ?? positions.error?.message ?? journal.error?.message ?? null
+		error: publicListError('archive', reports.error ?? positions.error ?? journal.error)
 	};
 };
 
