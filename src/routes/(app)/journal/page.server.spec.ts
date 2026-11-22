@@ -98,6 +98,27 @@ describe('FE-06 목록 load', () => {
 		expect(String(out.auxError)).not.toContain('raw db text');
 		spy.mockRestore();
 	});
+
+	it('칩 건수 조회가 상한을 넘겨 잘렸으면 kindCountsOk=false, 건수는 비움(목록은 그대로)', async () => {
+		const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+		repoMock.listJournalKinds.mockResolvedValueOnce({
+			data: [],
+			error: null,
+			truncated: true
+		} as never);
+		const out = await call(listLoad, 'http://x/journal');
+		expect(out.error).toBeNull();
+		expect(out.kindCountsOk).toBe(false);
+		expect(out.kindCounts).toMatchObject({ all: 0, buy: 0, review: 0 });
+		expect(out.auxError).not.toBeNull();
+		spy.mockRestore();
+	});
+
+	it('잘리지 않았으면 kindCountsOk=true, auxError 없음', async () => {
+		const out = await call(listLoad, 'http://x/journal');
+		expect(out.kindCountsOk).toBe(true);
+		expect(out.auxError).toBeNull();
+	});
 });
 
 describe('FE-06 /journal/[id] 직접 진입', () => {

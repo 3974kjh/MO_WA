@@ -6,18 +6,26 @@ import type { RepoClient } from './client';
 import { fromRepo } from './db';
 import { requireOwnerId, withOwnerFilter } from './owner';
 
-/** 칩 건수용: 구분(type)만 빼고 같은 필터(종목·검색)를 건 행의 kind 목록. */
+/**
+ * 칩 건수용 kind 목록 상한. PostgREST max_rows(1000)에 조용히 잘리지 않도록 그보다 작게 두고,
+ * 상한+1건을 요청해 넘치면 잘린 것으로 본다(truncated).
+ */
+export const JOURNAL_KINDS_CAP = 900;
+
+/** 칩 건수용: 구분(type)만 빼고 같은 필터(종목·검색)를 건 행의 kind 목록. 상한을 넘으면 truncated. */
 export async function listJournalKinds(
 	repo: RepoClient,
 	filter: Partial<Omit<JournalListFilter, 'type'>>
-): Promise<{ data: string[]; error: Error | null }> {
+): Promise<{ data: string[]; error: Error | null; truncated: boolean }> {
 	const ownerId = requireOwnerId(repo);
 	let q = fromRepo(repo, 'journal_entries').select('kind').is('archived_at', null);
 	q = applyJournalFilter(q, { ticker: filter.ticker, q: filter.q });
 	q = withOwnerFilter(q, ownerId);
-	const { data, error } = await q;
-	if (error) return { data: [], error: error as Error };
-	return { data: ((data ?? []) as Array<{ kind: string }>).map((r) => r.kind), error: null };
+	const { data, error } = await q.limit(JOURNAL_KINDS_CAP + 1);
+	if (error) return { data: [], error: error as Error, truncated: false };
+	const kinds = ((data ?? []) as Array<{ kind: string }>).map((r) => r.kind);
+	if (kinds.length > JOURNAL_KINDS_CAP) return { data: [], error: null, truncated: true };
+	return { data: kinds, error: null, truncated: false };
 }
 
 /** 상세 직접 진입(`/journal/[id]`): 보관되지 않은 내 일지 한 건. 없으면 null. */

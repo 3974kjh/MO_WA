@@ -95,7 +95,13 @@ export async function loadJournal(
 		title: r.title
 	}));
 
-	const auxErr = kinds.error ?? instruments.error ?? reports.error ?? bots.error;
+	const kindsTruncated = !kinds.error && kinds.truncated;
+	const auxErr =
+		kinds.error ??
+		(kindsTruncated ? new Error('journal kinds truncated') : null) ??
+		instruments.error ??
+		reports.error ??
+		bots.error;
 	return {
 		title: '매매일지',
 		query,
@@ -106,8 +112,8 @@ export async function loadJournal(
 			total: list.data.total,
 			totalPages: list.data.totalPages
 		},
-		kindCounts: kinds.error ? emptyKindCounts() : countKinds(kinds.data),
-		kindCountsOk: !kinds.error,
+		kindCounts: kinds.error || kindsTruncated ? emptyKindCounts() : countKinds(kinds.data),
+		kindCountsOk: !kinds.error && !kindsTruncated,
 		instruments: instrumentOptions,
 		reports: reportOptions,
 		selected,
