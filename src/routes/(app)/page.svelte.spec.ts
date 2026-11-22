@@ -140,6 +140,36 @@ describe('홈 대시보드 렌더 (FE-03)', () => {
 		expect(links).toContain('/briefings/2026-11-20');
 	});
 
+	it('오늘 요약 lead는 daily_brief만: 주간 리포트만 있으면 요약은 빈 상태(최근 브리핑 목록에는 남는다)', async () => {
+		const { container } = render(Page, {
+			data: {
+				...empty,
+				recentBriefings: [
+					{
+						id: 'w1',
+						kind: 'weekly_report',
+						slug: 'weekly',
+						headline: '주간 리포트 제목',
+						title: 'w',
+						report_date: '2026-11-22',
+						tags: ['주간태그'],
+						kospi_change_pct: null
+					}
+				]
+			} as never
+		});
+		const summary = container.querySelector('.summary')!;
+		expect(summary.querySelector('[data-testid="home-headline"]')).toBeNull();
+		expect(text(summary)).toContain('아직 브리핑이 없어요');
+		expect(text(summary)).not.toContain('주간 리포트 제목');
+		expect(text(summary)).not.toContain('주간태그');
+		expect(text(summary)).not.toContain('브리핑 전체 읽기');
+		expect(text(summary)).not.toContain('브리핑 목록 보기');
+		expect(text(container.querySelector('[data-testid="home-recent"]')!)).toContain(
+			'주간 리포트 제목'
+		);
+	});
+
 	it('달러 비중 타일: 환율과 기준 시각(KST)을 함께, 기준 시각이 없으면 지어내지 않는다(R-VAL-P17)', async () => {
 		const held = {
 			id: 'p1',

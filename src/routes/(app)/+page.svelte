@@ -44,6 +44,7 @@
 	import { formatMoney } from '$lib/format/money';
 	import { formatQty } from '$lib/format/number';
 	import {
+		DAILY_BRIEF_KIND,
 		briefingDetailPath,
 		dateParts,
 		formatBriefingDate,
@@ -73,9 +74,11 @@
 			}))
 			.toSorted((a, b) => compareTrigger(a.t, b.t))
 	);
-	let lead = $derived(
-		data.recentBriefings.find((b) => briefingDetailPath(b) != null) ?? data.recentBriefings[0]
-	);
+	// 오늘 요약 lead는 daily_brief만(주간 리포트가 더 최신이어도 쓰지 않는다)
+	let lead = $derived.by(() => {
+		const dailies = data.recentBriefings.filter((b) => b.kind === DAILY_BRIEF_KIND);
+		return dailies.find((b) => briefingDetailPath(b) != null) ?? dailies[0];
+	});
 	let leadPath = $derived(lead ? briefingDetailPath(lead) : null);
 	let leadHeadline = $derived(lead ? headlineText(lead.headline) : null);
 	let series = $derived(data.kospiSeries);
