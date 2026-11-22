@@ -125,6 +125,11 @@
 	let attentionCount = $derived(
 		data.attentionTotal + (attentionList.length - data.attentionNeeded.length)
 	);
+	// 서버가 목록을 최근 50건으로 자른다(ATTENTION_NEEDED_LIMIT). 실제 총건수가 50을 넘고 보여 준 건수보다 많을 때만 안내.
+	const ATTENTION_SHOWN_MAX = 50;
+	let attentionTruncated = $derived(
+		data.attentionTotal > ATTENTION_SHOWN_MAX && data.attentionTotal > data.attentionShown
+	);
 	let historyList = $derived.by(() => {
 		const local: QueueItem[] = [];
 		for (const i of queueItems) {
@@ -663,6 +668,11 @@
 							<QueueCard {item} mode="attention" busy={!!busy[item.id]} onack={doAck} />
 						{/each}
 					</div>
+					{#if attentionTruncated}
+						<p class="more" data-testid="attention-truncated">
+							최근 50건만 보여드려요. 처리하면 나머지가 보여요.
+						</p>
+					{/if}
 				</div>
 			{/if}
 

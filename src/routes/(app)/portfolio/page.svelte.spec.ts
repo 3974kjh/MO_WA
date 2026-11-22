@@ -33,6 +33,18 @@ const base = {
 	attentionError: null
 };
 
+const NOTICE = '최근 50건만 보여드려요. 처리하면 나머지가 보여요.';
+const attnItems = (n: number) =>
+	Array.from({ length: n }, (_, i) =>
+		makeItem({
+			id: `at${i}`,
+			display_id: `P-${String(7000 + i)}`,
+			status: 'conflict',
+			attention_started_at: '2026-11-21T00:00:00Z'
+		})
+	);
+const occurrences = (t: string, needle: string) => t.split(needle).length - 1;
+
 const text = (c: Element) => c.textContent ?? '';
 const cardOf = (c: Element, id: string) =>
 	[...c.querySelectorAll('[data-testid="queue-card"]')].find((e) =>
@@ -206,6 +218,72 @@ describe('FE-07 변경 요청 렌더', () => {
 		expect(text(cardOf(container, 'P-0402'))).not.toContain('값 고침');
 		expect(text(cardOf(container, 'P-0402'))).toContain('(직접 수정)');
 		expect(text(cardOf(container, 'P-0403'))).not.toContain('값 고침');
+	});
+
+	it('확인 필요 잘림 안내: 50건이면 없음, 51건 이상이면 정확한 문구 1회, 배지 숫자는 실제 건수', async () => {
+		const at50 = render(Page, {
+			data: {
+				...base,
+				attentionNeeded: attnItems(50),
+				attentionShown: 50,
+				attentionTotal: 50
+			} as never
+		});
+		expect(text(at50.container)).not.toContain('보여드려요');
+		expect(at50.container.querySelector('[data-testid="attention-truncated"]')).toBeNull();
+		expect(text(at50.container.querySelector('.attn .count')!)).toBe('50건');
+		at50.unmount();
+
+		const at51 = render(Page, {
+			data: {
+				...base,
+				attentionNeeded: attnItems(50),
+				attentionShown: 50,
+				attentionTotal: 83
+			} as never
+		});
+		const attn = at51.container.querySelector('[data-testid="attention"]')!;
+		expect(occurrences(text(attn), NOTICE)).toBe(1);
+		const note = attn.querySelector('[data-testid="attention-truncated"]')!;
+		expect(text(note).trim()).toBe(NOTICE);
+		// 안내는 목록(.cards) 바로 아래
+		expect(attn.querySelector('.cards')!.nextElementSibling).toBe(note);
+		// 배지는 잘린 목록 길이(50)가 아니라 실제 건수
+		expect(text(attn.querySelector('.count')!)).toBe('83건');
+	});
+
+	it('확인 필요 잘림 안내: 경계 51건이면 안내, 건수 조회 실패(목록 길이로 대체)면 안내 없음', async () => {
+		const at51 = render(Page, {
+			data: {
+				...base,
+				attentionNeeded: attnItems(50),
+				attentionShown: 50,
+				attentionTotal: 51
+			} as never
+		});
+		expect(occurrences(text(at51.container), NOTICE)).toBe(1);
+		expect(text(at51.container.querySelector('.attn .count')!)).toBe('51건');
+		at51.unmount();
+		const few = render(Page, {
+			data: {
+				...base,
+				attentionNeeded: attnItems(3),
+				attentionShown: 3,
+				attentionTotal: 3
+			} as never
+		});
+		expect(text(few.container)).not.toContain('보여드려요');
+		few.unmount();
+		// 총건수가 정확히 50이면(보여 준 건수가 더 적어도) 50 초과가 아니므로 안내 없음
+		const edge = render(Page, {
+			data: {
+				...base,
+				attentionNeeded: attnItems(49),
+				attentionShown: 49,
+				attentionTotal: 50
+			} as never
+		});
+		expect(text(edge.container)).not.toContain('보여드려요');
 	});
 
 	it('G-2: 반영은 확인 뒤 5초가 지나야 보내고, 되돌리기면 보내지 않는다', async () => {
