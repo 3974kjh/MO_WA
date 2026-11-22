@@ -7,6 +7,15 @@ import { fromRepo } from './db';
 import { requireOwnerId, withOwnerFilter } from './owner';
 
 /**
+ * FE-06 L-2: 매매일지 화면 읽기(목록·상세 한 건)가 실제로 읽는 컬럼만. search_tsv·owner_id·source_ref·
+ * client_ref·avg_price·archived_at·created_at·updated_at은 뺀다(필터에만 쓰는 값은 select에 필요 없다).
+ * toJournalItem(`$lib/journal/view`)·journalPage(source_bot_id)·handleJournalUpdate(instrument_id)가 읽는
+ * 필드를 바꾸면 여기도 바꾼다.
+ */
+export const JOURNAL_WEB_COLUMNS =
+	'id, entry_date, kind, state, title, tickers, instrument_id, price, qty, breakeven, currency, memo_md, source_url, report_id, source_bot_id';
+
+/**
  * 칩 건수용 kind 목록 상한. PostgREST max_rows(1000)에 조용히 잘리지 않도록 그보다 작게 두고,
  * 상한+1건을 요청해 넘치면 잘린 것으로 본다(truncated).
  */
@@ -34,7 +43,10 @@ export async function getJournalEntryForWeb(
 	id: string
 ): Promise<{ data: Record<string, unknown> | null; error: Error | null }> {
 	const ownerId = requireOwnerId(repo);
-	let q = fromRepo(repo, 'journal_entries').select('*').eq('id', id).is('archived_at', null);
+	let q = fromRepo(repo, 'journal_entries')
+		.select(JOURNAL_WEB_COLUMNS)
+		.eq('id', id)
+		.is('archived_at', null);
 	q = withOwnerFilter(q, ownerId);
 	const { data, error } = await q.maybeSingle();
 	if (error) return { data: null, error: error as Error };

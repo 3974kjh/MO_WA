@@ -21,6 +21,7 @@ import {
 } from '$lib/server/domain/web/listFilters';
 import type { RepoClient } from './client';
 import { fromRepo } from './db';
+import { JOURNAL_WEB_COLUMNS } from './journalWeb.repo';
 import { requireOwnerId, withOwnerFilter } from './owner';
 import {
 	getLatestIndicator,
@@ -858,7 +859,7 @@ export async function listJournalPage(
 	const { count, error: countErr } = await countQ;
 	if (countErr) return { data: toPageResult([], 0, params), error: countErr as Error };
 
-	let q = fromRepo(repo, 'journal_entries').select('*').is('archived_at', null);
+	let q = fromRepo(repo, 'journal_entries').select(JOURNAL_WEB_COLUMNS).is('archived_at', null);
 	q = applyJournalFilter(q, filter);
 	q = withOwnerFilter(q, ownerId);
 	const { data, error } = await q

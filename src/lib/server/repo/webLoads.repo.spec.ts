@@ -173,6 +173,22 @@ describe('FE-10 listJournalPage: count·page 요청 모두 같은 owner·필터'
 	});
 });
 
+describe('FE-06 L-2 listJournalPage: 명시 컬럼', () => {
+	it('page 요청 select가 리터럴 컬럼 목록이고(*·search_tsv 없음) owner 필터를 유지한다', async () => {
+		const { repo, requests } = stubClient();
+		await listJournalPage(repo, { page: 1, pageSize: 30, offset: 0, limit: 30 }, {});
+		const page = requests.find((r) => r.table === 'journal_entries' && r.method === 'GET');
+		if (!page) throw new Error('journal_entries GET 요청이 없다');
+		expect(page.params.get('select')).toBe(
+			'id,entry_date,kind,state,title,tickers,instrument_id,price,qty,breakeven,currency,memo_md,source_url,report_id,source_bot_id'
+		);
+		expect(page.params.get('select')).not.toContain('*');
+		expect(page.params.get('select')).not.toContain('search_tsv');
+		expectOwnerOnly(page.params);
+		expect(page.params.get('archived_at')).toBe('is.null');
+	});
+});
+
 describe('FE-03 홈 보조 load', () => {
 	it('listIndicatorSeries: owner·key 조건, 최신 N개를 오름차순으로, 숫자 아닌 값은 뺀다', async () => {
 		const { repo, requests } = stubClient({

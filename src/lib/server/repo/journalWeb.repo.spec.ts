@@ -5,7 +5,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { describe, expect, it } from 'vitest';
 import { forUser } from './client';
-import { JOURNAL_KINDS_CAP, listJournalKinds } from './journalWeb.repo';
+import { JOURNAL_KINDS_CAP, getJournalEntryForWeb, listJournalKinds } from './journalWeb.repo';
 
 const OWNER = '00000000-0000-4000-8000-0000000000aa';
 
@@ -76,5 +76,21 @@ describe('FE-06 L-1 listJournalKinds 상한', () => {
 		const out = await listJournalKinds(repo, {});
 		expect(out.error).not.toBeNull();
 		expect(out.truncated).toBe(false);
+	});
+});
+
+describe('FE-06 L-2 getJournalEntryForWeb: 명시 컬럼', () => {
+	it('select가 리터럴 컬럼 목록이고(*·search_tsv 없음) id·owner·보관 제외 필터를 유지한다', async () => {
+		const { repo, requests } = stubClient({ journal_entries: [{ id: 'x' }] });
+		await getJournalEntryForWeb(repo, 'j-1');
+		const [req] = requests.filter((r) => r.table === 'journal_entries');
+		expect(req.params.get('select')).toBe(
+			'id,entry_date,kind,state,title,tickers,instrument_id,price,qty,breakeven,currency,memo_md,source_url,report_id,source_bot_id'
+		);
+		expect(req.params.get('select')).not.toContain('*');
+		expect(req.params.get('select')).not.toContain('search_tsv');
+		expect(req.params.get('id')).toBe('eq.j-1');
+		expect(new Set(req.params.getAll('owner_id'))).toEqual(new Set([`eq.${OWNER}`]));
+		expect(req.params.get('archived_at')).toBe('is.null');
 	});
 });
