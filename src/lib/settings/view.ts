@@ -55,6 +55,8 @@ export function needsExpiryClearConfirm(
 	currentExpiresAt: string | null | undefined,
 	posted: FormDataEntryValue | null
 ): boolean {
+	// posted === null(값이 아예 오지 않음)도 확인 대상으로 본다. 보수적 선택: 값이 빠졌을 때
+	// 확인 시트를 건너뛰면 만료가 조용히 해제될 수 있으므로, 확실히 값이 있을 때만 통과시킨다.
 	return (
 		!expiryRequired(profile) &&
 		!!currentExpiresAt &&
