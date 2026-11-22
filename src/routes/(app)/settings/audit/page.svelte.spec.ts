@@ -89,6 +89,9 @@ describe('FE-09 활동 기록 화면', () => {
 		flushSync();
 		expect(text(document.querySelector('[data-testid="audit-args"]'))).toContain('더미 인자');
 		expect(document.querySelector('[data-testid="audit-args-cut"]')).toBeNull();
+		const args = document.querySelector('[data-testid="audit-args"]');
+		expect(text(args?.previousElementSibling).trim()).toBe('보낸 내용 미리보기');
+		expect(document.body.textContent).not.toContain('요청 내용(미리보기)');
 	});
 
 	it('미리보기가 잘리면 짧은 안내를 함께 보여 준다(규칙 ID 없음)', () => {

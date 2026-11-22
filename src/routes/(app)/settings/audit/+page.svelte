@@ -186,7 +186,7 @@
 			{/if}
 		</dl>
 		{#if preview?.text}
-			<p class="lbl">요청 내용(미리보기)</p>
+			<p class="lbl">보낸 내용 미리보기</p>
 			<pre class="args" data-testid="audit-args">{preview.text}</pre>
 			{#if preview.truncated}
 				<p class="cut" data-testid="audit-args-cut">내용이 길어 앞부분만 보여 줘요.</p>
