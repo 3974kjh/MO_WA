@@ -11,7 +11,8 @@ import { returnPct } from '$lib/dashboard/home';
 import { formatMoney, type Currency } from '$lib/format/money';
 import { formatField } from '$lib/queue/proposals';
 
-export type PortfolioStatus = 'holding' | 'planned' | 'closed';
+import { PORTFOLIO_STATUSES, type PortfolioStatus } from './status';
+export { PORTFOLIO_STATUSES, type PortfolioStatus };
 export type OpenStatus = 'pending' | 'on_hold';
 
 /** 화면 한 행. HomePosition과 같은 모양이라 홈의 요약·비중·감시 가격 계산을 그대로 쓴다. */
@@ -84,7 +85,7 @@ export function buildPortfolioRows(input: {
 		if (openById.get(o.position_id) !== 'pending') openById.set(o.position_id, o.status);
 	}
 	const rows = input.details
-		.filter((d) => d.status === 'holding' || d.status === 'planned' || d.status === 'closed')
+		.filter((d) => (PORTFOLIO_STATUSES as readonly string[]).includes(d.status))
 		.map((d): PortfolioRow => {
 			const l = input.labels.get(d.instrument_id);
 			const price = priceByInstrument.get(d.instrument_id);

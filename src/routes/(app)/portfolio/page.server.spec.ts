@@ -301,7 +301,6 @@ describe('FE-07 portfolio load', () => {
 			trigger_price: null,
 			trigger_direction: 'below',
 			watch_only: false,
-			closed_at: null,
 			market: 'KRX'
 		};
 		repo.listPortfolioPositionDetails.mockResolvedValueOnce({

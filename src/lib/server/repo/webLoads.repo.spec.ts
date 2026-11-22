@@ -504,6 +504,7 @@ describe('FE-05 포트폴리오 읽기 로더', () => {
 		expect(requests[0].params.get('archived_at')).toBe('is.null');
 		expect(requests[0].params.get('status')).toBe('in.(holding,planned,closed)');
 		expect(requests[0].params.get('select')).toContain('instruments(market)');
+		expect(requests[0].params.get('select')).not.toContain('closed_at');
 	});
 
 	it('listOpenProposalRefs: position_id 있는 pending·on_hold, 보류 = 포지션 on_hold + 원칙 on_hold', async () => {

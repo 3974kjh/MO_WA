@@ -2,6 +2,7 @@
  * BE-11 / BE-19 enriched loads for web +page.server.ts.
  * Uses user-session RLS client via RepoClient. Never invents display_id.
  */
+import { PORTFOLIO_STATUSES, type PortfolioStatus } from '$lib/portfolio/status';
 import { countPending } from '$lib/approvals/pending';
 import {
 	attentionNeededFilter,
@@ -493,7 +494,7 @@ export async function listPositionCards(
 export type PortfolioPositionDetail = {
 	id: string;
 	instrument_id: string;
-	status: 'holding' | 'planned' | 'closed';
+	status: PortfolioStatus;
 	currency: 'KRW' | 'USD';
 	qty: number | null;
 	avg_price: number | null;
@@ -502,7 +503,6 @@ export type PortfolioPositionDetail = {
 	trigger_price: number | null;
 	trigger_direction: 'below' | 'above';
 	watch_only: boolean;
-	closed_at: string | null;
 	/** 종목 시장(통화 불일치 ⚠ 판정용). 종목을 못 읽으면 null */
 	market: string | null;
 };
@@ -517,10 +517,10 @@ export async function listPortfolioPositionDetails(
 	const ownerId = requireOwnerId(repo);
 	let q = fromRepo(repo, 'positions')
 		.select(
-			'id, instrument_id, status, currency, qty, avg_price, breakeven, memo, trigger_price, trigger_direction, watch_only, closed_at, instruments(market)'
+			'id, instrument_id, status, currency, qty, avg_price, breakeven, memo, trigger_price, trigger_direction, watch_only, instruments(market)'
 		)
 		.is('archived_at', null)
-		.in('status', ['holding', 'planned', 'closed']);
+		.in('status', [...PORTFOLIO_STATUSES]);
 	q = withOwnerFilter(q, ownerId);
 	const { data, error } = await q;
 	if (error) return { data: [], error: error as Error };
