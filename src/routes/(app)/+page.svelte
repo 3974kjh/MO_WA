@@ -105,7 +105,13 @@
 	/** R-VAL-P17: 환율은 기준 시각(usdkrw as_of, KST)과 함께. 기준 시각이 없으면 지어내지 않고 —. */
 	function fxFoot(rate: number | null | undefined, asOf: string | null | undefined): string {
 		if (rate == null) return '환율 기록 없음';
-		const when = asOf ? `${formatKstShort(asOf)} 기준` : '기준 시각 —';
+		const dateOnly = asOf ? /^\d{4}-(\d{2})-(\d{2})$/.exec(asOf) : null;
+		// 날짜만 있는 값(date 컬럼)은 Date로 해석하지 않는다: 기록에 없는 시각이 붙는다.
+		const when = dateOnly
+			? `${dateOnly[1]}/${dateOnly[2]} 기준`
+			: asOf
+				? `${formatKstShort(asOf)} 기준`
+				: '기준 시각 —';
 		return `환율 ${tickerValue('usdkrw', rate)} · ${when}`;
 	}
 </script>
