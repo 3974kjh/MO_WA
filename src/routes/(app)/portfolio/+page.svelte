@@ -113,6 +113,23 @@
 
 	let queueItems = $derived(data.queue.items);
 	let openList = $derived(queueItems.filter((i) => !optimistic[i.id] && !conflicted[i.id]));
+	// 같은 포지션의 형제 대기 요청: 하나가 5초 유예·전송 중이면 나머지는 잠근다(두 번째 반영이 오류로 떨어지지 않게).
+	// 되돌리기·이동으로 버려지면 optimistic이 지워져 자동으로 풀린다. 원칙(position_id 없음)은 묶지 않는다.
+	let lockedPositions = $derived.by(() => {
+		const ids: string[] = [];
+		for (const i of queueItems) {
+			if (i.kind === 'position' && i.position_id && (optimistic[i.id] || busy[i.id])) {
+				ids.push(i.position_id);
+			}
+		}
+		return ids;
+	});
+	const siblingLocked = (i: QueueItem) =>
+		i.kind === 'position' &&
+		!!i.position_id &&
+		!optimistic[i.id] &&
+		!busy[i.id] &&
+		lockedPositions.includes(i.position_id);
 	let attentionList = $derived.by(() => {
 		const server = data.attentionNeeded;
 		const ids = new Set(server.map((i) => i.id));
@@ -206,6 +223,10 @@
 		overrides: Record<string, unknown> | null,
 		note: string | null
 	) {
+		if (siblingLocked(item)) {
+			toast.show('같은 종목의 다른 요청을 처리하는 중이에요 · 끝난 뒤 다시 확인해 주세요');
+			return;
+		}
 		optimistic[item.id] = {
 			applied: overrides ? { ...item.proposed_values, ...overrides } : null,
 			note,
@@ -695,7 +716,7 @@
 								<QueueCard
 									{item}
 									mode="open"
-									busy={!!busy[item.id]}
+									busy={!!busy[item.id] || siblingLocked(item)}
 									onapprove={(i) => (approveTarget = i)}
 									onoverride={openOverride}
 									onhold={doHold}
