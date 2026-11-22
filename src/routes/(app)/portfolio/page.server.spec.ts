@@ -77,10 +77,10 @@ const position = {
 	latest_price_currency: null
 };
 
-const call = () =>
+const call = (search = '') =>
 	(load as unknown as (e: unknown) => Promise<Record<string, unknown>>)({
 		locals: { user: { id: 'u1' }, supabase: {} },
-		url: new URL('http://localhost/portfolio'),
+		url: new URL(`http://localhost/portfolio${search}`),
 		parent: async () => ({})
 	});
 
@@ -482,6 +482,34 @@ describe('FE-07 portfolio load', () => {
 			log.mockRestore();
 		});
 	});
+
+	it.each(['', '?page=3&pageSize=5', '?page=0&pageSize=1000', '?page=abc'])(
+		'FE-07 Nit-4: 목록 4종은 항상 1쪽(page 1·size 20·offset 0·limit 20) — 쿼리 %j',
+		async (search) => {
+			repo.listQueueProposals.mockResolvedValue(emptyPage);
+			repo.listPositionCards.mockResolvedValue({ data: [], error: null });
+			repo.listAttentionNeeded.mockResolvedValue({
+				data: { positions: [], principles: [], total: 0 },
+				error: null,
+				countError: null
+			});
+			repo.listProposalHistory.mockResolvedValue(emptyPage);
+			repo.listPrincipleQueue.mockResolvedValue(emptyPage);
+			repo.listPrincipleHistory.mockResolvedValue(emptyPage);
+			repo.listInstrumentMeta.mockResolvedValue({ data: [], error: null });
+			const first = { page: 1, pageSize: 20, offset: 0, limit: 20 };
+			await call(search);
+			for (const fn of [
+				repo.listQueueProposals,
+				repo.listProposalHistory,
+				repo.listPrincipleQueue,
+				repo.listPrincipleHistory
+			]) {
+				expect(fn).toHaveBeenCalledTimes(1);
+				expect(fn.mock.calls[0][1]).toEqual(first);
+			}
+		}
+	);
 
 	it('비로그인은 401(레이아웃이 먼저 /login으로 보낸다)', async () => {
 		await expect(

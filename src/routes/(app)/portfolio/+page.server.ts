@@ -1,5 +1,4 @@
 import type { Actions, PageServerLoad } from './$types';
-import { parsePageParams } from '$lib/server/domain/web/pagination';
 import {
 	forUser,
 	ATTENTION_NEEDED_LIMIT,
@@ -38,7 +37,7 @@ import {
 import type { CorrectionTarget } from '$lib/queue/proposals';
 import { buildPortfolioRows } from '$lib/portfolio/view';
 
-/** FE-07 '지난 내역' 첫 쪽(최근 결정 20건). */
+/** 포트폴리오 목록은 모두 첫 쪽(최근 20건) 고정이다. `?page=`·`?pageSize=`는 읽지 않는다. */
 const HISTORY_PAGE = { page: 1, pageSize: 20, offset: 0, limit: 20 } as const;
 
 /**
@@ -49,14 +48,13 @@ const HISTORY_PAGE = { page: 1, pageSize: 20, offset: 0, limit: 20 } as const;
  * 행 배지·보류 건수용 열린 요청 참조만 더 읽는다. 쓰기 액션은 그대로.
  * 오류 원문은 서버 로그에만(publicListError). 값이 없으면 빈 배열 — 화면은 빈 상태만 보인다.
  */
-export const load: PageServerLoad = async ({ locals, url }) => {
+export const load: PageServerLoad = async ({ locals }) => {
 	const user = requireUser(locals.user);
 	const repo = forUser(locals.supabase, user.id);
-	const queueParams = parsePageParams(url, { defaultSize: 20 });
 
 	const [queue, positions, attention, history, pQueue, pHistory, details, openRefs] =
 		await Promise.all([
-			listQueueProposals(repo, queueParams),
+			listQueueProposals(repo, HISTORY_PAGE),
 			listPositionCards(repo),
 			listAttentionNeeded(repo),
 			listProposalHistory(repo, HISTORY_PAGE),
