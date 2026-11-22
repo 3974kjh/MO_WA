@@ -90,6 +90,14 @@ type RawProposal = AttentionLike & {
 	decided_at: string | null;
 };
 
+/**
+ * FE-07 Low-4: 변경 요청(position_proposals) 조회에서 toCard·attention 필터가 실제로 읽는 컬럼만.
+ * owner_id·display_no·proposed_by_user·client_ref·decided_by·result_position_id·acknowledged_by·updated_at은 뺀다.
+ * RawProposal·toCard에 필드를 더하면 여기에도 더해야 한다.
+ */
+export const POSITION_PROPOSAL_COLUMNS =
+	'id, display_id, change_type, status, calc_note, reason_md, decision_note, proposed_by_type, proposed_by, evidence, attention_started_at, acknowledged_at, base_version, proposed_values, applied_values, current_values, position_id, instrument_id, created_at, expires_at, held_at, decided_at';
+
 async function botNameMap(repo: RepoClient, botIds: string[]): Promise<Map<string, string>> {
 	const map = new Map<string, string>();
 	const ids = [...new Set(botIds.filter(Boolean))];
@@ -210,7 +218,7 @@ export async function listQueueProposals(
 	}
 
 	let q = fromRepo(repo, 'position_proposals')
-		.select('*')
+		.select(POSITION_PROPOSAL_COLUMNS)
 		.in('status', ['pending', 'on_hold'])
 		.order('created_at', { ascending: false })
 		.range(params.offset, params.offset + params.limit - 1);
@@ -249,7 +257,7 @@ export async function listProposalHistory(
 	if (countErr) return { data: toPageResult([], 0, params), error: countErr as Error };
 
 	let q = fromRepo(repo, 'position_proposals')
-		.select('*')
+		.select(POSITION_PROPOSAL_COLUMNS)
 		.in('status', [...PROPOSAL_HISTORY_STATUSES])
 		.order('decided_at', { ascending: false, nullsFirst: false })
 		.order('created_at', { ascending: false })
@@ -391,7 +399,7 @@ export async function listAttentionNeeded(
 	const ownerId = requireOwnerId(repo);
 
 	let pq = fromRepo(repo, 'position_proposals')
-		.select('*')
+		.select(POSITION_PROPOSAL_COLUMNS)
 		.in('status', [...filter.statuses])
 		.is('acknowledged_at', null)
 		.gt('attention_started_at', filter.attentionStartedAfter)

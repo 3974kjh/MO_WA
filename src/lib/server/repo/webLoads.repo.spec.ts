@@ -18,6 +18,7 @@ import {
 	listPrincipleHistory,
 	listPrincipleQueue,
 	listProposalHistory,
+	listQueueProposals,
 	PRINCIPLE_BODY_PREVIEW_MAX
 } from './webLoads.repo';
 import { listIndicatorSeries } from './market.repo';
@@ -374,6 +375,49 @@ describe('FE-07 변경 요청 보조 load', () => {
 		expect(pr[0].params.get('select')).toContain('proposed_body_md');
 		expect(pr[0].params.get('select')).toContain('clause_ref');
 		expect(requests.every((r) => r.method === 'GET' || r.method === 'HEAD')).toBe(true);
+	});
+});
+
+describe('FE-07 Low-4 변경 요청 조회 select 컬럼 명시', () => {
+	const EXPECTED =
+		'id,display_id,change_type,status,calc_note,reason_md,decision_note,proposed_by_type,proposed_by,evidence,attention_started_at,acknowledged_at,base_version,proposed_values,applied_values,current_values,position_id,instrument_id,created_at,expires_at,held_at,decided_at';
+	const page = { page: 1, pageSize: 20, offset: 0, limit: 20 };
+
+	async function listSelect(
+		run: (repo: ReturnType<typeof stubClient>['repo']) => Promise<unknown>
+	) {
+		const { repo, requests } = stubClient({ position_proposals: [] });
+		await run(repo);
+		const get = requests.filter((r) => r.table === 'position_proposals' && r.method === 'GET');
+		expect(get).toHaveLength(1);
+		return get[0].params.get('select');
+	}
+
+	it('listQueueProposals·listProposalHistory·listAttentionNeeded는 같은 명시 컬럼만 요청한다(* 아님)', async () => {
+		const q = await listSelect((r) => listQueueProposals(r, page));
+		const h = await listSelect((r) => listProposalHistory(r, page));
+		const a = await listSelect((r) => listAttentionNeeded(r, new Date('2026-11-22T00:00:00Z')));
+		for (const sel of [q, h, a]) {
+			expect(sel).not.toBe('*');
+			expect(sel).toBe(EXPECTED);
+		}
+	});
+
+	it('쓰지 않는 컬럼(owner_id·client_ref·proposed_by_user 등)은 가져오지 않는다', async () => {
+		const sel = await listSelect((r) => listQueueProposals(r, page));
+		const cols = (sel ?? '').split(',');
+		for (const c of [
+			'owner_id',
+			'display_no',
+			'proposed_by_user',
+			'client_ref',
+			'decided_by',
+			'result_position_id',
+			'acknowledged_by',
+			'updated_at'
+		]) {
+			expect(cols).not.toContain(c);
+		}
 	});
 });
 
