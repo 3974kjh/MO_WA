@@ -147,7 +147,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			rows: portfolioRows,
 			totalKrw: valuation.data?.totalKrw ?? null,
 			usdkrw: valuation.data?.usdkrw ?? null,
-			holdCount: openRefs.error ? null : openRefs.data.holdCount
+			// 한쪽만 실패하면 읽은 쪽 합은 완전한 값처럼 보이므로 null(기존 '보류 건수를 불러오지 못했어요').
+			holdCount: openRefs.error || openRefs.partialError ? null : openRefs.data.holdCount
 		},
 		portfolioError: publicListError('portfolio.details', positions.error ?? details.error),
 		valuationError: publicListError('portfolio.valuation', valuation.error, INFO_LOAD_ERROR),
