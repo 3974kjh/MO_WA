@@ -32,6 +32,7 @@ import {
 	byDecidedDesc,
 	principleToQueueItem,
 	toQueueItem,
+	type CardLike,
 	type PositionLike
 } from '$lib/queue/view';
 import type { CorrectionTarget } from '$lib/queue/proposals';
@@ -92,7 +93,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 	]);
 	publicListError('portfolio.instruments', meta.error, INFO_LOAD_ERROR);
 	const instrumentById = new Map<string, InstrumentMeta>((meta.data ?? []).map((m) => [m.id, m]));
-	const view = (c: (typeof allCards)[number]) => toQueueItem(c, positionById, instrumentById);
+	// 이 카드들은 포지션 제안 테이블에서만 읽는다(원칙은 principleToQueueItem). 타입만 좁히며 동작은 같다.
+	const view = (c: (typeof allCards)[number]) =>
+		toQueueItem(c as CardLike, positionById, instrumentById);
 
 	const holdings: CorrectionTarget[] = positionCards.map((p) => {
 		const m = instrumentById.get(p.instrument_id);

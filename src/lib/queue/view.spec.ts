@@ -121,11 +121,38 @@ describe('toQueueItem', () => {
 		expect(isValueModified(item)).toBe(false);
 	});
 
-	it('확인 필요의 원칙 카드(ProposalCard 모양)는 kind=principle', () => {
-		expect(toQueueItem({ ...card, change_type: 'principle' }, new Map(), new Map()).kind).toBe(
-			'principle'
-		);
-		expect(toQueueItem(card, new Map(), new Map()).kind).toBe('position');
+	it('toQueueItem은 kind=principle을 만들지 않는다(포지션 종류는 모두 position)', () => {
+		for (const change_type of ['open_holding', 'set_qty_avg', 'close'] as const) {
+			expect(toQueueItem({ ...card, change_type }, new Map(), new Map()).kind).toBe('position');
+		}
+	});
+
+	it('원칙 항목은 principleToQueueItem만 만든다(kind=principle), 타입은 principle change_type을 toQueueItem에 막는다', () => {
+		// 타입 장벽: 원칙 change_type은 CardLike(toQueueItem 입력)에 대입할 수 없다.
+		// @ts-expect-error 'principle'은 PositionChangeType이 아니다
+		const rejected: CardLike = { ...card, change_type: 'principle' };
+		expect(rejected.change_type).toBe('principle'); // 런타임 값은 그대로일 뿐, toQueueItem 호출은 타입 오류다
+		const item = principleToQueueItem({
+			id: 'r9',
+			display_id: 'R-0019',
+			status: 'pending',
+			clause_ref: null,
+			body_preview: '',
+			body_truncated: false,
+			reason_md: null,
+			decision_note: null,
+			proposed_by_type: 'bot',
+			proposer_name: '투자 관리 봇',
+			evidence_chips: [],
+			attention_started_at: null,
+			acknowledged_at: null,
+			base_version: 1,
+			created_at: '2026-11-21T00:00:00Z',
+			held_at: null,
+			decided_at: null
+		});
+		expect(item.kind).toBe('principle');
+		expect(item.change_type).toBe('principle');
 	});
 
 	it('병합 정렬: 만든 시각·결정 시각 최신순', () => {

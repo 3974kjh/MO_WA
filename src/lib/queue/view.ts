@@ -10,10 +10,13 @@ import {
 	type QueueItem
 } from './proposals';
 
+/** 포지션 변경 요청 종류. 원칙 개정 요청('principle')은 toQueueItem에 넣을 수 없다(principleToQueueItem만). */
+export type PositionChangeType = 'open_holding' | 'set_qty_avg' | 'close';
+
 export type CardLike = {
 	id: string;
 	display_id: string;
-	change_type: string;
+	change_type: PositionChangeType;
 	status: string;
 	calc_note: string | null;
 	reason_md: string | null;
@@ -102,7 +105,7 @@ export function toQueueItem(
 		card.current_values?.currency ??
 		pos?.currency;
 	return {
-		kind: card.change_type === 'principle' ? 'principle' : 'position',
+		kind: 'position',
 		id: card.id,
 		display_id: card.display_id,
 		change_type: card.change_type,
