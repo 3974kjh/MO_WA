@@ -548,6 +548,49 @@ describe('FE-07 변경 요청 렌더', () => {
 		]);
 	});
 
+	it('포지션 그대로 반영 409는 확인 필요로 옮기고 중립 토스트(시트 없음, 일반 오류 토스트 아님)', async () => {
+		vi.useFakeTimers();
+		fetchSpy.mockImplementation(
+			async () =>
+				new Response(
+					JSON.stringify({
+						type: 'failure',
+						status: 409,
+						data: { ok: false, code: 'CONFLICT', status: 'conflict', message: 'x' }
+					})
+				)
+		);
+		const { container } = render(Page, {
+			data: {
+				...base,
+				queue: { items: [makeItem({ id: 'pc', display_id: 'P-0601' })], total: 1 }
+			} as never
+		});
+		(cardOf(container, 'P-0601').querySelector('[data-action="approve"]') as HTMLElement).click();
+		flushSync();
+		(document.querySelector('[data-action="approve-confirm"]') as HTMLElement).click();
+		flushSync();
+		await vi.advanceTimersByTimeAsync(5100);
+		const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe('?/approve');
+		expect((init.body as FormData).has('overrides')).toBe(false);
+		await vi.waitFor(() =>
+			expect(
+				toast.items.some((t) => t.message === '반영 안 됨(보유가 달라짐) · ‘확인 필요’로 옮겼어요')
+			).toBe(true)
+		);
+		const conflictToast = toast.items.find((t) => t.message.includes('반영 안 됨'))!;
+		expect(conflictToast.tone).not.toBe('err');
+		// 화면 안에서 '확인 필요' 묶음으로 옮겨진다(페이지 이동 없음).
+		await vi.waitFor(() => {
+			const attn = container.querySelector('[data-testid="attention"]');
+			expect(attn).not.toBeNull();
+			expect(text(attn!)).toContain('P-0601');
+		});
+		// 시트는 열리지 않는다(그대로 반영이라 고쳐서 반영 시트 경로 아님).
+		expect(document.querySelector('[data-testid="override-edit"]')).toBeNull();
+	});
+
 	it('원칙 반영 409는 확인 필요로 옮기고 중립 토스트(시트 없음)', async () => {
 		vi.useFakeTimers();
 		fetchSpy.mockImplementation(

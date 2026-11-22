@@ -28,7 +28,7 @@ import { getLatestIndicator, listIndicatorSeries } from './market.repo';
 
 const OWNER = '00000000-0000-4000-8000-0000000000aa';
 
-type Req = { method: string; table: string; params: URLSearchParams };
+type Req = { method: string; table: string; params: URLSearchParams; prefer: string | null };
 
 function stubClient(rows: Record<string, unknown[]> = {}, failTables: string[] = []) {
 	const requests: Req[] = [];
@@ -36,7 +36,12 @@ function stubClient(rows: Record<string, unknown[]> = {}, failTables: string[] =
 		const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
 		const method = (init?.method ?? 'GET').toUpperCase();
 		const table = url.pathname.replace(/^\/rest\/v1\//, '');
-		requests.push({ method, table, params: url.searchParams });
+		requests.push({
+			method,
+			table,
+			params: url.searchParams,
+			prefer: new Headers(init?.headers).get('prefer')
+		});
 		if (failTables.includes(table) || failTables.includes(`${method}:${table}`)) {
 			return new Response(JSON.stringify({ message: 'stub failure', code: 'XX000' }), {
 				status: 500,
@@ -512,6 +517,8 @@ describe('FE-07 countPendingProposals: nav 대기 건수 = pending 포지션 + p
 			expect(r.params.get('status')).toBe('eq.pending');
 			expect(r.params.get('status')).not.toContain('on_hold');
 			expect(r.params.get('status')).not.toContain('in.(');
+			// 건수는 Prefer: count=exact 헤더로 요청한다(HEAD + 본문 없음)
+			expect(r.prefer).toContain('count=exact');
 		}
 	});
 
@@ -537,6 +544,36 @@ describe('FE-07 countPendingProposals: nav 대기 건수 = pending 포지션 + p
 			expect(data).toBe(0);
 			expect(error).not.toBeNull();
 		}
+	});
+
+	it('(d) 양쪽 쿼리가 모두 오류여도 data 0 + error(던지지 않음)', async () => {
+		const { repo } = stubClient({ position_proposals: rows(2), principle_proposals: rows(3) }, [
+			'position_proposals',
+			'principle_proposals'
+		]);
+		const { data, error } = await countPendingProposals(repo);
+		expect(data).toBe(0);
+		expect(error).not.toBeNull();
+	});
+
+	it('(e) 두 테이블 모두 0건이면 data 0 + error 없음(오류와 구분)', async () => {
+		const { repo, requests } = stubClient({ position_proposals: [], principle_proposals: [] });
+		const { data, error } = await countPendingProposals(repo);
+		expect(error).toBeNull();
+		expect(data).toBe(0);
+		expect(requests).toHaveLength(2);
+	});
+
+	it('(f) 건수 응답 헤더가 없어도 NaN 없이 data 0(홈 pill은 0이면 숨김), error 없음', async () => {
+		const noRange = async () => new Response(null, { status: 200 });
+		const sb = createClient('http://stub.local', 'stub-anon-key', {
+			auth: { persistSession: false, autoRefreshToken: false },
+			global: { fetch: noRange as typeof fetch }
+		});
+		const { data, error } = await countPendingProposals(forUser(sb as never, OWNER));
+		expect(error).toBeNull();
+		expect(data).toBe(0);
+		expect(Number.isNaN(data)).toBe(false);
 	});
 });
 
