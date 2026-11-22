@@ -402,7 +402,14 @@ export async function listAttentionNeeded(
 	repo: RepoClient,
 	now: Date = new Date()
 ): Promise<{
-	data: { positions: ProposalCard[]; principles: PrincipleCard[] };
+	data: {
+		positions: ProposalCard[];
+		principles: PrincipleCard[];
+		/** 상한과 무관한 실제 건수(포지션+원칙). 건수 조회가 하나라도 실패하면 null. */
+		total: number | null;
+	};
+	/** 건수 조회 오류(목록은 정상). 목록 오류는 error. */
+	countError: Error | null;
 	error: Error | null;
 }> {
 	const filter = attentionNeededFilter(now);
@@ -426,25 +433,47 @@ export async function listAttentionNeeded(
 		.limit(ATTENTION_NEEDED_LIMIT);
 	rq = withOwnerFilter(rq, ownerId);
 
-	const [posRes, prinRes] = await Promise.all([pq, rq]);
+	// 실제 건수: 목록과 같은 필터(status·acknowledged_at·attention_started_at·owner), 상한 없음.
+	let pc = fromRepo(repo, 'position_proposals')
+		.select('id', { count: 'exact', head: true })
+		.in('status', [...filter.statuses])
+		.is('acknowledged_at', null)
+		.gt('attention_started_at', filter.attentionStartedAfter);
+	pc = withOwnerFilter(pc, ownerId);
+
+	let rc = fromRepo(repo, 'principle_proposals')
+		.select('id', { count: 'exact', head: true })
+		.in('status', [...filter.statuses])
+		.is('acknowledged_at', null)
+		.gt('attention_started_at', filter.attentionStartedAfter);
+	rc = withOwnerFilter(rc, ownerId);
+
+	const [posRes, prinRes, posCount, prinCount] = await Promise.all([pq, rq, pc, rc]);
 	if (posRes.error) {
 		return {
-			data: { positions: [], principles: [] },
+			data: { positions: [], principles: [], total: null },
+			countError: null,
 			error: posRes.error as Error
 		};
 	}
 	if (prinRes.error) {
 		return {
-			data: { positions: [], principles: [] },
+			data: { positions: [], principles: [], total: null },
+			countError: null,
 			error: prinRes.error as Error
 		};
 	}
+	const countError = (posCount.error ?? prinCount.error) as Error | null;
+	const total =
+		countError || posCount.count == null || prinCount.count == null
+			? null
+			: posCount.count + prinCount.count;
 
 	const positions = await enrichProposals(repo, (posRes.data ?? []) as RawProposal[]);
 	// FE-07: 원칙은 확인 대기·지난 내역과 같은 매퍼(평문 미리보기 앞 2000자·잘림·조항).
 	const principles = await principleCards(repo, (prinRes.data ?? []) as unknown as RawPrinciple[]);
 
-	return { data: { positions, principles }, error: null };
+	return { data: { positions, principles, total }, countError, error: null };
 }
 
 export async function listPositionCards(

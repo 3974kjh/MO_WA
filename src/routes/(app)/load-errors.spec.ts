@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const RAW = { code: '42501', message: 'permission denied for table secret_tbl' };
 
 vi.mock('$lib/server/repo', () => ({
+	ATTENTION_NEEDED_LIMIT: 50,
 	forUser: () => ({}),
 	listQueueProposals: vi.fn(async () => ({ data: [], error: RAW })),
 	listPositionCards: vi.fn(async () => ({ data: [], error: RAW })),

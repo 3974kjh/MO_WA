@@ -121,6 +121,10 @@
 			.map((i) => ({ ...i, status: 'conflict' as const }));
 		return [...local, ...server];
 	});
+	// 실제 건수 + 화면에서만 더해진 항목(서버 목록 밖). 건수 조회 실패 시 서버가 목록 길이를 보낸다.
+	let attentionCount = $derived(
+		data.attentionTotal + (attentionList.length - data.attentionNeeded.length)
+	);
 	let historyList = $derived.by(() => {
 		const local: QueueItem[] = [];
 		for (const i of queueItems) {
@@ -648,7 +652,7 @@
 				<div class="attn" role="region" aria-label="확인 필요" data-testid="attention">
 					<h3 class="attn-title">
 						<span aria-hidden="true">⚠</span> 확인 필요
-						<span class="count">{attentionList.length}건</span>
+						<span class="count">{attentionCount}건</span>
 					</h3>
 					<p class="attn-desc">
 						반영 안 된 요청이 있어요(보유가 달라짐·기한 지남). <b>확인했어요</b>를 누르거나 문제가

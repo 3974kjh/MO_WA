@@ -37,7 +37,7 @@ function stubClient(rows: Record<string, unknown[]> = {}, failTables: string[] =
 		const method = (init?.method ?? 'GET').toUpperCase();
 		const table = url.pathname.replace(/^\/rest\/v1\//, '');
 		requests.push({ method, table, params: url.searchParams });
-		if (failTables.includes(table)) {
+		if (failTables.includes(table) || failTables.includes(`${method}:${table}`)) {
 			return new Response(JSON.stringify({ message: 'stub failure', code: 'XX000' }), {
 				status: 500,
 				headers: { 'content-type': 'application/json' }
@@ -371,7 +371,7 @@ describe('FE-07 변경 요청 보조 load', () => {
 			proposer_name: '나'
 		});
 		expect([...p.body_preview]).toHaveLength(PRINCIPLE_BODY_PREVIEW_MAX);
-		const pr = requests.filter((r) => r.table === 'principle_proposals');
+		const pr = requests.filter((r) => r.table === 'principle_proposals' && r.method === 'GET');
 		expect(pr).toHaveLength(1);
 		expectOwnerOnly(pr[0].params);
 		expect(pr[0].params.get('select')).not.toBe('*');
@@ -394,6 +394,43 @@ describe('FE-07 Low-3 확인 필요 목록 건수 상한', () => {
 			expect(get[0].params.get('order')).toBe('attention_started_at.desc');
 			expectOwnerOnly(get[0].params);
 		}
+	});
+});
+
+describe('FE-07 확인 필요 실제 건수 조회', () => {
+	const now = new Date('2026-11-22T00:00:00Z');
+	const strip = (p: URLSearchParams) =>
+		[...p.entries()].filter(([k]) => !['select', 'order', 'limit'].includes(k)).sort();
+
+	it('두 테이블에 목록과 같은 필터의 HEAD count 조회를 하고 합계를 돌려준다', async () => {
+		const { repo, requests } = stubClient({
+			position_proposals: [{ id: 'x' }],
+			principle_proposals: []
+		});
+		const { data, countError, error } = await listAttentionNeeded(repo, now);
+		expect(error).toBeNull();
+		expect(countError).toBeNull();
+		expect(data.total).toBe(1);
+		for (const table of ['position_proposals', 'principle_proposals']) {
+			const head = requests.filter((r) => r.table === table && r.method === 'HEAD');
+			const get = requests.filter((r) => r.table === table && r.method === 'GET');
+			expect(head).toHaveLength(1);
+			expect(get).toHaveLength(1);
+			expect(head[0].params.get('limit')).toBeNull();
+			expect(strip(head[0].params)).toEqual(strip(get[0].params));
+			expectOwnerOnly(head[0].params);
+		}
+	});
+
+	it('건수 조회만 실패하면 목록은 정상, total은 null, countError가 채워진다', async () => {
+		const { repo } = stubClient({ position_proposals: [], principle_proposals: [] }, [
+			'HEAD:principle_proposals'
+		]);
+		const { data, countError, error } = await listAttentionNeeded(repo, now);
+		expect(error).toBeNull();
+		expect(countError).not.toBeNull();
+		expect(data.total).toBeNull();
+		expect(data.positions).toEqual([]);
 	});
 });
 

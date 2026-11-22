@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 type AnyLoader = (...args: unknown[]) => Promise<unknown>;
 
 const repo = vi.hoisted(() => ({
+	ATTENTION_NEEDED_LIMIT: 50,
 	forUser: vi.fn(() => ({})),
 	listQueueProposals: vi.fn(),
 	listPositionCards: vi.fn(),
@@ -481,5 +482,88 @@ describe('FE-07 화면 소스 계약', () => {
 
 	it('/approvals는 /portfolio#queue로 보낸다(G-3)', () => {
 		expect(read('src/routes/approvals/+page.ts')).toMatch(/\/portfolio#queue/);
+	});
+});
+
+describe('FE-07 확인 필요: 실제 건수·전체 최신 상위 50건', () => {
+	const setup = (att: Record<string, unknown>) => {
+		repo.listQueueProposals.mockResolvedValue(emptyPage);
+		repo.listPositionCards.mockResolvedValue({ data: [], error: null });
+		repo.listAttentionNeeded.mockResolvedValue(att);
+		repo.listProposalHistory.mockResolvedValue(emptyPage);
+		repo.listPrincipleQueue.mockResolvedValue(emptyPage);
+		repo.listPrincipleHistory.mockResolvedValue(emptyPage);
+		repo.listInstrumentMeta.mockResolvedValue({ data: [], error: null });
+	};
+	const at = (i: number) => new Date(Date.UTC(2026, 10, 21) - i * 60000).toISOString();
+	type Out = {
+		attentionNeeded: Array<{ id: string; attention_started_at: string }>;
+		attentionShown: number;
+		attentionTotal: number;
+	};
+
+	it('포지션 80 + 원칙 3 → 건수 83, 목록은 종류별 50 + 3을 합친 뒤 전체 최신 50건', async () => {
+		const positions = Array.from({ length: 50 }, (_, i) =>
+			card({ id: `a${i}`, status: 'conflict', attention_started_at: at(i * 2 + 10) })
+		);
+		const principles = [0, 1, 2].map((i) =>
+			principle({ id: `r${i}`, status: 'expired', attention_started_at: at(i) })
+		);
+		setup({ data: { positions, principles, total: 83 }, countError: null, error: null });
+		const out = (await call()) as unknown as Out;
+		expect(out.attentionTotal).toBe(83);
+		expect(out.attentionShown).toBe(50);
+		expect(out.attentionNeeded).toHaveLength(50);
+		const ts = out.attentionNeeded.map((i) => Date.parse(i.attention_started_at));
+		expect(ts).toEqual([...ts].sort((a, b) => b - a));
+		// 원칙 3건이 맨 앞, 포지션은 가장 오래된 3건(a47~a49)이 잘려 나간다.
+		expect(out.attentionNeeded.slice(0, 3).map((i) => i.id)).toEqual(['r0', 'r1', 'r2']);
+		const ids = out.attentionNeeded.map((i) => i.id);
+		expect(ids).not.toContain('a49');
+		expect(ids).toContain('a46');
+	});
+
+	it('동점은 id 오름차순으로 고정한다', async () => {
+		const same = at(0);
+		setup({
+			data: {
+				positions: [card({ id: 'b', attention_started_at: same })],
+				principles: [principle({ id: 'a', attention_started_at: same })],
+				total: 2
+			},
+			countError: null,
+			error: null
+		});
+		const out = (await call()) as unknown as Out;
+		expect(out.attentionNeeded.map((i) => i.id)).toEqual(['a', 'b']);
+	});
+
+	it('건수 조회가 실패하면 목록은 그대로 두고 건수는 목록 길이, 오류는 로그만', async () => {
+		const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+		setup({
+			data: {
+				positions: [card({ id: 'p', attention_started_at: at(0) })],
+				principles: [],
+				total: null
+			},
+			countError: new Error('count boom secret_tbl'),
+			error: null
+		});
+		const out = (await call()) as unknown as Out;
+		expect(out.attentionNeeded).toHaveLength(1);
+		expect(out.attentionTotal).toBe(1);
+		expect(spy).toHaveBeenCalledWith(
+			expect.stringContaining('portfolio.attentionCount'),
+			expect.anything()
+		);
+		expect(JSON.stringify(out)).not.toMatch(/count boom|secret_tbl/);
+		spy.mockRestore();
+	});
+
+	it('화면 배지의 N은 목록 길이가 아니라 서버가 준 실제 건수에서 온다', () => {
+		const src = read('src/routes/(app)/portfolio/+page.svelte');
+		expect(src).toMatch(/<span class="count">\{attentionCount\}건<\/span>/);
+		expect(src).toMatch(/data\.attentionTotal/);
+		expect(src).not.toMatch(/class="count">\{attentionList\.length\}/);
 	});
 });

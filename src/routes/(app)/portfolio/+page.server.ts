@@ -2,6 +2,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { parsePageParams } from '$lib/server/domain/web/pagination';
 import {
 	forUser,
+	ATTENTION_NEEDED_LIMIT,
 	listAttentionNeeded,
 	listInstrumentMeta,
 	listOpenProposalRefs,
@@ -119,6 +120,25 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	});
 	publicListError('portfolio.openRefs', openRefs.error, INFO_LOAD_ERROR);
 
+	// 두 종류를 합쳐 전체 최신순 상위 N건(종류별 N건씩 받았으므로 합집합 상위 N건 = 전체 최신 N건).
+	// 동점은 id로 고정. 건수 조회가 실패하면 실제 건수 대신 목록 길이.
+	const attentionItems = [
+		...attentionCards.map(view),
+		...principleAttention.map(principleToQueueItem)
+	]
+		.sort(
+			(a, b) =>
+				Date.parse(b.attention_started_at ?? b.created_at) -
+					Date.parse(a.attention_started_at ?? a.created_at) ||
+				(a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+		)
+		.slice(0, ATTENTION_NEEDED_LIMIT);
+	publicListError('portfolio.attentionCount', attention.error ? null : attention.countError);
+	const attentionTotal = Math.max(
+		attention.error ? 0 : (attention.data.total ?? attentionItems.length),
+		attentionItems.length
+	);
+
 	return {
 		title: '포트폴리오',
 		portfolio: {
@@ -145,14 +165,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		historyError: publicListError('portfolio.history', historyErr),
 		holdings,
 		positionsError: publicListError('portfolio.positions', positions.error),
-		attentionNeeded: [
-			...attentionCards.map(view),
-			...principleAttention.map(principleToQueueItem)
-		].sort(
-			(a, b) =>
-				Date.parse(b.attention_started_at ?? b.created_at) -
-				Date.parse(a.attention_started_at ?? a.created_at)
-		),
+		attentionNeeded: attentionItems,
+		// 화면에는 아직 쓰지 않는다(잘림 안내 문구 확정 전): 목록 길이 / 실제 건수.
+		attentionShown: attentionItems.length,
+		attentionTotal,
 		attentionError: publicListError('portfolio.attention', attention.error)
 	};
 };
