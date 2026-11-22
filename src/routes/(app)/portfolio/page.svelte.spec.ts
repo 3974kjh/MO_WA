@@ -461,6 +461,117 @@ describe('FE-07 변경 요청 렌더', () => {
 		expect(String(body.get('client_ref'))).toMatch(/^[0-9a-f-]{36}$/);
 	});
 
+	// FE-07 Low-2: 예약(5초 유예)·전송 중인 기록 수정이 있는 행은 '기록 수정'을 잠근다.
+	const correctionData = {
+		...base,
+		holdings: [
+			{
+				id: 'pos-9',
+				name: '보유종목',
+				status: 'holding',
+				currency: 'KRW',
+				qty: 7,
+				avg_price: 3333,
+				approval_version: 5,
+				asset_type: 'stock'
+			}
+		],
+		portfolio: {
+			...base.portfolio,
+			rows: [makeRow({ id: 'pos-9', name: '보유종목', qty: 7, avg_price: 3333 })]
+		}
+	};
+	const correctBtn = (c: Element) => c.querySelector('[data-action="correct"]') as HTMLElement;
+	const correctionSheet = () => document.querySelector('[data-testid="correction-edit"]');
+	const submitCorrection = (c: Element, qtyValue: string, reasonValue: string) => {
+		correctBtn(c).click();
+		flushSync();
+		const sheet = correctionSheet() as HTMLElement;
+		const [, qty, , , reason] = [...sheet.querySelectorAll('input, select')] as HTMLInputElement[];
+		qty.value = qtyValue;
+		qty.dispatchEvent(new Event('input', { bubbles: true }));
+		reason.value = reasonValue;
+		reason.dispatchEvent(new Event('input', { bubbles: true }));
+		flushSync();
+		(document.querySelector('[data-action="correction-next"]') as HTMLElement).click();
+		flushSync();
+		(document.querySelector('[data-action="correction-submit"]') as HTMLElement).click();
+		flushSync();
+	};
+	const correctCalls = () =>
+		fetchSpy.mock.calls.filter((call) => (call as [string, RequestInit])[0] === '?/correct');
+	const correctBody = (n: number) =>
+		(correctCalls()[n] as [string, RequestInit])[1].body as FormData;
+
+	it('Low-2: 기록 수정 예약(5초 유예)·전송 중에는 같은 행 기록 수정이 잠기고, 첫 전송은 원래 값 그대로 한 번만, 끝나면 풀린다', async () => {
+		vi.useFakeTimers();
+		let release: (r: Response) => void = () => {};
+		fetchSpy.mockImplementationOnce(
+			() =>
+				new Promise<Response>((resolve) => {
+					release = resolve;
+				})
+		);
+		const { container } = render(Page, { data: correctionData as never });
+		expect(correctBtn(container).getAttribute('aria-disabled')).toBeNull();
+		submitCorrection(container, '8', '증권사 앱 확인');
+		expect(correctionSheet()).toBeNull();
+
+		// 유예 중: 잠김 — 다시 눌러도 시트가 열리지 않는다
+		expect(correctBtn(container).getAttribute('aria-disabled')).toBe('true');
+		correctBtn(container).click();
+		flushSync();
+		expect(correctionSheet()).toBeNull();
+		expect(text(container)).toContain('8주');
+
+		// 5초 뒤 첫 수정만 전송, 전송 중에도 잠김
+		await vi.advanceTimersByTimeAsync(5100);
+		expect(correctCalls()).toHaveLength(1);
+		const body = correctBody(0);
+		expect([...body.keys()].sort()).toEqual(
+			['avg_price', 'base_version', 'client_ref', 'currency', 'position_id', 'qty', 'reason'].sort()
+		);
+		expect(body.get('position_id')).toBe('pos-9');
+		expect(body.get('qty')).toBe('8');
+		expect(body.get('avg_price')).toBe('3333');
+		expect(body.get('currency')).toBe('KRW');
+		expect(body.get('reason')).toBe('증권사 앱 확인');
+		expect(body.get('base_version')).toBe('5');
+		expect(String(body.get('client_ref'))).toMatch(/^[0-9a-f-]{36}$/);
+		expect(correctBtn(container).getAttribute('aria-disabled')).toBe('true');
+		correctBtn(container).click();
+		flushSync();
+		expect(correctionSheet()).toBeNull();
+
+		// 전송 완료 → 풀림, 두 번째 예약은 없었다
+		release(new Response(JSON.stringify({ type: 'success', status: 200, data: { ok: true } })));
+		await vi.advanceTimersByTimeAsync(10);
+		flushSync();
+		expect(correctBtn(container).getAttribute('aria-disabled')).toBeNull();
+		await vi.advanceTimersByTimeAsync(6000);
+		expect(correctCalls()).toHaveLength(1);
+		correctBtn(container).click();
+		flushSync();
+		expect(correctionSheet()).not.toBeNull();
+	});
+
+	it('Low-2: 되돌리기 뒤에는 같은 행 기록 수정이 다시 열리고 새 수정이 예약된다(첫 수정은 보내지 않음)', async () => {
+		vi.useFakeTimers();
+		const { container } = render(Page, { data: correctionData as never });
+		submitCorrection(container, '8', '첫 수정');
+		expect(correctBtn(container).getAttribute('aria-disabled')).toBe('true');
+		toast.items.findLast((t) => t.action?.label === '되돌리기')!.action!.onclick();
+		flushSync();
+		expect(correctBtn(container).getAttribute('aria-disabled')).toBeNull();
+		submitCorrection(container, '9', '다시 수정');
+		expect(correctBtn(container).getAttribute('aria-disabled')).toBe('true');
+		await vi.advanceTimersByTimeAsync(5100);
+		expect(correctCalls()).toHaveLength(1);
+		expect(correctBody(0).get('qty')).toBe('9');
+		expect(correctBody(0).get('reason')).toBe('다시 수정');
+		expect(correctBody(0).get('base_version')).toBe('5');
+	});
+
 	const principleItem = (over: Parameters<typeof makeItem>[0] = {}) =>
 		makeItem({
 			kind: 'principle',

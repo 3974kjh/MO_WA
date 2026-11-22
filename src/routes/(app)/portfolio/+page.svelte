@@ -343,6 +343,10 @@
 	}
 
 	/* ── 기록 수정(§7-12, G-2 5초 유예) ── */
+	// 이미 예약(5초 유예)·전송 중인 수정이 있는 행은 '기록 수정'을 잠근다(FE-07 Low-2).
+	// 시트는 서버 값(같은 approval_version)으로 열리므로 두 번째 수정은 409가 되고, 첫 전송
+	// 끝의 delete가 두 번째 낙관값을 지운다. 되돌리기·전송 완료 뒤 correctionLocal이 지워지면 풀린다.
+	const correctionLocked = (id: string) => !!correctionLocal[id] || !!busy[id];
 	function commitCorrection(input: {
 		target: CorrectionTarget;
 		qty: number;
@@ -506,9 +510,10 @@
 			type="button"
 			class="btn sm"
 			data-action="correct"
-			aria-disabled={busy[r.id] ? 'true' : undefined}
+			aria-disabled={correctionLocked(r.id) ? 'true' : undefined}
 			onclick={() => {
-				if (!busy[r.id]) correctionTarget = data.holdings.find((x) => x.id === r.id) ?? null;
+				if (!correctionLocked(r.id))
+					correctionTarget = data.holdings.find((x) => x.id === r.id) ?? null;
 			}}>기록 수정<span class="sr-only"> · {positionLabel(r)}</span></button
 		>
 	{/if}
