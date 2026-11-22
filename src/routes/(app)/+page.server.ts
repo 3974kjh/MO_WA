@@ -97,13 +97,19 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 		};
 	});
 	const positionCurrency = new Map(positionCards.map((p) => [p.id, p.currency]));
+	// 같은 종목의 포지션 통화(이미 읽은 값). 신규 매수 요청처럼 포지션 연결이 없을 때만 쓴다.
+	const instrumentCurrency = new Map(positionCards.map((p) => [p.instrument_id, p.currency]));
 
 	const positionQueueItems: HomeQueueItem[] = queueCards
 		.filter((c) => isHomeQueueStatus(c.status))
 		.map((c) => {
 			const instrumentId = queueInstrument(c);
 			const l = instrumentId ? labelById.get(instrumentId) : undefined;
-			const fallback = (c.position_id && positionCurrency.get(c.position_id)) || 'KRW';
+			// 통화를 모르면 KRW로 짐작하지 않는다(null → 화면에서 기호 없이 숫자만).
+			const fallback =
+				(c.position_id && positionCurrency.get(c.position_id)) ||
+				(instrumentId && instrumentCurrency.get(instrumentId)) ||
+				null;
 			return {
 				kind: 'position',
 				id: c.id,

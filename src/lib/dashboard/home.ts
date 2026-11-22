@@ -54,7 +54,8 @@ export type HomeQueueItem = {
 	ticker: string | null;
 	/** 원칙 개정 요청의 조항(없으면 null). 포지션은 항상 null. */
 	clause_ref: string | null;
-	currency: 'KRW' | 'USD';
+	/** 통화를 알 수 없으면 null(원으로 지어내지 않고 기호 없이 표시). */
+	currency: 'KRW' | 'USD' | null;
 	changes: HomeQueueChange[];
 	created_at: string;
 };
@@ -130,8 +131,8 @@ export function queueChanges(
 export function queueCurrency(
 	proposed: Record<string, unknown> | null | undefined,
 	current: Record<string, unknown> | null | undefined,
-	fallback: 'KRW' | 'USD' = 'KRW'
-): 'KRW' | 'USD' {
+	fallback: 'KRW' | 'USD' | null = null
+): 'KRW' | 'USD' | null {
 	const c = proposed?.currency ?? current?.currency;
 	return c === 'USD' ? 'USD' : c === 'KRW' ? 'KRW' : fallback;
 }

@@ -60,6 +60,35 @@ describe('홈 대시보드 렌더 (FE-03)', () => {
 		expect(text(container)).toContain('데이터를 불러오지 못했어요');
 	});
 
+	it('큐 금액: USD는 달러 표기, 통화를 모르면 원 표기 없이 숫자만', () => {
+		const item = (id: string, currency: 'KRW' | 'USD' | null) => ({
+			kind: 'position',
+			id,
+			status: 'pending',
+			change_type: 'open_holding',
+			name: '종목' + id,
+			ticker: id,
+			clause_ref: null,
+			currency,
+			changes: [{ field: 'avg_price', from: null, to: 12.5 }],
+			created_at: '2026-11-20T00:00:00Z'
+		});
+		const { container } = render(Page, {
+			data: {
+				...empty,
+				queue: { items: [item('u', 'USD'), item('n', null)], total: 2, pendingCount: 2 }
+			} as never
+		});
+		const rows = container.querySelectorAll('[data-testid="home-queue"] li');
+		const usd = rows[0].textContent ?? '';
+		const unknown = rows[1].textContent ?? '';
+		expect(usd).toContain('$');
+		expect(usd).not.toContain('원');
+		expect(unknown).toContain('12.5');
+		expect(unknown).not.toContain('원');
+		expect(unknown).not.toContain('$');
+	});
+
 	it('실제 load 값으로 큐·감시 가격·브리핑을 그린다(확인 대기가 DOM에서 먼저)', async () => {
 		const { container } = render(Page, {
 			data: {

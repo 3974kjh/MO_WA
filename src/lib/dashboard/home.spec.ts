@@ -92,7 +92,11 @@ describe('queue diff', () => {
 		expect(queueCurrency({ currency: 'USD' }, null)).toBe('USD');
 		expect(queueCurrency({}, { currency: 'USD' })).toBe('USD');
 		expect(queueCurrency({}, {}, 'USD')).toBe('USD');
-		expect(queueCurrency(null, null)).toBe('KRW');
+		expect(queueCurrency({}, {}, 'KRW')).toBe('KRW');
+	});
+	it('통화를 모르면 KRW로 짐작하지 않는다(null)', () => {
+		expect(queueCurrency(null, null)).toBeNull();
+		expect(queueCurrency({ currency: 'EUR' }, {})).toBeNull();
 	});
 	it('change_type 표시명(코드는 화면에 쓰지 않음)', () => {
 		expect(changeTypeLabel('open_holding')).toBe('신규 매수');

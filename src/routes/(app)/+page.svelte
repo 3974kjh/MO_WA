@@ -93,8 +93,11 @@
 		if (window.matchMedia('(min-width: 640px)').matches) moreOpen = true;
 	});
 
-	const unitPrice = (v: number, ccy: 'KRW' | 'USD') => formatMoney(v, ccy, 'unit').exact;
-	function changeText(c: HomeQueueChange, ccy: 'KRW' | 'USD'): string {
+	const unitPrice = (v: number, ccy: 'KRW' | 'USD' | null) =>
+		ccy
+			? formatMoney(v, ccy, 'unit').exact
+			: v.toLocaleString('ko-KR', { maximumFractionDigits: 4 });
+	function changeText(c: HomeQueueChange, ccy: 'KRW' | 'USD' | null): string {
 		const f = (v: number) => (c.field === 'qty' ? `${formatQty(v)}주` : unitPrice(v, ccy));
 		return `${CHANGE_FIELD_LABEL[c.field]} ${c.from != null ? `${f(c.from)} → ` : ''}${f(c.to)}`;
 	}

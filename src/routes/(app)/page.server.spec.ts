@@ -57,7 +57,13 @@ const failed = { data: { items: [], total: 0 }, error: RAW };
 
 type HomeOut = {
 	queue: {
-		items: Array<{ kind: string; id: string; status: string; clause_ref: string | null }>;
+		items: Array<{
+			kind: string;
+			id: string;
+			status: string;
+			clause_ref: string | null;
+			currency: 'KRW' | 'USD' | null;
+		}>;
 		total: number;
 		pendingCount: number | null;
 	};
@@ -201,5 +207,37 @@ describe('홈 확인 대기: 포지션 + 투자 원칙 개정 요청', () => {
 		expect(out.queue).toEqual({ items: [], total: 0, pendingCount: 0 });
 		expect(out.queueError).toBeNull();
 		expect(out.queueNote).toBeNull();
+	});
+});
+
+describe('홈 확인 대기: 큐 항목 통화(KRW로 짐작하지 않음)', () => {
+	const buy = (over: Record<string, unknown>) =>
+		posCard({
+			change_type: 'open_holding',
+			proposed_values: { qty: 3, avg_price: 100 },
+			current_values: null,
+			position_id: null,
+			...over
+		});
+
+	it('요청 값에 통화가 있으면 그대로(신규 매수 USD)', async () => {
+		repo.listQueueProposals.mockResolvedValue(
+			page([buy({ proposed_values: { qty: 3, avg_price: 100, currency: 'USD' } })])
+		);
+		expect((await call()).queue.items[0].currency).toBe('USD');
+	});
+
+	it('요청에 통화가 없으면 같은 종목 포지션의 통화(USD)를 쓴다', async () => {
+		repo.listPositionCards.mockResolvedValue({
+			data: [{ id: 'p9', instrument_id: 'i1', status: 'planned', currency: 'USD', qty: null }],
+			error: null
+		});
+		repo.listQueueProposals.mockResolvedValue(page([buy({})]));
+		expect((await call()).queue.items[0].currency).toBe('USD');
+	});
+
+	it('통화를 알 수 없으면 KRW가 아니라 null(화면은 기호 없이 숫자만)', async () => {
+		repo.listQueueProposals.mockResolvedValue(page([buy({})]));
+		expect((await call()).queue.items[0].currency).toBeNull();
 	});
 });
