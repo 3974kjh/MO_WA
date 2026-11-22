@@ -599,11 +599,49 @@ describe('FE-05 포트폴리오 읽기 로더', () => {
 		for (const r of requests) expectOwnerOnly(r.params);
 	});
 
-	it('listOpenProposalRefs: 오류면 빈 값 + 오류', async () => {
-		const { repo } = stubClient({}, ['principle_proposals']);
+	const refRows = {
+		position_proposals: [
+			{ position_id: 'a', status: 'pending' },
+			{ position_id: 'b', status: 'on_hold' }
+		],
+		principle_proposals: [{ id: 'r1' }, { id: 'r2' }]
+	};
+
+	it('listOpenProposalRefs: 원칙 쪽만 실패하면 포지션 ref는 그대로, 원칙 쪽은 빈 값(전체 오류 아님)', async () => {
+		const { repo, requests } = stubClient(refRows, ['principle_proposals']);
+		const { data, error, partialError } = await listOpenProposalRefs(repo);
+		expect(error).toBeNull();
+		expect(partialError).not.toBeNull();
+		expect(data.positions).toEqual([
+			{ position_id: 'a', status: 'pending' },
+			{ position_id: 'b', status: 'on_hold' }
+		]);
+		expect(data.holdCount).toBe(1);
+		for (const r of requests) expectOwnerOnly(r.params);
+	});
+
+	it('listOpenProposalRefs: 포지션 쪽만 실패하면 원칙 보류 건수는 그대로, 포지션 쪽은 빈 값', async () => {
+		const { repo, requests } = stubClient(refRows, ['position_proposals']);
+		const { data, error, partialError } = await listOpenProposalRefs(repo);
+		expect(error).toBeNull();
+		expect(partialError).not.toBeNull();
+		expect(data.positions).toEqual([]);
+		expect(data.holdCount).toBe(2);
+		for (const r of requests) expectOwnerOnly(r.params);
+	});
+
+	it('listOpenProposalRefs: 양쪽 모두 실패하면 빈 값 + 전체 오류', async () => {
+		const { repo } = stubClient(refRows, ['position_proposals', 'principle_proposals']);
 		const { data, error } = await listOpenProposalRefs(repo);
 		expect(error).not.toBeNull();
 		expect(data).toEqual({ positions: [], holdCount: 0 });
+	});
+
+	it('listOpenProposalRefs: 모두 성공이면 partialError 없음(null)', async () => {
+		const { repo } = stubClient(refRows);
+		const { error, partialError } = await listOpenProposalRefs(repo);
+		expect(error).toBeNull();
+		expect(partialError).toBeNull();
 	});
 });
 

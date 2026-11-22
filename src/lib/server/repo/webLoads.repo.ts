@@ -592,9 +592,14 @@ export type OpenProposalRefs = {
 	holdCount: number;
 };
 
+/**
+ * 한쪽(포지션 제안 / 원칙 개정 요청) 조회만 실패하면 성공한 쪽은 그대로 돌려주고 실패한 쪽은 빈 값으로 둔다
+ * (error는 null, 실패한 쪽의 오류는 partialError로). 양쪽 모두 실패하면 error(전체 실패)다.
+ * 보류 건수는 읽은 쪽만 합친 값이다.
+ */
 export async function listOpenProposalRefs(
 	repo: RepoClient
-): Promise<{ data: OpenProposalRefs; error: Error | null }> {
+): Promise<{ data: OpenProposalRefs; error: Error | null; partialError?: Error | null }> {
 	const ownerId = requireOwnerId(repo);
 	let posQ = fromRepo(repo, 'position_proposals')
 		.select('position_id, status')
@@ -603,10 +608,13 @@ export async function listOpenProposalRefs(
 	let prinQ = fromRepo(repo, 'principle_proposals').select('id', { count: 'exact', head: true });
 	prinQ = withOwnerFilter(prinQ, ownerId).eq('status', 'on_hold');
 	const [pos, prin] = await Promise.all([posQ, prinQ]);
-	const empty = { positions: [], holdCount: 0 };
-	if (pos.error) return { data: empty, error: pos.error as Error };
-	if (prin.error) return { data: empty, error: prin.error as Error };
-	const rows = (pos.data ?? []) as Array<{ position_id: string | null; status: string }>;
+	if (pos.error && prin.error) {
+		return { data: { positions: [], holdCount: 0 }, error: pos.error as Error };
+	}
+	const rows = pos.error
+		? []
+		: ((pos.data ?? []) as Array<{ position_id: string | null; status: string }>);
+	const partialError = (pos.error ?? prin.error ?? null) as Error | null;
 	return {
 		data: {
 			positions: rows
@@ -615,9 +623,11 @@ export async function listOpenProposalRefs(
 					position_id: r.position_id!,
 					status: r.status === 'on_hold' ? 'on_hold' : 'pending'
 				})),
-			holdCount: rows.filter((r) => r.status === 'on_hold').length + (prin.count ?? 0)
+			holdCount:
+				rows.filter((r) => r.status === 'on_hold').length + (prin.error ? 0 : (prin.count ?? 0))
 		},
-		error: null
+		error: null,
+		partialError
 	};
 }
 

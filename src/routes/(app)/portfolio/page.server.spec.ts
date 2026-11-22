@@ -393,6 +393,58 @@ describe('FE-07 portfolio load', () => {
 		log.mockRestore();
 	});
 
+	it('FE-05 Low-3: 열린 요청 한쪽만 실패하면 배지·보류 건수는 그대로, 원문은 payload에 없다', async () => {
+		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const raw = new Error('permission denied for table principle_proposals');
+		repo.listQueueProposals.mockResolvedValue(emptyPage);
+		repo.listPositionCards.mockResolvedValue({ data: [], error: null });
+		repo.listAttentionNeeded.mockResolvedValue({
+			data: { positions: [], principles: [] },
+			error: null
+		});
+		repo.listProposalHistory.mockResolvedValue(emptyPage);
+		repo.listPrincipleQueue.mockResolvedValue(emptyPage);
+		repo.listPrincipleHistory.mockResolvedValue(emptyPage);
+		repo.listInstrumentMeta.mockResolvedValue({ data: [], error: null });
+		repo.listPortfolioPositionDetails.mockResolvedValueOnce({
+			data: [
+				{
+					id: 'p1',
+					instrument_id: 'i1',
+					status: 'holding',
+					currency: 'KRW',
+					qty: 1,
+					avg_price: 1,
+					breakeven: null,
+					memo: null,
+					trigger_price: null,
+					trigger_direction: 'below',
+					watch_only: false,
+					market: null
+				}
+			],
+			error: null
+		});
+		repo.listOpenProposalRefs.mockResolvedValueOnce({
+			data: { positions: [{ position_id: 'p1', status: 'pending' }], holdCount: 1 },
+			error: null,
+			partialError: raw
+		});
+		const out = (await call()) as {
+			portfolio: { rows: Array<Record<string, unknown>>; holdCount: number | null };
+			portfolioError: string | null;
+		};
+		expect(out.portfolio.rows[0]).toMatchObject({ open_status: 'pending' });
+		expect(out.portfolio.holdCount).toBe(1);
+		expect(out.portfolioError).toBeNull();
+		expect(JSON.stringify(out)).not.toMatch(/permission denied|principle_proposals/);
+		expect(log).toHaveBeenCalledWith(
+			'[portfolio.openRefs.partial] list load failed',
+			expect.objectContaining({ message: raw.message })
+		);
+		log.mockRestore();
+	});
+
 	it('비로그인은 401(레이아웃이 먼저 /login으로 보낸다)', async () => {
 		await expect(
 			(load as unknown as (e: unknown) => Promise<unknown>)({

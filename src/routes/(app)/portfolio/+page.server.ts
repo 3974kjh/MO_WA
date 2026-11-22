@@ -119,6 +119,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		open: openRefs.error ? [] : openRefs.data.positions
 	});
 	publicListError('portfolio.openRefs', openRefs.error, INFO_LOAD_ERROR);
+	// 한쪽만 실패: 읽은 쪽 배지·보류 건수는 그대로 두고 서버 로그에만 남긴다(화면 문구·payload 변화 없음).
+	publicListError('portfolio.openRefs.partial', openRefs.partialError, INFO_LOAD_ERROR);
 
 	// 두 종류를 합쳐 전체 최신순 상위 N건(종류별 N건씩 받았으므로 합집합 상위 N건 = 전체 최신 N건).
 	// 동점은 id로 고정. 건수 조회가 실패하면 실제 건수 대신 목록 길이.
