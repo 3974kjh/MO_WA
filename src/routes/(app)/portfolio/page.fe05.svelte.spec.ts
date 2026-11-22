@@ -181,6 +181,27 @@ describe('FE-05 포트폴리오 표', () => {
 		expect(t).toContain('보류 2건 별도');
 	});
 
+	it("총 평가금액 안내: 평가금액 없는 보유 종목은 '평가금액 없는 N종목 제외'(가격 없음·환율 없음 모두)", async () => {
+		const noFx = makeRow({
+			id: 'u1',
+			name: '환율없는달러',
+			ticker: 'USDX',
+			currency: 'USD',
+			price: 5.5,
+			price_currency: 'USD',
+			value_krw: null
+		});
+		const { container } = render(Page, {
+			data: withRows({
+				portfolio: { ...base.portfolio, rows: [...rows, noFx], usdkrw: null }
+			})
+		});
+		const tiles = container.querySelector('[data-testid="portfolio-tiles"]') as HTMLElement;
+		const t = text(tiles);
+		expect(t).toContain('평가금액 없는 1종목 제외');
+		expect(t).not.toContain('가격 없는');
+	});
+
 	it('load 오류는 일반 문구만(원문 없음)', async () => {
 		const { container } = render(Page, {
 			data: {

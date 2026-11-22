@@ -493,7 +493,7 @@
 			foot={data.valuationError
 				? '잠시 후 다시 시도해 주세요.'
 				: summary.unpriced > 0
-					? `가격 없는 ${summary.unpriced}종목 제외`
+					? `평가금액 없는 ${summary.unpriced}종목 제외`
 					: '평가금액 기준'}
 		>
 			{#snippet value()}
