@@ -15,6 +15,8 @@ import {
 	listPortfolioPositionDetails,
 	ATTENTION_NEEDED_LIMIT,
 	listAttentionNeeded,
+	listPositionCards,
+	loadDashboardValuation,
 	countPendingProposals,
 	listPrincipleHistory,
 	listPrincipleQueue,
@@ -22,7 +24,7 @@ import {
 	listQueueProposals,
 	PRINCIPLE_BODY_PREVIEW_MAX
 } from './webLoads.repo';
-import { listIndicatorSeries } from './market.repo';
+import { getLatestIndicator, listIndicatorSeries } from './market.repo';
 
 const OWNER = '00000000-0000-4000-8000-0000000000aa';
 
@@ -549,5 +551,114 @@ describe('FE-05 포트폴리오 읽기 로더', () => {
 		const { data, error } = await listOpenProposalRefs(repo);
 		expect(error).not.toBeNull();
 		expect(data).toEqual({ positions: [], holdCount: 0 });
+	});
+});
+
+describe('FE-03 Low-2 홈 평가금액: 이미 읽은 가격·환율을 다시 읽지 않는다', () => {
+	const posRow = (
+		id: string,
+		ins: string,
+		currency: string,
+		qty: number | null,
+		status = 'holding'
+	) => ({
+		id,
+		instrument_id: ins,
+		status,
+		currency,
+		qty,
+		avg_price: 1,
+		approval_version: 1,
+		trigger_price: null,
+		trigger_direction: 'below',
+		watch_only: false,
+		archived_at: null
+	});
+	const rows = {
+		positions: [
+			posRow('p1', 'i1', 'KRW', 10),
+			posRow('p2', 'i2', 'USD', 2),
+			posRow('p3', 'i3', 'KRW', 5), // 가격 없음 → 제외 건수 쪽
+			posRow('p4', 'i1', 'KRW', 1, 'planned')
+		],
+		// 같은 종목의 오래된 행이 뒤에 있어도 최신(as_of desc 첫 행)만 쓴다.
+		price_snapshots: [
+			{ instrument_id: 'i1', close: 100, currency: 'KRW', as_of: '2026-11-20' },
+			{ instrument_id: 'i2', close: 50, currency: 'USD', as_of: '2026-11-20' },
+			{ instrument_id: 'i1', close: 90, currency: 'KRW', as_of: '2026-11-19' }
+		],
+		market_indicators: [{ key: 'usdkrw', value: 1400, change_pct: null, as_of: '2026-11-20' }]
+	};
+	const count = (reqs: Req[], table: string) =>
+		reqs.filter((r) => r.table === table && r.method === 'GET').length;
+
+	it('카드+이미 읽은 환율을 넘기면 price_snapshots·market_indicators를 더 읽지 않고 결과가 같다', async () => {
+		// 기준: 아무것도 넘기지 않은 경로(카드 읽기 + 환율 읽기)
+		const base = stubClient(rows);
+		const expected = await loadDashboardValuation(base.repo);
+
+		const { repo, requests } = stubClient(rows);
+		const cards = await listPositionCards(repo);
+		const fx = await getLatestIndicator(repo, 'usdkrw');
+		const before = {
+			prices: count(requests, 'price_snapshots'),
+			fx: count(requests, 'market_indicators')
+		};
+		expect(before).toEqual({ prices: 1, fx: 1 });
+
+		const got = await loadDashboardValuation(repo, cards.data, fx);
+		expect(count(requests, 'price_snapshots')).toBe(before.prices);
+		expect(count(requests, 'market_indicators')).toBe(before.fx);
+		expect(got).toEqual(expected);
+		expect(got.data).toEqual({
+			totalKrw: 10 * 100 + 2 * 50 * 1400,
+			usdkrw: 1400,
+			usdkrwAsOf: '2026-11-20',
+			positions: [
+				{
+					id: 'p1',
+					qty: 10,
+					currency: 'KRW',
+					latestClose: 100,
+					latestAsOf: '2026-11-20',
+					valueKrw: 1000
+				},
+				{
+					id: 'p2',
+					qty: 2,
+					currency: 'USD',
+					latestClose: 50,
+					latestAsOf: '2026-11-20',
+					valueKrw: 140000
+				},
+				{ id: 'p3', qty: 5, currency: 'KRW', latestClose: null, latestAsOf: null, valueKrw: null }
+			]
+		});
+	});
+
+	it('카드만 넘기면 가격은 다시 읽지 않고 환율만 한 번 읽는다', async () => {
+		const { repo, requests } = stubClient(rows);
+		const cards = await listPositionCards(repo);
+		const pricesBefore = count(requests, 'price_snapshots');
+		const got = await loadDashboardValuation(repo, cards.data);
+		expect(count(requests, 'price_snapshots')).toBe(pricesBefore);
+		expect(count(requests, 'market_indicators')).toBe(1);
+		expect(got.data?.totalKrw).toBe(141000);
+	});
+
+	it('환율이 없으면(null) 달러 종목 평가금액은 비고 원화만 합산한다', async () => {
+		const { repo } = stubClient({ ...rows, market_indicators: [] });
+		const cards = await listPositionCards(repo);
+		const got = await loadDashboardValuation(repo, cards.data, { data: null, error: null });
+		expect(got.data).toMatchObject({ totalKrw: 1000, usdkrw: null, usdkrwAsOf: null });
+		expect(got.data?.positions.find((p) => p.id === 'p2')?.valueKrw).toBeNull();
+	});
+
+	it('넘겨받은 환율 조회 오류는 그대로 오류로 돌려준다', async () => {
+		const { repo } = stubClient(rows);
+		const cards = await listPositionCards(repo);
+		const err = new Error('fx boom');
+		const got = await loadDashboardValuation(repo, cards.data, { data: null, error: err });
+		expect(got).toEqual({ data: null, error: err });
 	});
 });

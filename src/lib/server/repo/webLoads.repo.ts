@@ -22,7 +22,13 @@ import {
 import type { RepoClient } from './client';
 import { fromRepo } from './db';
 import { requireOwnerId, withOwnerFilter } from './owner';
-import { getLatestIndicator, kospiChangePctByDates, listLatestPrices } from './market.repo';
+import {
+	getLatestIndicator,
+	kospiChangePctByDates,
+	listLatestPrices,
+	type MarketIndicatorLite,
+	type PriceSnapshotLite
+} from './market.repo';
 
 export type ProposalCard = {
 	id: string;
@@ -585,11 +591,19 @@ export async function listOpenProposalRefs(
 	};
 }
 
+/** 이미 읽은 환율(getLatestIndicator('usdkrw')) 결과. 넘기면 다시 읽지 않는다. */
+export type PreloadedFx = { data: MarketIndicatorLite | null; error: Error | null };
+
 /**
- * FE-03: 이미 읽은 포지션 카드(listPositionCards)를 넘기면 다시 읽지 않는다.
- * 넘기지 않으면 예전처럼 직접 읽는다.
+ * FE-03: 평가금액 계산. 포지션 카드(listPositionCards)에는 이미 최신가가 실려 있으므로
+ * 가격은 다시 읽지 않는다(같은 종목 집합·같은 최신가 기준). 환율은 이미 읽은 값(preloadedFx)을
+ * 넘기면 재사용하고, 넘기지 않으면 직접 읽는다. 포지션 카드를 넘기지 않으면 직접 읽는다.
  */
-export async function loadDashboardValuation(repo: RepoClient, preloaded?: PositionCard[]) {
+export async function loadDashboardValuation(
+	repo: RepoClient,
+	preloaded?: PositionCard[],
+	preloadedFx?: PreloadedFx
+) {
 	let positions: PositionCard[];
 	if (preloaded) {
 		positions = preloaded;
@@ -599,11 +613,20 @@ export async function loadDashboardValuation(repo: RepoClient, preloaded?: Posit
 		positions = res.data;
 	}
 
-	const instrumentIds = positions.map((p) => p.instrument_id);
-	const { data: prices, error: priceErr } = await listLatestPrices(repo, instrumentIds);
-	if (priceErr) return { data: null, error: priceErr };
-	const { data: usdkrw, error: fxErr } = await getLatestIndicator(repo, 'usdkrw');
+	const { data: usdkrw, error: fxErr } = preloadedFx ?? (await getLatestIndicator(repo, 'usdkrw'));
 	if (fxErr) return { data: null, error: fxErr };
+
+	// 카드의 latest_price*는 listLatestPrices 결과 그대로다(종목당 최신 1건, close > 0·as_of NOT NULL).
+	const prices: PriceSnapshotLite[] = [];
+	for (const p of positions) {
+		if (p.latest_price == null || p.latest_price_as_of == null) continue;
+		prices.push({
+			instrument_id: p.instrument_id,
+			close: p.latest_price,
+			currency: p.latest_price_currency ?? '',
+			as_of: p.latest_price_as_of
+		});
+	}
 
 	const latestByInstrument = new Map(prices.map((p) => [p.instrument_id, p]));
 	const positionInstrument = new Map(positions.map((p) => [p.id, p.instrument_id]));

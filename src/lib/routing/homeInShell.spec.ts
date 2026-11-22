@@ -14,12 +14,12 @@ const repoMock = vi.hoisted(() => ({
 			error: null
 		})
 	),
-	loadDashboardValuation: vi.fn(
-		async (): Promise<{ data: unknown; error: unknown }> => ({
-			data: { totalKrw: 0, usdkrw: null, usdkrwAsOf: null, positions: [] },
-			error: null
-		})
-	),
+	loadDashboardValuation: vi.fn<
+		(repo: unknown, cards?: unknown, fx?: unknown) => Promise<{ data: unknown; error: unknown }>
+	>(async () => ({
+		data: { totalKrw: 0, usdkrw: null, usdkrwAsOf: null, positions: [] },
+		error: null
+	})),
 	getLatestIndicator: vi.fn(async (_repo: unknown, key: string) => ({
 		data: key === 'kospi' ? { key: 'kospi', value: 1, change_pct: 0, as_of: '2026-11-21' } : null,
 		error: null
@@ -209,6 +209,29 @@ describe('홈(`/`)은 (app) 셸 안 (#12 Low 1, 사용자 결정 21:27)', () => 
 		]);
 	});
 
+	it('환율은 티커 조회에서 이미 읽은 usdkrw 결과를 valuation에 그대로 넘긴다(다시 읽지 않음)', async () => {
+		const ind = (key: string, value: number) => ({
+			data: { key, value, change_pct: 0, as_of: '2026-11-21' },
+			error: null
+		});
+		const usdkrw = ind('usdkrw', 1400);
+		repoMock.getLatestIndicator
+			.mockResolvedValueOnce(ind('kospi', 1))
+			.mockResolvedValueOnce(ind('kosdaq', 2))
+			.mockResolvedValueOnce(usdkrw)
+			.mockResolvedValueOnce(ind('ust10y', 4));
+		repoMock.listPositionCards.mockResolvedValueOnce({ data: [], error: null });
+
+		await homeLoad({
+			locals: { user: { id: 'u1', email: null }, supabase: {} },
+			parent: async () => ({})
+		} as never);
+
+		expect(repoMock.getLatestIndicator.mock.calls.filter((c) => c[1] === 'usdkrw')).toHaveLength(1);
+		expect(repoMock.loadDashboardValuation).toHaveBeenCalledTimes(1);
+		expect(repoMock.loadDashboardValuation.mock.calls[0][2]).toBe(usdkrw);
+	});
+
 	it('포지션·확인 대기·이름·평가금액을 합쳐 화면용 모양으로 돌려준다', async () => {
 		repoMock.listPositionCards.mockResolvedValueOnce({
 			data: [
@@ -294,7 +317,8 @@ describe('홈(`/`)은 (app) 셸 안 (#12 Low 1, 사용자 결정 21:27)', () => 
 		// 이미 읽은 포지션을 valuation에 넘겨 두 번 읽지 않는다.
 		expect(repoMock.loadDashboardValuation).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.arrayContaining([expect.objectContaining({ id: 'pos1' })])
+			expect.arrayContaining([expect.objectContaining({ id: 'pos1' })]),
+			expect.objectContaining({ error: null })
 		);
 		expect(repoMock.listInstrumentLabels).toHaveBeenCalledWith(expect.anything(), [
 			'ins1',

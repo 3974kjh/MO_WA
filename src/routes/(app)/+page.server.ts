@@ -64,10 +64,12 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 	const queueInstrument = (c: { instrument_id: string | null; position_id: string | null }) =>
 		c.instrument_id ?? (c.position_id ? (positionInstrument.get(c.position_id) ?? null) : null);
 
+	// 환율은 위 티커 조회에서 이미 읽었다(같은 getLatestIndicator('usdkrw')) — 다시 읽지 않는다.
+	const usdkrwRes = indicatorRes[HOME_TICKERS.findIndex((t) => t.key === 'usdkrw')];
 	const [valuation, labels] = await Promise.all([
 		positionsRes.error
 			? Promise.resolve({ data: null, error: positionsRes.error })
-			: loadDashboardValuation(repo, positionCards),
+			: loadDashboardValuation(repo, positionCards, usdkrwRes),
 		listInstrumentLabels(repo, [
 			...positionCards.map((p) => p.instrument_id),
 			...queueCards.map(queueInstrument).filter((id): id is string => id != null)
