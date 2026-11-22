@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MINUS } from './money';
 import { deltaDirection, formatQty, formatSigned } from './number';
-import { formatKstShort } from './datetime';
+import { formatAsOf, formatKstShort } from './datetime';
 
 describe('Delta 부호·방향 (결정 ④ 전 종목 한국식)', () => {
 	it('>0 up, <0 down, 0 flat', () => {
@@ -39,5 +39,31 @@ describe('KST 시간 표기 (R-SYS-02)', () => {
 	it('UTC 입력을 KST로 보여준다', () => {
 		expect(formatKstShort('2026-11-20T08:36:00Z')).toBe('11/20 17:36 KST');
 		expect(formatKstShort('2026-11-20T17:36:00+09:00')).toBe('11/20 17:36 KST');
+	});
+});
+
+describe('기준일 표기 formatAsOf (date-only는 시각을 지어내지 않는다)', () => {
+	it('DB 형태 date-only 2026-11-20 → 11/20, 시각·KST 없음', () => {
+		const v = formatAsOf('2026-11-20');
+		expect(v).toBe('11/20');
+		expect(v).not.toMatch(/\d{2}:\d{2}/);
+		expect(v).not.toContain('KST');
+	});
+	it('한 자리 월·일은 0 패딩 그대로(01/05)', () => {
+		expect(formatAsOf('2026-01-05')).toBe('01/05');
+	});
+	it('오프셋 있는 timestamp는 KST 시각 표기', () => {
+		expect(formatAsOf('2026-11-20T06:30:00Z')).toBe('11/20 15:30 KST');
+		expect(formatAsOf('2026-11-20T15:30:00+09:00')).toBe('11/20 15:30 KST');
+	});
+	it('오프셋 없는 timestamp는 브라우저 시간대에 따라 달라지므로 날짜만', () => {
+		expect(formatAsOf('2026-11-20T00:00:00')).toBe('11/20');
+	});
+	it('비어 있거나 해석 불가한 값은 던지지 않고 null', () => {
+		expect(formatAsOf(null)).toBeNull();
+		expect(formatAsOf(undefined)).toBeNull();
+		expect(formatAsOf('')).toBeNull();
+		expect(formatAsOf('garbage')).toBeNull();
+		expect(formatAsOf('2026-13-45T99:99:99Z')).toBeNull();
 	});
 });

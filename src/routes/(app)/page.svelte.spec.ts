@@ -180,6 +180,15 @@ describe('홈 대시보드 렌더 (FE-03)', () => {
 		expect(text(e.container)).toContain('환율 1,380.50원 · 01/05 기준');
 		e.unmount();
 
+		const n = withFx(1380.5, '2026-11-20T00:00:00');
+		expect(text(n.container)).toContain('환율 1,380.50원 · 11/20 기준');
+		expect(text(n.container)).not.toMatch(/11\/20 \d{2}:\d{2}/);
+		n.unmount();
+
+		const g = withFx(1380.5, 'garbage');
+		expect(text(g.container)).toContain('환율 1,380.50원 · 기준 시각 —');
+		g.unmount();
+
 		const b = withFx(1380.5, null);
 		expect(text(b.container)).toContain('환율 1,380.50원 · 기준 시각 —');
 		expect(text(b.container)).not.toMatch(/1,380\.50원 · \d+\/\d+/);
