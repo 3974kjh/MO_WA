@@ -384,6 +384,25 @@ describe('QA Low-1: expires_at must carry an offset (R-SYS-02 · R-VAL-T02)', ()
 		expect(parseOptionalIso(raw)).toBe(iso);
 	});
 
+	it.each([
+		['2026-11-30T10:00:00+09:00', '2026-11-30T01:00:00.000Z'],
+		['2026-11-30T10:00:00.5+09:00', '2026-11-30T01:00:00.500Z'],
+		['2026-11-30T10:00:00.12Z', '2026-11-30T10:00:00.120Z'],
+		['2026-11-30T10:00:00.123+09:00', '2026-11-30T01:00:00.123Z'],
+		['2026-11-30T10:00:00.999Z', '2026-11-30T10:00:00.999Z']
+	])('N-3: fractional seconds up to 3 digits are accepted (%s)', (raw, iso) => {
+		expect(parseOptionalIso(raw)).toBe(iso);
+	});
+
+	it.each([
+		'2026-11-30T10:00:00.1234+09:00',
+		'2026-11-30T10:00:00.123456Z',
+		'2026-11-30T10:00:00.123456789Z',
+		'2026-11-30T10:00:00.+09:00'
+	])('N-3: 4+ fractional digits (or a bare dot) are rejected with the same message (%s)', (raw) => {
+		expect(parseOptionalIso(raw)).toEqual({ error: INVALID });
+	});
+
 	it('empty string clears the optional expiry (null)', () => {
 		expect(parseOptionalIso('')).toBeNull();
 	});

@@ -37,11 +37,12 @@ function formString(form: FormData, key: string): string {
 
 /**
  * QA Low-1 (R-SYS-02 · R-VAL-T02): only ISO 8601 datetimes WITH an explicit offset (`Z` or `±HH:MM`).
- * Offset-less (naive) values are rejected — never inferred as KST or UTC. `Date.parse` alone would
+ * Offset-less (naive) values are rejected — never inferred as KST or UTC. Fractional seconds: at
+ * most 3 digits (matches the client helper and datetime-local). `Date.parse` alone would
  * accept a naive `datetime-local` value as UTC on Workers and store a KST wall time 9 hours late.
  */
 const ISO_WITH_OFFSET_RE =
-	/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(Z|[+-](\d{2}):(\d{2}))$/;
+	/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(Z|[+-](\d{2}):(\d{2}))$/;
 const EXPIRES_AT_INVALID = 'expires_at must be a valid ISO datetime';
 
 /**
