@@ -13,6 +13,7 @@ import {
 	listJournalPage,
 	listOpenProposalRefs,
 	listPortfolioPositionDetails,
+	ATTENTION_NEEDED_LIMIT,
 	listAttentionNeeded,
 	countPendingProposals,
 	listPrincipleHistory,
@@ -375,6 +376,22 @@ describe('FE-07 변경 요청 보조 load', () => {
 		expect(pr[0].params.get('select')).toContain('proposed_body_md');
 		expect(pr[0].params.get('select')).toContain('clause_ref');
 		expect(requests.every((r) => r.method === 'GET' || r.method === 'HEAD')).toBe(true);
+	});
+});
+
+describe('FE-07 Low-3 확인 필요 목록 건수 상한', () => {
+	it('포지션·원칙 두 쿼리 모두 같은 상한(50)을 limit으로 건다', async () => {
+		expect(ATTENTION_NEEDED_LIMIT).toBe(50);
+		const { repo, requests } = stubClient({ position_proposals: [], principle_proposals: [] });
+		const { error } = await listAttentionNeeded(repo, new Date('2026-11-22T00:00:00Z'));
+		expect(error).toBeNull();
+		for (const table of ['position_proposals', 'principle_proposals']) {
+			const get = requests.filter((r) => r.table === table && r.method === 'GET');
+			expect(get).toHaveLength(1);
+			expect(get[0].params.get('limit')).toBe(String(ATTENTION_NEEDED_LIMIT));
+			expect(get[0].params.get('order')).toBe('attention_started_at.desc');
+			expectOwnerOnly(get[0].params);
+		}
 	});
 });
 

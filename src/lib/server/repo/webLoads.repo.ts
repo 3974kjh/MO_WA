@@ -385,6 +385,9 @@ export function listPrincipleHistory(repo: RepoClient, params: PageParams) {
 	return listPrinciplesByStatus(repo, PROPOSAL_HISTORY_STATUSES, params, true);
 }
 
+/** FE-07 '확인 필요' 목록 — 포지션·원칙 각 쿼리의 건수 상한. */
+export const ATTENTION_NEEDED_LIMIT = 50;
+
 /**
  * BE-19 '확인 필요' list — attention_started_at window only (R-PERM-13).
  * Also returns principle_proposals with the same filter.
@@ -404,7 +407,8 @@ export async function listAttentionNeeded(
 		.in('status', [...filter.statuses])
 		.is('acknowledged_at', null)
 		.gt('attention_started_at', filter.attentionStartedAfter)
-		.order('attention_started_at', { ascending: false });
+		.order('attention_started_at', { ascending: false })
+		.limit(ATTENTION_NEEDED_LIMIT);
 	pq = withOwnerFilter(pq, ownerId);
 
 	let rq = fromRepo(repo, 'principle_proposals')
@@ -412,7 +416,8 @@ export async function listAttentionNeeded(
 		.in('status', [...filter.statuses])
 		.is('acknowledged_at', null)
 		.gt('attention_started_at', filter.attentionStartedAfter)
-		.order('attention_started_at', { ascending: false });
+		.order('attention_started_at', { ascending: false })
+		.limit(ATTENTION_NEEDED_LIMIT);
 	rq = withOwnerFilter(rq, ownerId);
 
 	const [posRes, prinRes] = await Promise.all([pq, rq]);
