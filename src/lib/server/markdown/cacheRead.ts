@@ -10,7 +10,7 @@
 import { asSanitized } from './brand';
 import type { RenderedReport, TocItem } from '$lib/markdown/types';
 
-/** 렌더러·sanitize 스키마·후처리·캐시 히트 규칙이 바뀌면 반드시 올린다(캐시 키에 들어감) */
+/** 렌더러·sanitize 스키마·후처리가 바뀌면 반드시 올린다. 히트 규칙이 느슨해지면 올림(강화만 할 때는 올리지 않아도 된다). 캐시 키에 들어감 */
 export const RENDERER_VERSION = 'fe15-r4';
 
 /** 옵션 지문에 들어가는 렌더 옵션(render.ts RenderOptions와 같은 모양. 렌더러를 import하지 않으려고 따로 둔다) */
@@ -57,6 +57,14 @@ export function reportCacheKey(
 
 const TOC_ID = /^h-[\p{L}\p{N}-]{1,120}$/u;
 
+const EMPTY_IDS: ReadonlySet<string> = new Set();
+/** `\sid="값"` 경계의 id 속성 값 집합(`data-id=`·`xid=` 같은 부분 문자열은 제외) */
+function scanIds(html: string): ReadonlySet<string> {
+	const out = new Set<string>();
+	for (const m of html.matchAll(/\sid="([^"]*)"/g)) out.add(m[1]);
+	return out;
+}
+
 function isTocItem(t: unknown): t is TocItem {
 	if (typeof t !== 'object' || t === null) return false;
 	const o = t as Record<string, unknown>;
@@ -73,7 +81,7 @@ function isTocItem(t: unknown): t is TocItem {
 /**
  * 저장소 값 검사: 키 일치 + 형태 + 목차 형식(항목 하나라도 틀리면 전체 미스).
  * - A/B 구분이 없으면(hasSplit=false) B는 빈 문자열이고 목차는 모두 A여야 한다(렌더러 출력 규칙).
- * - 목차 id는 서로 달라야 하고, 해당 영역 HTML에 `id="…"`로 있어야 한다(앵커 없는 목차 거부).
+ * - 목차 id는 서로 달라야 하고, 해당 영역 HTML에 공백 뒤 `id="…"` 속성으로 있어야 한다(앵커 없는 목차 거부).
  * 통과한 값만 SanitizedHtml이 된다(렌더 파이프라인이 기록한 값이라는 쓰기 경로 계약에 기댄다).
  */
 export function readCachedRender(v: unknown, key: string): RenderedReport | null {
@@ -88,7 +96,10 @@ export function readCachedRender(v: unknown, key: string): RenderedReport | null
 	const toc = o.toc as TocItem[];
 	if (new Set(toc.map((t) => t.id)).size !== toc.length) return null;
 	if (!hasSplit && (b !== '' || toc.some((t) => t.part !== 'A'))) return null;
-	if (!toc.every((t) => (t.part === 'A' ? a : b).includes(`id="${t.id}"`))) return null;
+	// 영역별 id 속성을 한 번만 훑어 Set으로 만든다(O(HTML + 목차)). 태그 이름 뒤·다른 속성 뒤의 공백 다음 `id="…"`만 센다.
+	const idsA = toc.some((t) => t.part === 'A') ? scanIds(a) : EMPTY_IDS;
+	const idsB = toc.some((t) => t.part === 'B') ? scanIds(b) : EMPTY_IDS;
+	if (!toc.every((t) => (t.part === 'A' ? idsA : idsB).has(t.id))) return null;
 	return {
 		a: asSanitized(a),
 		b: asSanitized(b),
