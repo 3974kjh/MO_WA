@@ -37,7 +37,9 @@ describe('settingsErrorMessage: 한글화 + 규칙 ID 비노출', () => {
 
 	it('이미 한글인 서버 문구는 규칙 ID 태그만 지우고 유지', () => {
 		expect(settingsErrorMessage('요청을 처리하지 못했어요.')).toBe('요청을 처리하지 못했어요.');
-		expect(settingsErrorMessage('[R-X-1] 반영 안 됨(기록 달라짐)')).toBe('반영 안 됨(기록 달라짐)');
+		expect(settingsErrorMessage('[R-X-1] 반영 안 됨(보유가 달라짐)')).toBe(
+			'반영 안 됨(보유가 달라짐)'
+		);
 	});
 });
 

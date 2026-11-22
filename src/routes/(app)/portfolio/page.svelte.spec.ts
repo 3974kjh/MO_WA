@@ -142,7 +142,7 @@ describe('FE-07 변경 요청 렌더', () => {
 		expect(document.querySelector('[data-testid="approve-confirm"]')).toBeNull();
 	});
 
-	it('서버 conflict 항목은 확인 필요 묶음 + ⚠ 반영 안 됨(기록 달라짐) + 확인했어요', async () => {
+	it('서버 conflict 항목은 확인 필요 묶음 + ⚠ 반영 안 됨(보유가 달라짐) + 확인했어요', async () => {
 		const { container } = render(Page, {
 			data: {
 				...base,
@@ -158,7 +158,9 @@ describe('FE-07 변경 요청 렌더', () => {
 		});
 		const attn = container.querySelector('[data-testid="attention"]')!;
 		expect(attn).not.toBeNull();
-		expect(text(attn)).toContain('반영 안 됨(기록 달라짐)');
+		expect(text(attn)).toContain('반영 안 됨(보유가 달라짐)');
+		expect(text(attn)).toContain('반영 안 된 요청이 있어요(보유가 달라짐·기한 지남)');
+		expect(text(attn)).not.toContain('기록 달라짐');
 		expect(attn.querySelector('[data-action="ack"]')).not.toBeNull();
 		expect(attn.querySelector('[data-action="approve"]')).toBeNull();
 	});
@@ -527,7 +529,7 @@ describe('FE-07 변경 요청 렌더', () => {
 		(cardOf(container, 'R-0053').querySelector('[data-action="unhold"]') as HTMLElement).click();
 		await vi.advanceTimersByTimeAsync(0);
 		const att = cardOf(container, 'R-0054');
-		expect(text(att)).toContain('반영 안 됨(기록 달라짐)');
+		expect(text(att)).toContain('반영 안 됨(보유가 달라짐)');
 		// 확인 필요 원칙 카드도 본문 평문 미리보기를 보인다
 		expect(att.querySelector('[data-testid="principle-body"]')).not.toBeNull();
 		expect(text(att)).toContain('새 원칙 본문 줄');

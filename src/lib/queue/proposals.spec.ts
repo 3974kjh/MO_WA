@@ -93,7 +93,7 @@ describe('고쳐서 반영 사유 문장 우선순위', () => {
 		expect(m.ok).toBe(false);
 		expect(m.message).toContain('지금은 반영할 수 없어요');
 		const c = checkOverrideDraft(item, { qty: 12, avg_price: 1234 }, '이유', { conflict: true });
-		expect(c.message).toContain('반영 안 됨(기록 달라짐)');
+		expect(c.message).toContain('반영 안 됨(보유가 달라짐)');
 		for (const s of [m.message, c.message]) expect(s).not.toMatch(/R-[A-Z]+-|충돌/);
 	});
 });

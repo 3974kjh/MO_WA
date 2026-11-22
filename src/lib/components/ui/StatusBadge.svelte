@@ -17,7 +17,7 @@
 		rejected: { label: '거절', icon: '✕' },
 		superseded: { label: '새 요청으로 바뀜', icon: '⇄' },
 		cancelled: { label: '봇이 취소', icon: '⊘' },
-		conflict: { label: '반영 안 됨(기록 달라짐)', icon: '⚠' },
+		conflict: { label: '반영 안 됨(보유가 달라짐)', icon: '⚠' },
 		expired: { label: '기한 지남', icon: '⏱' }
 	};
 </script>

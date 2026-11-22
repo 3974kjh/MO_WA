@@ -10,7 +10,7 @@
 	 *   거절은 확인 뒤 즉시. 보류·확인했어요는 바로 처리.
 	 * - 원칙 개정 요청(R-)도 같은 목록에 섞여 나온다: 반영은 ?/approvePrinciple(5초 유예 동일),
 	 *   거절·보류·대기로 되돌리기는 ?/decidePrinciple, 확인했어요는 ?/ack kind=principle. 고쳐서 반영은 없다.
-	 * - 서버가 반영 안 됨(기록 달라짐)을 돌려주면 '확인 필요'로 옮긴다(일반 오류 토스트 아님).
+	 * - 서버가 반영 안 됨(보유가 달라짐)을 돌려주면 '확인 필요'로 옮긴다(일반 오류 토스트 아님).
 	 *   미리 막힌 카드(approval_version ≠ base_version)는 배지 그대로, 반영 버튼만 aria-disabled.
 	 */
 	import { onDestroy, onMount } from 'svelte';
@@ -82,7 +82,7 @@
 	let optimistic = $state<
 		Record<string, { applied: FieldValues | null; note: string | null; at: string }>
 	>({});
-	/** 서버가 반영 안 됨(기록 달라짐)을 돌려준 요청 — 다시 불러오기 전까지 '확인 필요'로 보인다. */
+	/** 서버가 반영 안 됨(보유가 달라짐)을 돌려준 요청 — 다시 불러오기 전까지 '확인 필요'로 보인다. */
 	let conflicted = $state<Record<string, true>>({});
 	let busy = $state<Record<string, true>>({});
 	let correctionLocal = $state<Record<string, { qty: number; avg_price: number; currency: Ccy }>>(
@@ -223,7 +223,7 @@
 						overrideConflict = true;
 						overrideTarget = { ...item, status: 'conflict' };
 					} else {
-						toast.show('반영 안 됨(기록 달라짐) · ‘확인 필요’로 옮겼어요');
+						toast.show('반영 안 됨(보유가 달라짐) · ‘확인 필요’로 옮겼어요');
 					}
 				} else if (out.kind === 'error') {
 					delete optimistic[item.id];
@@ -651,7 +651,7 @@
 						<span class="count">{attentionList.length}건</span>
 					</h3>
 					<p class="attn-desc">
-						반영 안 된 요청이 있어요(기록 달라짐·기한 지남). <b>확인했어요</b>를 누르거나 문제가
+						반영 안 된 요청이 있어요(보유가 달라짐·기한 지남). <b>확인했어요</b>를 누르거나 문제가
 						생긴 날부터 14일이 지나면 이 묶음에서 빠지고, 기록은 ‘지난 내역’에 그대로 남아요.
 					</p>
 					<div class="cards">

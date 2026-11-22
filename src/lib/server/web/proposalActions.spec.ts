@@ -119,7 +119,7 @@ describe('BE-11 approve action', () => {
 		expect(result.status).toBe(409);
 		expect(result.data.status).toBe('conflict');
 		expect(result.data.code).toBe('CONFLICT');
-		expect(result.data.message).toBe('반영 안 됨(기록 달라짐)');
+		expect(result.data.message).toBe('반영 안 됨(보유가 달라짐)');
 		expect(result.data.ruleIds).toContain('R-PERM-13');
 	});
 

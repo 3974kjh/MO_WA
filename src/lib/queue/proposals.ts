@@ -356,7 +356,7 @@ export function checkOverrideDraft(
 	if (opts.conflict) {
 		return {
 			ok: false,
-			message: '반영 안 됨(기록 달라짐): 보유 기록이 바뀌어 반영하지 않았어요.',
+			message: '반영 안 됨(보유가 달라짐): 보유 기록이 바뀌어 반영하지 않았어요.',
 			field: null,
 			invalid: []
 		};

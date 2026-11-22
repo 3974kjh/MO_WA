@@ -5,7 +5,7 @@ import { mapDbErrorToRuleIds, UNMAPPED_MARKER } from '$lib/server/domain/validat
 export const ACTION_FAILED_MESSAGE = '요청을 처리하지 못했어요.';
 
 /** 용어집 v1.3 conflict 라벨(StatusBadge)과 같은 문구. */
-export const ACTION_CONFLICT_MESSAGE = '반영 안 됨(기록 달라짐)';
+export const ACTION_CONFLICT_MESSAGE = '반영 안 됨(보유가 달라짐)';
 
 export type ActionErrorBody = {
 	ok: false;
@@ -61,7 +61,7 @@ export function failValidation(
 }
 
 /**
- * CONFLICT(반영 안 됨·기록 달라짐)는 아래만이다. 메시지 단어(conflict)로는 판별하지 않는다.
+ * CONFLICT(반영 안 됨·보유가 달라짐)는 아래만이다. 메시지 단어(conflict)로는 판별하지 않는다.
  * 1. 40001 (serialization failure)
  * 2. 명시적 버전 충돌: 앱 code가 정확히 'CONFLICT', 또는 R-PERM-13 매핑
  * 3. R-PERM-11 client_ref 키 충돌
