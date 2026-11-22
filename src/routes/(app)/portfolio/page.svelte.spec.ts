@@ -669,9 +669,11 @@ describe('FE-07 변경 요청 렌더', () => {
 		expect(document.querySelector('[data-testid="override-edit"]')).toBeNull();
 	});
 
-	describe('FE-07 Low-1: 같은 포지션 형제 요청 잠금', () => {
+	describe('FE-07 Low-1: 같은 종목 형제 요청 잠금', () => {
 		const approveBtn = (c: Element, id: string) =>
 			cardOf(c, id).querySelector('[data-action="approve"]') as HTMLElement;
+		const locked = (c: Element, id: string) =>
+			approveBtn(c, id).getAttribute('aria-disabled') === 'true';
 		const confirmApproveOf = (c: Element, id: string) => {
 			approveBtn(c, id).click();
 			flushSync();
@@ -680,24 +682,37 @@ describe('FE-07 변경 요청 렌더', () => {
 		};
 		const setup = (items: ReturnType<typeof makeItem>[]) =>
 			render(Page, { data: { ...base, queue: { items, total: items.length } } as never });
+		// DB가 만들 수 있는 조합: 포지션 연결 요청 + 같은 종목의 position 없는 open_holding
+		const linked = (over: Parameters<typeof makeItem>[0] = {}) =>
+			makeItem({
+				id: 'a',
+				display_id: 'P-0801',
+				position_id: 'pos-1',
+				instrument_id: 'inst-1',
+				...over
+			});
+		const loose = (over: Parameters<typeof makeItem>[0] = {}) =>
+			makeItem({
+				id: 'b',
+				display_id: 'P-0802',
+				change_type: 'open_holding',
+				position_id: null,
+				instrument_id: 'inst-1',
+				...over
+			});
 
-		it('첫 요청이 5초 유예 중이면 같은 포지션 형제는 잠기고, 열리지도 보내지도 않는다', async () => {
+		it('포지션 연결 요청을 반영하면 같은 종목의 position 없는 open_holding이 잠기고, 보내지도 열리지도 않는다', async () => {
 			vi.useFakeTimers();
-			const { container } = setup([
-				makeItem({ id: 'a', display_id: 'P-0801', position_id: 'pos-x' }),
-				makeItem({ id: 'b', display_id: 'P-0802', position_id: 'pos-x' })
-			]);
-			expect(approveBtn(container, 'P-0802').getAttribute('aria-disabled')).toBeNull();
+			const { container } = setup([linked(), loose()]);
+			expect(locked(container, 'P-0802')).toBe(false);
 			confirmApproveOf(container, 'P-0801');
-			expect(approveBtn(container, 'P-0802').getAttribute('aria-disabled')).toBe('true');
-			// 첫 확인 시트가 닫힌 뒤 잠긴 형제를 눌러도 시트가 다시 열리지 않는다
+			expect(locked(container, 'P-0802')).toBe(true);
 			await vi.advanceTimersByTimeAsync(500);
 			const sheetBefore = document.querySelector('[data-action="approve-confirm"]');
 			approveBtn(container, 'P-0802').click();
 			flushSync();
 			expect(document.querySelector('[data-action="approve-confirm"]')).toBe(sheetBefore);
 			await vi.advanceTimersByTimeAsync(4700);
-			// 첫 요청만 한 번 보낸다(두 번째는 보내지 않아 일반 오류 토스트로 떨어질 일이 없다)
 			expect(fetchSpy).toHaveBeenCalledTimes(1);
 			expect((fetchSpy.mock.calls[0][1] as RequestInit).body).toSatisfy(
 				(b: FormData) => b.get('id') === 'a'
@@ -705,42 +720,65 @@ describe('FE-07 변경 요청 렌더', () => {
 			expect(toast.items.some((t) => t.tone === 'err')).toBe(false);
 		});
 
-		it('첫 요청을 되돌리면 형제 잠금이 풀리고 첫 요청은 보내지 않는다', async () => {
+		it('반대로 open_holding을 반영하면 같은 종목의 포지션 연결 카드가 잠긴다', () => {
 			vi.useFakeTimers();
-			const { container } = setup([
-				makeItem({ id: 'a', display_id: 'P-0811', position_id: 'pos-x' }),
-				makeItem({ id: 'b', display_id: 'P-0812', position_id: 'pos-x' })
-			]);
-			confirmApproveOf(container, 'P-0811');
-			expect(approveBtn(container, 'P-0812').getAttribute('aria-disabled')).toBe('true');
+			const { container } = setup([linked(), loose()]);
+			confirmApproveOf(container, 'P-0802');
+			expect(locked(container, 'P-0801')).toBe(true);
+		});
+
+		it('첫 요청을 되돌리면 형제 잠금이 풀리고 아무것도 보내지 않는다', async () => {
+			vi.useFakeTimers();
+			const { container } = setup([linked(), loose()]);
+			confirmApproveOf(container, 'P-0801');
+			expect(locked(container, 'P-0802')).toBe(true);
 			toast.items.findLast((t) => t.action?.label === '되돌리기')!.action!.onclick();
 			flushSync();
-			expect(approveBtn(container, 'P-0812').getAttribute('aria-disabled')).toBeNull();
+			expect(locked(container, 'P-0802')).toBe(false);
 			await vi.advanceTimersByTimeAsync(6000);
 			expect(fetchSpy).not.toHaveBeenCalled();
 		});
 
-		it('다른 포지션은 유예 중에도 따로 반영할 수 있다', async () => {
+		it('다른 종목은 유예 중에도 따로 반영할 수 있다', async () => {
 			vi.useFakeTimers();
-			const { container } = setup([
-				makeItem({ id: 'a', display_id: 'P-0821', position_id: 'pos-x' }),
-				makeItem({ id: 'c', display_id: 'P-0822', position_id: 'pos-y' })
-			]);
-			confirmApproveOf(container, 'P-0821');
-			expect(approveBtn(container, 'P-0822').getAttribute('aria-disabled')).toBeNull();
-			confirmApproveOf(container, 'P-0822');
+			const { container } = setup([linked(), loose({ instrument_id: 'inst-2' })]);
+			confirmApproveOf(container, 'P-0801');
+			expect(locked(container, 'P-0802')).toBe(false);
+			confirmApproveOf(container, 'P-0802');
 			await vi.advanceTimersByTimeAsync(5100);
 			expect(fetchSpy).toHaveBeenCalledTimes(2);
 		});
 
-		it('원칙 요청(position_id 없음)은 서로 묶어 잠그지 않는다', async () => {
+		it('instrument_id가 없으면 종목 기준으로 잠그지 않는다', () => {
+			vi.useFakeTimers();
+			const { container } = setup([
+				linked({ instrument_id: null }),
+				loose({ instrument_id: null })
+			]);
+			confirmApproveOf(container, 'P-0801');
+			expect(locked(container, 'P-0802')).toBe(false);
+		});
+
+		it('원칙 요청은 서로, 그리고 포지션 요청과도 묶어 잠그지 않는다', () => {
 			vi.useFakeTimers();
 			const { container } = setup([
 				principleItem({ id: 'r1', display_id: 'R-0071' }),
-				principleItem({ id: 'r2', display_id: 'R-0072' })
+				principleItem({ id: 'r2', display_id: 'R-0072' }),
+				linked()
 			]);
 			confirmApproveOf(container, 'R-0071');
-			expect(approveBtn(container, 'R-0072').getAttribute('aria-disabled')).toBeNull();
+			expect(locked(container, 'R-0072')).toBe(false);
+			expect(locked(container, 'P-0801')).toBe(false);
+		});
+
+		it('같은 position_id는 방어적으로 계속 잠근다', () => {
+			vi.useFakeTimers();
+			const { container } = setup([
+				linked(),
+				makeItem({ id: 'b', display_id: 'P-0802', position_id: 'pos-1', instrument_id: null })
+			]);
+			confirmApproveOf(container, 'P-0801');
+			expect(locked(container, 'P-0802')).toBe(true);
 		});
 	});
 

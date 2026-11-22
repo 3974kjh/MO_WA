@@ -56,6 +56,8 @@ export type QueueItem = {
 	/** 지금 보유 기록 값(positions). 없으면 null */
 	live_values: FieldValues | null;
 	position_id: string | null;
+	/** 종목 id. 형제 요청 잠금(같은 종목의 position 없는 open_holding)에 쓴다. 원칙은 null */
+	instrument_id: string | null;
 	name: string | null;
 	ticker: string | null;
 	asset_type: string | null;

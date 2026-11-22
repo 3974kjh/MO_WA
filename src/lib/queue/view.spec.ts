@@ -5,7 +5,8 @@ import {
 	evidenceView,
 	principleToQueueItem,
 	toQueueItem,
-	type CardLike
+	type CardLike,
+	type PositionLike
 } from './view';
 import {
 	canOverride,
@@ -41,6 +42,38 @@ const card: CardLike = {
 };
 
 describe('toQueueItem', () => {
+	it('instrument_id를 그대로 싣는다(카드 값, 없으면 보유 기록의 종목), 원칙은 null', () => {
+		const pos = new Map<string, PositionLike>([
+			[
+				'p1',
+				{ id: 'p1', instrument_id: 'i9', status: 'holding', currency: 'KRW', qty: 1, avg_price: 1 }
+			]
+		]);
+		expect(toQueueItem({ ...card, instrument_id: 'i1' }, pos, new Map()).instrument_id).toBe('i1');
+		expect(toQueueItem(card, pos, new Map()).instrument_id).toBe('i9');
+		expect(toQueueItem(card, new Map(), new Map()).instrument_id).toBeNull();
+		const r = principleToQueueItem({
+			id: 'r1',
+			display_id: 'R-0011',
+			status: 'pending',
+			clause_ref: null,
+			body_preview: '',
+			body_truncated: false,
+			reason_md: null,
+			decision_note: null,
+			proposed_by_type: 'bot',
+			proposer_name: 'b',
+			evidence_chips: [],
+			attention_started_at: null,
+			acknowledged_at: null,
+			base_version: 1,
+			created_at: '2026-11-21T00:00:00Z',
+			held_at: null,
+			decided_at: null
+		});
+		expect(r.instrument_id).toBeNull();
+	});
+
 	it('보유·종목 값을 붙이고, 허용 키·상태만 남긴다(감시 가격·손익분기는 버림)', () => {
 		const item = toQueueItem(
 			card,

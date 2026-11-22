@@ -130,6 +130,7 @@ export function toQueueItem(
 			? { qty: pos.qty, avg_price: pos.avg_price, currency: pos.currency, status: pos.status }
 			: null,
 		position_id: card.position_id,
+		instrument_id: instrumentId,
 		name: inst?.name ?? null,
 		ticker: inst?.ticker ?? null,
 		asset_type: inst?.asset_type ?? null,
@@ -186,6 +187,7 @@ export function principleToQueueItem(p: PrincipleLike): QueueItem {
 		request_values: null,
 		live_values: null,
 		position_id: null,
+		instrument_id: null,
 		name: null,
 		ticker: null,
 		asset_type: null,

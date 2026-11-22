@@ -29,6 +29,7 @@ export function makeItem(over: Partial<QueueItem> = {}): QueueItem {
 		request_values: { qty: 11, avg_price: 1111, currency: 'KRW', status: 'holding' },
 		live_values: { qty: 11, avg_price: 1111, currency: 'KRW', status: 'holding' },
 		position_id: 'pos-1',
+		instrument_id: 'inst-1',
 		name: '테스트종목',
 		ticker: 'TST',
 		asset_type: 'stock',

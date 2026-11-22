@@ -113,23 +113,23 @@
 
 	let queueItems = $derived(data.queue.items);
 	let openList = $derived(queueItems.filter((i) => !optimistic[i.id] && !conflicted[i.id]));
-	// 같은 포지션의 형제 대기 요청: 하나가 5초 유예·전송 중이면 나머지는 잠근다(두 번째 반영이 오류로 떨어지지 않게).
-	// 되돌리기·이동으로 버려지면 optimistic이 지워져 자동으로 풀린다. 원칙(position_id 없음)은 묶지 않는다.
-	let lockedPositions = $derived.by(() => {
-		const ids: string[] = [];
-		for (const i of queueItems) {
-			if (i.kind === 'position' && i.position_id && (optimistic[i.id] || busy[i.id])) {
-				ids.push(i.position_id);
-			}
-		}
-		return ids;
-	});
+	// 형제 요청(서버와 같은 기준): 같은 position_id, 또는 한쪽이 같은 종목의 position 없는 open_holding.
+	// (승인되면 서버가 나머지를 supersede하므로, 하나가 5초 유예·전송 중이면 형제는 잠가
+	// 두 번째 반영이 일반 오류로 떨어지지 않게 한다.) 종목 id가 없으면 종목 기준으로는 묶지 않고,
+	// 원칙은 어디와도 묶지 않는다. 되돌리기·이동으로 버려지면 optimistic이 지워져 자동으로 풀린다.
+	const isLooseOpenHolding = (i: QueueItem) => !i.position_id && i.change_type === 'open_holding';
+	const areSiblings = (a: QueueItem, b: QueueItem) =>
+		a.id !== b.id &&
+		a.kind === 'position' &&
+		b.kind === 'position' &&
+		((!!a.position_id && a.position_id === b.position_id) ||
+			(!!a.instrument_id &&
+				a.instrument_id === b.instrument_id &&
+				(isLooseOpenHolding(a) || isLooseOpenHolding(b))));
 	const siblingLocked = (i: QueueItem) =>
-		i.kind === 'position' &&
-		!!i.position_id &&
 		!optimistic[i.id] &&
 		!busy[i.id] &&
-		lockedPositions.includes(i.position_id);
+		queueItems.some((o) => (optimistic[o.id] || busy[o.id]) && areSiblings(i, o));
 	let attentionList = $derived.by(() => {
 		const server = data.attentionNeeded;
 		const ids = new Set(server.map((i) => i.id));
