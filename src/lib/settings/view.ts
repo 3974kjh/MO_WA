@@ -172,8 +172,3 @@ export function argsPreview(v: unknown): { text: string; truncated: boolean } {
 		? { text: `${s.slice(0, ARGS_PREVIEW_MAX)}…`, truncated: true }
 		: { text: s, truncated: false };
 }
-
-/** args_preview를 상세 시트에 보여 줄 문자열로(길면 자른다). */
-export function formatArgsPreview(v: unknown): string {
-	return argsPreview(v).text;
-}

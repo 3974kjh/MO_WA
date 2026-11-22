@@ -5,7 +5,6 @@ import {
 	argsPreview,
 	auditFilterActive,
 	expiryRequired,
-	formatArgsPreview,
 	needsExpiryClearConfirm,
 	parseAuditFilter,
 	selectableScopes,
@@ -83,11 +82,11 @@ describe('활동 기록 필터 파싱', () => {
 	});
 });
 
-describe('formatArgsPreview', () => {
+describe('argsPreview', () => {
 	it('JSON 문자열로, 길면 자른다', () => {
-		expect(formatArgsPreview({ a: 1 })).toContain('"a": 1');
-		expect(formatArgsPreview(null)).toBe('');
-		expect(formatArgsPreview({ t: 'x'.repeat(5000) }).length).toBe(ARGS_PREVIEW_MAX + 1);
+		expect(argsPreview({ a: 1 }).text).toContain('"a": 1');
+		expect(argsPreview(null).text).toBe('');
+		expect(argsPreview({ t: 'x'.repeat(5000) }).text.length).toBe(ARGS_PREVIEW_MAX + 1);
 	});
 
 	it('잘렸는지 함께 알려 준다(N-2)', () => {
