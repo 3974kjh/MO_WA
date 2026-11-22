@@ -34,13 +34,20 @@ const pos = (o: Partial<HomePosition>): HomePosition => ({
 });
 
 describe('holdingSummary', () => {
-	it('가격 없는 종목은 합계에 0으로 넣지 않고 따로 센다', () => {
+	it('평가금액 없는 종목은 합계에 0으로 넣지 않고 따로 센다', () => {
 		const s = holdingSummary(
 			[pos({ id: 'a' }), pos({ id: 'b', price: null, value_krw: null })],
 			null
 		);
 		expect(s).toMatchObject({ priced: 1, unpriced: 1, totalKrw: 1100, pnlKrw: 100, pnlCount: 1 });
 		expect(s.pnlPct).toBeCloseTo(10);
+	});
+	it('가격은 있어도 환율이 없어 평가금액이 빠진 달러 종목도 unpriced에 센다', () => {
+		const s = holdingSummary(
+			[pos({ id: 'k' }), pos({ id: 'u', currency: 'USD', price: 10, value_krw: null })],
+			null
+		);
+		expect(s).toMatchObject({ priced: 1, unpriced: 1, totalKrw: 1100 });
 	});
 	it('보유 종목이 없거나 전부 가격이 없으면 null', () => {
 		expect(holdingSummary([], 1300)).toMatchObject({

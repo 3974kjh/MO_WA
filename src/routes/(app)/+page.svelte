@@ -226,7 +226,9 @@
 			<div class="tiles" data-testid="home-tiles">
 				<MetricTile
 					label="총 평가금액"
-					foot={summary.unpriced > 0 ? `가격 없는 ${summary.unpriced}종목 제외` : '평가금액 기준'}
+					foot={summary.unpriced > 0
+						? `평가금액 없는 ${summary.unpriced}종목 제외`
+						: '평가금액 기준'}
 					href={resolve('/portfolio')}
 				>
 					{#snippet value()}

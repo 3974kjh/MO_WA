@@ -198,6 +198,35 @@ describe('홈 대시보드 렌더 (FE-03)', () => {
 		expect(text(c.container)).toContain('환율 기록 없음');
 	});
 
+	it('총 평가금액 안내: 환율이 없어 평가금액이 빠진 달러 종목도 "평가금액 없는 N종목"으로 센다', async () => {
+		const pos = (over: Record<string, unknown>) => ({
+			instrument_id: 'i',
+			currency: 'KRW',
+			qty: 1,
+			avg_price: 100,
+			trigger_price: null,
+			trigger_direction: null,
+			watch_only: false,
+			price: 102,
+			price_as_of: '2026-11-20',
+			value_krw: 102,
+			status: 'holding',
+			...over
+		});
+		const { container } = render(Page, {
+			data: {
+				...empty,
+				positions: [
+					pos({ id: 'a', name: '원화종목', ticker: 'KRW1' }),
+					pos({ id: 'b', name: '달러종목', ticker: 'USD1', currency: 'USD', value_krw: null })
+				]
+			} as never
+		});
+		const t = text(container.querySelector('[data-testid="home-tiles"]')!);
+		expect(t).toContain('평가금액 없는 1종목 제외');
+		expect(t).not.toContain('가격 없는');
+	});
+
 	it('감시 카드는 감시 가격이 있거나 관심만인 종목만 보인다(일반 보유는 제외)', async () => {
 		const pos = (over: Record<string, unknown>) => ({
 			instrument_id: 'i',

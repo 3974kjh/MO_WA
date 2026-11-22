@@ -152,7 +152,7 @@ export type HoldingSummary = {
 };
 
 /**
- * 보유 요약(타일). 가격 없는 종목은 0으로 넣지 않고 따로 센다.
+ * 보유 요약(타일). 평가금액 없는 종목(가격 없음·환율 없는 달러 종목)은 0으로 넣지 않고 따로 센다.
  * 달러 종목 원가는 현재 환율(usdkrw)로 환산한다(평가금액과 같은 기준).
  */
 export function holdingSummary(
