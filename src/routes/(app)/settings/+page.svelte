@@ -279,22 +279,7 @@
 	</Card>
 </section>
 
-<!-- 폐기 확인: 시트의 확인 버튼이 이 폼을 제출한다 -->
-<form
-	id="revoke-form"
-	method="POST"
-	action="?/revoke"
-	use:enhance={() => {
-		return async ({ update }) => {
-			revokeTarget = null;
-			await update();
-		};
-	}}
->
-	<input type="hidden" name="id" value={revokeTarget?.id ?? ''} />
-	<input type="hidden" name="reason" value="user_revoke" />
-</form>
-
+<!-- 폐기 확인(N-1): 폼은 시트 안에서 대상 키가 있을 때만 존재한다. 확인 버튼이 이 폼을 제출한다. -->
 <Sheet
 	open={revokeTarget != null}
 	onclose={() => (revokeTarget = null)}
@@ -305,6 +290,20 @@
 		<p class="confirm" data-testid="revoke-confirm">
 			<b>{revokeTarget.name}</b> 키를 폐기하면 이 봇은 바로 접속할 수 없고, 되돌릴 수 없어요.
 		</p>
+		<form
+			id="revoke-form"
+			method="POST"
+			action="?/revoke"
+			use:enhance={() => {
+				return async ({ update }) => {
+					revokeTarget = null;
+					await update();
+				};
+			}}
+		>
+			<input type="hidden" name="id" value={revokeTarget.id} />
+			<input type="hidden" name="reason" value="user_revoke" />
+		</form>
 	{/if}
 	{#snippet footer()}
 		<Button variant="secondary-pill" compact label="취소" onclick={() => (revokeTarget = null)} />

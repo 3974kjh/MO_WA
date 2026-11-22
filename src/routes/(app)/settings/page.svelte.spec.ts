@@ -146,23 +146,35 @@ describe('FE-09 설정 화면', () => {
 		expect(document.cookie).not.toContain(KEY);
 	});
 
-	it('폐기는 확인 시트를 거쳐야 제출된다', () => {
+	it('폐기는 확인 시트를 거쳐야 제출된다(폼은 시트 안에만 있다)', () => {
 		const { container } = render(Page, { data: makeData() });
-		const form = document.getElementById('revoke-form') as HTMLFormElement;
-		const submit = vi.fn((e: Event) => e.preventDefault());
-		form.addEventListener('submit', submit);
-		expect((form.querySelector('input[name="id"]') as HTMLInputElement).value).toBe('');
+		// N-1: 대상 키를 고르기 전에는 폐기 폼이 아예 없다(id를 상시 들고 있지 않음).
+		expect(document.getElementById('revoke-form')).toBeNull();
 		btn('폐기')!.click();
 		flushSync();
-		expect(submit).not.toHaveBeenCalled();
 		expect(text(document.body)).toContain('키를 폐기할까요?');
 		expect(text(document.querySelector('[data-testid="revoke-confirm"]'))).toContain('더미봇');
+		const form = document.getElementById('revoke-form') as HTMLFormElement;
+		expect(form).toBeTruthy();
+		expect(form.closest('[role="dialog"]')).toBeTruthy();
+		expect(form.getAttribute('method')?.toUpperCase()).toBe('POST');
+		expect(form.getAttribute('action')).toBe('?/revoke');
 		expect((form.querySelector('input[name="id"]') as HTMLInputElement).value).toBe(BOT.id);
+		expect((form.querySelector('input[name="reason"]') as HTMLInputElement).value).toBe(
+			'user_revoke'
+		);
+		const submit = vi.fn((e: Event) => e.preventDefault());
+		form.addEventListener('submit', submit);
 		const confirm = [
 			...document.querySelectorAll('button[form="revoke-form"]')
 		][0] as HTMLButtonElement;
 		confirm.click();
 		expect(submit).toHaveBeenCalledTimes(1);
+
+		// 취소하면 시트가 닫히고 폼도 사라진다
+		btn('취소')!.click();
+		flushSync();
+		expect(document.getElementById('revoke-form')).toBeNull();
 		expect(container).toBeTruthy();
 	});
 
