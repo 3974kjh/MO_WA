@@ -56,6 +56,24 @@ describe('기준일 표기 formatAsOf (date-only는 시각을 지어내지 않�
 		expect(formatAsOf('2026-11-20T06:30:00Z')).toBe('11/20 15:30 KST');
 		expect(formatAsOf('2026-11-20T15:30:00+09:00')).toBe('11/20 15:30 KST');
 	});
+	it('정상 timestamptz 오프셋 형태(Z, +09:00, +0900, +09, 소수초, 공백 구분)는 그대로 KST 표기', () => {
+		expect(formatAsOf('2026-11-20T06:30:00Z')).toBe('11/20 15:30 KST');
+		expect(formatAsOf('2026-11-20T15:30:00+09:00')).toBe('11/20 15:30 KST');
+		expect(formatAsOf('2026-11-20T15:30:00+0900')).toBe('11/20 15:30 KST');
+		expect(formatAsOf('2026-11-20 15:30:00+09')).toBe('11/20 15:30 KST');
+		expect(formatAsOf('2026-11-20T06:30:00.123Z')).toBe('11/20 15:30 KST');
+		expect(formatAsOf('2026-11-20T00:30:00-05:00')).toBe('11/20 14:30 KST');
+		expect(formatAsOf('2026-11-20 15:30:00+09:00')).toBe('11/20 15:30 KST');
+		expect(formatAsOf('2026-11-20T06:30Z')).toBe('11/20 15:30 KST');
+	});
+	it("날짜·시각 형태가 아닌데 끝만 오프셋처럼 보이는 쓰레기는 null('11-20', 'x-12')", () => {
+		expect(formatAsOf('11-20')).toBeNull();
+		expect(formatAsOf('x-12')).toBeNull();
+		expect(formatAsOf('2026-11')).toBeNull();
+		expect(formatAsOf('foo+09:00')).toBeNull();
+		expect(formatAsOf('12-31-2026-05')).toBeNull();
+		expect(formatAsOf('Nov 20 2026 GMT+0900')).toBeNull();
+	});
 	it('오프셋 없는 timestamp는 브라우저 시간대에 따라 달라지므로 날짜만', () => {
 		expect(formatAsOf('2026-11-20T00:00:00')).toBe('11/20');
 	});

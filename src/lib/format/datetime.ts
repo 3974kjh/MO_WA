@@ -25,7 +25,9 @@ export function formatKstShort(input: Date | string | number): string {
 
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
 const NAIVE_DATETIME = /^(\d{4})-(\d{2})-(\d{2})[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/;
-const HAS_OFFSET = /(?:Z|[+-]\d{2}(?::?\d{2})?)$/i;
+// 오프셋은 날짜·시각 뒤에 붙은 것만 인정한다(`11-20`·`x-12`처럼 끝의 `-20`을 오프셋으로 오인하지 않는다).
+const HAS_OFFSET =
+	/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}(?::?\d{2})?)$/i;
 
 /**
  * 기준일·기준 시각 표기. 없는 시각을 지어내지 않는다.
