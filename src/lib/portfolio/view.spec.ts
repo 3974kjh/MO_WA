@@ -89,6 +89,84 @@ describe('buildPortfolioRows', () => {
 		expect(rows.find((r) => r.id === 'pl')!.value_krw).toBeNull();
 		expect(rows.find((r) => r.id === 'c1')!.value_krw).toBeNull();
 	});
+
+	it('같은 종목의 null 최신가가 뒤에 오는 실제 최신가를 가리지 않는다', () => {
+		const rows = buildPortfolioRows({
+			details: [
+				detail({ id: 'h1', instrument_id: 'i1' }),
+				detail({ id: 'pl', instrument_id: 'i1', status: 'planned', qty: 0, avg_price: null })
+			],
+			prices: [
+				{
+					instrument_id: 'i1',
+					latest_price: null,
+					latest_price_as_of: '2026-11-18',
+					latest_price_currency: 'USD'
+				},
+				{
+					instrument_id: 'i1',
+					latest_price: 731,
+					latest_price_as_of: '2026-11-17',
+					latest_price_currency: 'KRW'
+				},
+				{
+					instrument_id: 'i1',
+					latest_price: 842,
+					latest_price_as_of: '2026-11-16',
+					latest_price_currency: 'KRW'
+				}
+			],
+			labels: new Map(),
+			valueById: new Map(),
+			open: []
+		});
+		// null은 건너뛰고, 처음 나온 실제 값만 쓴다(그 뒤 값은 덮지 않는다)
+		for (const id of ['h1', 'pl']) {
+			expect(rows.find((r) => r.id === id)).toMatchObject({
+				price: 731,
+				price_as_of: '2026-11-17',
+				price_currency: 'KRW'
+			});
+		}
+	});
+
+	it('보유 종료 행은 같은 종목에 실제 최신가가 있을 때만 현재가를 받는다', () => {
+		const rows = buildPortfolioRows({
+			details: [
+				detail({ id: 'c1', instrument_id: 'i1', status: 'closed', qty: 0 }),
+				detail({ id: 'c2', instrument_id: 'i2', status: 'closed', qty: 0 })
+			],
+			prices: [
+				{
+					instrument_id: 'i1',
+					latest_price: null,
+					latest_price_as_of: null,
+					latest_price_currency: null
+				},
+				{
+					instrument_id: 'i1',
+					latest_price: 318,
+					latest_price_as_of: '2026-11-15',
+					latest_price_currency: 'KRW'
+				},
+				{
+					instrument_id: 'i2',
+					latest_price: null,
+					latest_price_as_of: '2026-11-15',
+					latest_price_currency: 'KRW'
+				}
+			],
+			labels: new Map(),
+			valueById: new Map(),
+			open: []
+		});
+		expect(rows.find((r) => r.id === 'c1')).toMatchObject({
+			price: 318,
+			price_as_of: '2026-11-15',
+			price_currency: 'KRW'
+		});
+		expect(rows.find((r) => r.id === 'c2')!.price).toBeNull();
+	});
 });
 
 describe('세그먼트', () => {
