@@ -30,17 +30,33 @@ describe('G-2 5초 유예 전송', () => {
 		expect(h.cancel()).toBe(false);
 	});
 
-	it.each(['pagehide', 'beforeunload'])('%s면 남은 요청을 보내지 않고 버린다', (type) => {
+	it('pagehide면 남은 요청을 보내지 않고 버린다', () => {
 		const target = new EventTarget();
 		const s = createDeferredSender({ target });
 		const run = vi.fn();
 		const dropped = vi.fn();
 		s.schedule(run, dropped);
-		target.dispatchEvent(new Event(type));
+		target.dispatchEvent(new Event('pagehide'));
 		vi.advanceTimersByTime(UNDO_GRACE_MS * 2);
 		expect(run).not.toHaveBeenCalled();
 		expect(dropped).toHaveBeenCalledTimes(1);
 		expect(s.size).toBe(0);
+	});
+
+	it('pagehide 리스너만 단다(beforeunload는 bfcache를 막을 수 있어 쓰지 않는다)', () => {
+		const target = new EventTarget();
+		const add = vi.spyOn(target, 'addEventListener');
+		const s = createDeferredSender({ target });
+		expect(add.mock.calls.map((c) => c[0])).toEqual(['pagehide']);
+		const run = vi.fn();
+		const dropped = vi.fn();
+		s.schedule(run, dropped);
+		// beforeunload는 예약을 버리지 않는다(5초 뒤 정상 전송).
+		target.dispatchEvent(new Event('beforeunload'));
+		expect(s.size).toBe(1);
+		vi.advanceTimersByTime(UNDO_GRACE_MS);
+		expect(run).toHaveBeenCalledTimes(1);
+		expect(dropped).not.toHaveBeenCalled();
 	});
 
 	it('dispose(화면 떠남)도 보내지 않고, 이벤트 리스너를 뗀다', () => {
@@ -52,7 +68,6 @@ describe('G-2 5초 유예 전송', () => {
 		s.dispose();
 		vi.advanceTimersByTime(UNDO_GRACE_MS);
 		expect(run).not.toHaveBeenCalled();
-		expect(remove).toHaveBeenCalledWith('pagehide', expect.any(Function));
-		expect(remove).toHaveBeenCalledWith('beforeunload', expect.any(Function));
+		expect(remove.mock.calls.map((c) => c[0])).toEqual(['pagehide']);
 	});
 });
