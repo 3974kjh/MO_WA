@@ -46,6 +46,22 @@ export function applyKstOffset(formData: FormData, key = 'expires_at'): void {
 	if (next !== v) formData.set(key, next);
 }
 
+/**
+ * Info-2: importer가 아닌 키에 만료가 있는데 빈 값으로 '만료 설정'을 누르면 만료가 해제된다.
+ * 이때만 확인을 거친다(importer는 만료 필수라 빈 값 제출 자체가 막힌다).
+ */
+export function needsExpiryClearConfirm(
+	profile: string,
+	currentExpiresAt: string | null | undefined,
+	posted: FormDataEntryValue | null
+): boolean {
+	return (
+		!expiryRequired(profile) &&
+		!!currentExpiresAt &&
+		(posted === null || (typeof posted === 'string' && posted.trim() === ''))
+	);
+}
+
 /** 해당 프로필에서 고를 수 있는 권한 범위(제안 권한은 finance-manager 밖에서는 제외). */
 export function selectableScopes(profile: string, defaults: readonly string[]): string[] {
 	if (profile === FINANCE_MANAGER_PROFILE) return [...defaults];

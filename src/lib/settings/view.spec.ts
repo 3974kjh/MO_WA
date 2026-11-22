@@ -6,6 +6,7 @@ import {
 	auditFilterActive,
 	expiryRequired,
 	formatArgsPreview,
+	needsExpiryClearConfirm,
 	parseAuditFilter,
 	selectableScopes,
 	settingsErrorMessage,
@@ -136,5 +137,18 @@ describe('QA Low-1: 만료 입력은 KST(+09:00)로 보낸다', () => {
 		const c = new FormData();
 		applyKstOffset(c);
 		expect(c.has('expires_at')).toBe(false);
+	});
+});
+
+describe('Info-2: 선택 만료 해제 확인', () => {
+	it.each([
+		['finance-manager', '2026-12-01T01:00:00Z', '', true],
+		['custom', '2026-12-01T01:00:00Z', '  ', true],
+		['custom', '2026-12-01T01:00:00Z', null, true],
+		['custom', '2026-12-01T01:00:00Z', '2026-12-31T10:00+09:00', false],
+		['custom', null, '', false],
+		['importer', '2026-12-01T01:00:00Z', '', false]
+	] as const)('%s / 현재 %s / 보냄 %j → %s', (profile, current, posted, want) => {
+		expect(needsExpiryClearConfirm(profile, current, posted)).toBe(want);
 	});
 });

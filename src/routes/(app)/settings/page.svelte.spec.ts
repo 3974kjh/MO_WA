@@ -5,12 +5,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { flushSync } from 'svelte';
 
+type SubmitInput = { formData: FormData; cancel?: () => void };
 const { submitFns } = vi.hoisted(() => ({
-	submitFns: new Map<string, (input: { formData: FormData }) => unknown>()
+	submitFns: new Map<HTMLFormElement, (input: SubmitInput) => unknown>()
 }));
 vi.mock('$app/forms', () => ({
-	enhance: (node: HTMLFormElement, submit?: (input: { formData: FormData }) => unknown) => {
-		if (submit) submitFns.set(node.getAttribute('action') ?? '', submit);
+	enhance: (node: HTMLFormElement, submit?: (input: SubmitInput) => unknown) => {
+		if (submit) submitFns.set(node, submit);
 		return { destroy() {} };
 	}
 }));
@@ -214,7 +215,7 @@ describe('FE-09 설정 화면', () => {
 			expect(input.value).toBe('2026-11-30T10:00');
 
 			// enhance 경로: 콜백이 받은 FormData도 +09:00(이미 붙었으면 다시 붙이지 않음)
-			const submit = submitFns.get(form.getAttribute('action') ?? '');
+			const submit = submitFns.get(form);
 			expect(submit).toBeTypeOf('function');
 			const raw = new FormData();
 			raw.set('expires_at', '2026-11-30T10:00');
@@ -239,6 +240,84 @@ describe('FE-09 설정 화면', () => {
 		expect(t).toBe('만료 시각 형식이 올바르지 않아요.');
 		expect(text(container)).not.toMatch(/R-[A-Z]+-\d+/);
 		expect(text(container)).not.toContain('expires_at');
+	});
+
+	it('만료가 있는 비importer 키를 빈 값으로 저장하면 확인 시트를 거친다(Info-2)', () => {
+		const withExpiry = { ...BOT, expires_at: '2026-12-01T01:00:00Z' };
+		const { container } = render(Page, { data: makeData({ botClients: [withExpiry] }) });
+		const rowForm = container.querySelector('[data-testid="set-expiry-form"]') as HTMLFormElement;
+		const submit = submitFns.get(rowForm)!;
+		expect(document.getElementById('expiry-clear-form')).toBeNull();
+
+		// 값이 있으면 그대로 제출(취소 안 함)
+		const cancelA = vi.fn();
+		const a = new FormData();
+		a.set('expires_at', '2026-12-31T10:00');
+		submit({ formData: a, cancel: cancelA });
+		flushSync();
+		expect(cancelA).not.toHaveBeenCalled();
+		expect(document.getElementById('expiry-clear-form')).toBeNull();
+
+		// 빈 값이면 제출을 멈추고 확인 시트
+		const cancelB = vi.fn();
+		const b = new FormData();
+		b.set('expires_at', '');
+		submit({ formData: b, cancel: cancelB });
+		flushSync();
+		expect(cancelB).toHaveBeenCalledTimes(1);
+		expect(text(document.body)).toContain('만료를 해제할까요?');
+		const msg = text(document.querySelector('[data-testid="expiry-clear-confirm"]'));
+		expect(msg).toContain('더미봇');
+		expect(msg).toContain('12/01 10:00 KST');
+		expect(msg).not.toMatch(/R-[A-Z]+-\d+|expires_at/);
+
+		const form = document.getElementById('expiry-clear-form') as HTMLFormElement;
+		expect(form.closest('[role="dialog"]')).toBeTruthy();
+		expect(form.getAttribute('action')).toBe('?/setExpiry');
+		const fdata = new FormData(form);
+		expect(fdata.get('id')).toBe(BOT.id);
+		expect(fdata.get('expires_at')).toBe('');
+		const onSubmit = vi.fn((e: Event) => e.preventDefault());
+		form.addEventListener('submit', onSubmit);
+		(document.querySelector('button[form="expiry-clear-form"]') as HTMLButtonElement).click();
+		expect(onSubmit).toHaveBeenCalledTimes(1);
+		expect(text(document.querySelector('button[form="expiry-clear-form"]'))).toContain('만료 해제');
+
+		const dialog = form.closest('[role="dialog"]')!;
+		(
+			[...dialog.querySelectorAll('button')].find(
+				(b) => text(b).trim() === '취소'
+			) as HTMLButtonElement
+		).click();
+		flushSync();
+		expect(document.getElementById('expiry-clear-form')).toBeNull();
+	});
+
+	it('importer 키·만료 없는 키는 확인 없이 그대로(Info-2 범위 밖)', () => {
+		const importer = {
+			...BOT,
+			id: '22222222-2222-4222-8222-222222222222',
+			profile: 'importer',
+			expires_at: '2026-12-01T01:00:00Z'
+		};
+		const { container } = render(Page, { data: makeData({ botClients: [importer, BOT] }) });
+		const forms = [
+			...container.querySelectorAll('[data-testid="set-expiry-form"]')
+		] as HTMLFormElement[];
+		expect(forms).toHaveLength(2);
+		for (const f of forms) {
+			const cancel = vi.fn();
+			const d = new FormData();
+			d.set('expires_at', '');
+			submitFns.get(f)!({ formData: d, cancel });
+			flushSync();
+			expect(cancel).not.toHaveBeenCalled();
+		}
+		expect(document.getElementById('expiry-clear-form')).toBeNull();
+		// importer 입력은 여전히 필수
+		expect((forms[0]!.querySelector('input[name="expires_at"]') as HTMLInputElement).required).toBe(
+			true
+		);
 	});
 
 	it('키가 없으면 안내(샘플 채우기 없음)', () => {

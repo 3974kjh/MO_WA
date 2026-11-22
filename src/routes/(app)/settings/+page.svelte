@@ -24,6 +24,7 @@
 		applyKstOffset,
 		expiryRequired,
 		FINANCE_MANAGER_PROFILE,
+		needsExpiryClearConfirm,
 		profileLabel,
 		PROPOSE_SCOPES,
 		selectableScopes,
@@ -97,6 +98,19 @@
 	// ——— 폐기 확인 ———
 	type Bot = PageData['botClients'][number];
 	let revokeTarget = $state<Bot | null>(null);
+
+	// ——— 선택 만료 해제 확인 (Info-2, importer 제외) ———
+	// JS가 있으면 빈 값 제출을 멈추고 확인 시트를 띄운다. 확인하면 시트 안의 폼이 빈 만료를 보낸다.
+	let clearTarget = $state<Bot | null>(null);
+	function expiryEnhance(bot: Bot): SubmitFunction {
+		return ({ formData, cancel }) => {
+			applyKstOffset(formData);
+			if (needsExpiryClearConfirm(bot.profile, bot.expires_at, formData.get('expires_at'))) {
+				cancel();
+				clearTarget = bot;
+			}
+		};
+	}
 </script>
 
 <svelte:head><title>설정 · MO_WA</title></svelte:head>
@@ -243,7 +257,7 @@
 									class="inline"
 									data-testid="set-expiry-form"
 									onformdata={onExpiryFormData}
-									use:enhance={kstEnhance}
+									use:enhance={expiryEnhance(bot)}
 								>
 									<input type="hidden" name="id" value={bot.id} />
 									<input
@@ -316,6 +330,40 @@
 	{#snippet footer()}
 		<Button variant="secondary-pill" compact label="취소" onclick={() => (revokeTarget = null)} />
 		<Button type="submit" form="revoke-form" variant="primary" compact label="폐기" />
+	{/snippet}
+</Sheet>
+
+<!-- 선택 만료 해제 확인(Info-2): 확인 버튼이 시트 안의 폼으로 빈 만료를 보낸다 -->
+<Sheet
+	open={clearTarget != null}
+	onclose={() => (clearTarget = null)}
+	variant="center"
+	title="만료를 해제할까요?"
+>
+	{#if clearTarget}
+		<p class="confirm" data-testid="expiry-clear-confirm">
+			<b>{clearTarget.name}</b> 키의 만료({clearTarget.expires_at
+				? formatKstShort(clearTarget.expires_at)
+				: '—'})를 해제하면, 폐기하기 전까지 계속 쓸 수 있어요.
+		</p>
+		<form
+			id="expiry-clear-form"
+			method="POST"
+			action="?/setExpiry"
+			use:enhance={() => {
+				return async ({ update }) => {
+					clearTarget = null;
+					await update();
+				};
+			}}
+		>
+			<input type="hidden" name="id" value={clearTarget.id} />
+			<input type="hidden" name="expires_at" value="" />
+		</form>
+	{/if}
+	{#snippet footer()}
+		<Button variant="secondary-pill" compact label="취소" onclick={() => (clearTarget = null)} />
+		<Button type="submit" form="expiry-clear-form" variant="primary" compact label="만료 해제" />
 	{/snippet}
 </Sheet>
 
