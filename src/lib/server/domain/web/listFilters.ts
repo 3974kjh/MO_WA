@@ -2,7 +2,7 @@
  * FE-10: 목록 검색 필터 → PostgREST 조건. 값은 `$lib/routing/listQuery`에서 이미 정규화된 것을 받는다.
  *
  * `q`는 `.or()` 문자열에 들어가므로 PostgREST 예약 문자(`,` `(` `)` `"` `:` `\`)와
- * LIKE 와일드카드(`%` `_` `*`), 따옴표를 공백으로 바꾼 뒤 큰따옴표로 감싼다.
+ * LIKE 와일드카드(`%` `_` `*`)를 공백으로 바꾼 뒤 큰따옴표로 감싼다. 작은따옴표(`'`)는 그대로 둔다.
  * FE-04: 브리핑 q는 `reports.search_tsv` 전문 검색 + title(pg_trgm)/headline 부분 일치(briefingTextFilter).
  * 일지 q는 `journal_entries.search_tsv` 전문 검색 + title/memo_md 부분 일치(journalTextFilter).
  *
