@@ -19,7 +19,7 @@ import {
 	badgeKind,
 	type CorrectionTarget
 } from './proposals';
-import { makeItem } from './testItem';
+import { makeItem } from '../../../tests/queue/testItem';
 
 describe('고쳐서 반영 허용 키 (§7-6b · R-VAL-P07)', () => {
 	it('open_holding = 수량·평균 단가·통화, set_qty_avg = 수량·평균 단가(통화 없음), close = 없음', () => {

@@ -2,7 +2,7 @@
  * 테스트 전용 QueueItem 빌더. 화면 코드에서 import하지 않는다.
  * 값은 시안 샘플과 겹치지 않는 임의 숫자다.
  */
-import type { QueueItem } from './proposals';
+import type { QueueItem } from '$lib/queue/proposals';
 
 export function makeItem(over: Partial<QueueItem> = {}): QueueItem {
 	return {

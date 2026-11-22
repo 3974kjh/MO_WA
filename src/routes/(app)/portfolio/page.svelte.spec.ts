@@ -12,7 +12,7 @@ vi.mock('$app/navigation', () => ({
 vi.mock('$app/forms', () => ({ deserialize: (t: string) => JSON.parse(t) }));
 
 import Page from './+page.svelte';
-import { makeItem } from '$lib/queue/testItem';
+import { makeItem } from '../../../../tests/queue/testItem';
 import { makeRow } from '$lib/portfolio/testRow';
 import { toast } from '$lib/components/ui/toast.svelte';
 
