@@ -44,6 +44,12 @@ const ISO_WITH_OFFSET_RE =
 	/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(Z|[+-](\d{2}):(\d{2}))$/;
 const EXPIRES_AT_INVALID = 'expires_at must be a valid ISO datetime';
 
+/**
+ * @internal Server-only. Exported for unit tests of the settings bot-key actions only.
+ * Validates the expires_at FORMAT (offset required) and returns an ISO instant or null for ''.
+ * It does NOT reject past times or enforce any other expiry policy — do not reuse it as a
+ * general "valid future expiry" check.
+ */
 export function parseOptionalIso(raw: string): string | null | { error: string } {
 	if (raw === '') return null;
 	const m = ISO_WITH_OFFSET_RE.exec(raw);
