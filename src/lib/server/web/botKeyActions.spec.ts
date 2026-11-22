@@ -214,6 +214,42 @@ describe('handleIssueBotKey', () => {
 		expect(issueBotClientRpc).not.toHaveBeenCalled();
 	});
 
+	it.each(['equity-analyst', 'house-signal', 'custom', 'finance-manager'] as const)(
+		'N-3 no-JS: empty scopes with profile=%s → that profile defaults only',
+		async (profile) => {
+			issueBotClientRpc.mockResolvedValue({ data: publicBot({ profile }), error: null });
+			const result = await handleIssueBotKey(
+				{} as never,
+				ownerId,
+				fd({ name: `preview-${profile}`, profile, scopes: '' })
+			);
+			expect(result).toMatchObject({ ok: true });
+			const args = issueBotClientRpc.mock.calls[0]![1] as { scopes: string[] };
+			expect(args.scopes).toEqual(defaultScopesForProfile(profile));
+			if (profile !== 'finance-manager') {
+				expect(args.scopes).not.toContain('positions:propose');
+				expect(args.scopes).not.toContain('principles:propose');
+			}
+		}
+	);
+
+	it('N-3: SSR finance-manager scopes posted with another profile are still rejected (no widening)', async () => {
+		const result = await handleIssueBotKey(
+			{} as never,
+			ownerId,
+			fd({
+				name: 'preview-custom',
+				profile: 'custom',
+				scopes: JSON.stringify(defaultScopesForProfile('finance-manager'))
+			})
+		);
+		expect(result).toMatchObject({
+			status: 400,
+			data: expect.objectContaining({ ok: false, ruleIds: ['R-PERM-10'] })
+		});
+		expect(issueBotClientRpc).not.toHaveBeenCalled();
+	});
+
 	it('requires expires_at for importer', async () => {
 		const result = await handleIssueBotKey(
 			{} as never,

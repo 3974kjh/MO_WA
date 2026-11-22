@@ -5,6 +5,7 @@
 	 * - 키 원문은 발급 성공 응답(form.apiKey)에서만 1회 표시. load·URL·저장소에는 두지 않는다.
 	 * - 폐기는 확인 시트(Sheet)를 거친다. importer는 만료일 필수. 제안 권한은 finance-manager만.
 	 */
+	import { onMount } from 'svelte';
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import type { SubmitFunction } from '@sveltejs/kit';
@@ -74,6 +75,13 @@
 	const scopeChoices = $derived(selectableScopes(profile, defaults));
 	let picked = $derived<string[]>([...scopeChoices]);
 	const scopesValue = $derived(JSON.stringify(picked));
+	// N-3: JS 없이(SSR 그대로) 제출하면 hidden scopes는 빈 값 → 서버가 고른 프로필의 기본 권한을 쓴다.
+	// SSR 값에 재무 관리 봇 기본값(제안 권한 포함)을 박아 두면 프로필만 바꿔 보낼 때 거부된다.
+	// 화면이 살아나면(hydrate) 체크박스 선택을 그대로 싣는다. 서버의 권한 확대 거부는 그대로.
+	let hydrated = $state(false);
+	onMount(() => {
+		hydrated = true;
+	});
 
 	// ——— 만료 시각: KST 벽시계 → +09:00 (QA Low-1) ———
 	// datetime-local은 오프셋을 담을 수 없으니 화면 값은 두고, 실제로 보내는 FormData만 바꾼다.
@@ -201,7 +209,7 @@
 					</p>
 				{/if}
 			</fieldset>
-			<input type="hidden" name="scopes" value={scopesValue} />
+			<input type="hidden" name="scopes" value={hydrated ? scopesValue : ''} />
 			<Button type="submit" variant="primary" label="키 발급" disabled={picked.length === 0} />
 		</form>
 
