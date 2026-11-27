@@ -1105,6 +1105,55 @@ describe('FE-07 변경 요청 렌더', () => {
 			expect((fetchSpy.mock.calls[0] as [string])[0]).toBe('?/approve');
 		});
 
+		// F2 후속 Info-1: 가드에 막히면 시트를 열어 둔 채 사유를 유지하고, 잠금이 풀린 뒤 같은 사유로 보낸다.
+		it('형제 가드가 거절을 막으면 시트와 입력한 사유가 남고, 잠금이 풀린 뒤 다시 누르면 그 사유로 보낸다', async () => {
+			vi.useFakeTimers();
+			const { container } = setup([linked(), loose()]);
+			(cardOf(container, 'P-0802').querySelector('[data-action="reject"]') as HTMLElement).click();
+			flushSync();
+			const input = document.querySelector('#reject-note') as HTMLInputElement;
+			input.value = '  시세 확인 뒤 다시  ';
+			input.dispatchEvent(new Event('input', { bubbles: true }));
+			flushSync();
+			confirmApproveOf(container, 'P-0801');
+			expect(locked(container, 'P-0802')).toBe(true);
+			(document.querySelector('[data-action="reject-confirm"]') as HTMLElement).click();
+			flushSync();
+			expect(
+				toast.items.filter(
+					(t) =>
+						t.message === '같은 종목의 다른 요청을 처리하는 중이에요 · 끝난 뒤 다시 확인해 주세요'
+				)
+			).toHaveLength(1);
+			// 시트가 열려 있고 사유가 그대로다.
+			expect(document.querySelector('[data-action="reject-confirm"]')).not.toBeNull();
+			expect((document.querySelector('#reject-note') as HTMLInputElement | null)?.value).toBe(
+				'  시세 확인 뒤 다시  '
+			);
+			expect(fetchSpy).not.toHaveBeenCalled();
+			// 반영이 전송되고 재조회가 끝나 잠금이 풀린다.
+			await vi.advanceTimersByTimeAsync(6000);
+			expect(fetchSpy).toHaveBeenCalledTimes(1);
+			await vi.waitFor(() => {
+				flushSync();
+				expect(locked(container, 'P-0802')).toBe(false);
+			});
+			expect((document.querySelector('#reject-note') as HTMLInputElement | null)?.value).toBe(
+				'  시세 확인 뒤 다시  '
+			);
+			(document.querySelector('[data-action="reject-confirm"]') as HTMLElement).click();
+			await vi.advanceTimersByTimeAsync(0);
+			const calls = (fetchSpy.mock.calls as [string, RequestInit][]).map(([u, i]) => [
+				u,
+				Object.fromEntries((i.body as FormData).entries())
+			]);
+			expect(calls[1]).toEqual(['?/reject', { id: 'b', note: '시세 확인 뒤 다시' }]);
+			expect(fetchSpy).toHaveBeenCalledTimes(2);
+			// 전송한 뒤에는 시트가 닫히고 사유가 비워진다.
+			flushSync();
+			expect(document.querySelector('#reject-note')).toBeNull();
+		});
+
 		// F2 후속 Nit-1: 거절·보류 뒤 재조회 실패도 처리 안 된 거부 없이 버튼이 다시 눌린다.
 		it('거절 뒤 재조회가 실패해도 처리 안 된 거부가 없고 버튼이 다시 눌리며 거절 토스트가 남는다', async () => {
 			vi.mocked(invalidateAll).mockImplementationOnce(async () => {
