@@ -147,6 +147,23 @@ describe('FE-09 설정 화면', () => {
 		expect(document.cookie).not.toContain(KEY);
 	});
 
+	it('폐기 버튼은 danger 외곽선이고, 확인 시트에서는 취소가 채움(기본) 버튼 · 폐기는 danger 외곽선이다 (DS §0-2-7)', () => {
+		render(Page, { data: makeData() });
+		const listBtn = btn('폐기')!;
+		expect(listBtn.className).toContain('preset-outlined-error-700-300');
+		expect(listBtn.className).not.toContain('preset-filled');
+		listBtn.click();
+		flushSync();
+		const confirm = document.querySelector('button[form="revoke-form"]') as HTMLButtonElement;
+		expect(confirm.textContent?.trim()).toBe('폐기');
+		expect(confirm.className).toContain('preset-outlined-error-700-300');
+		expect(confirm.className).not.toContain('preset-filled');
+		const cancel = [...document.querySelectorAll('[role="dialog"] button')].find(
+			(b) => b.textContent?.trim() === '취소'
+		) as HTMLElement;
+		expect(cancel.className).toContain('preset-filled-brand');
+	});
+
 	it('폐기는 확인 시트를 거쳐야 제출된다(폼은 시트 안에만 있다)', () => {
 		const { container } = render(Page, { data: makeData() });
 		// N-1: 대상 키를 고르기 전에는 폐기 폼이 아예 없다(id를 상시 들고 있지 않음).

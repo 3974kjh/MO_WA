@@ -1,7 +1,13 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
-	type ButtonVariant = 'primary' | 'secondary-pill' | 'dark-utility' | 'pearl-capsule' | 'ghost';
+	type ButtonVariant =
+		| 'primary'
+		| 'secondary-pill'
+		| 'dark-utility'
+		| 'pearl-capsule'
+		| 'ghost'
+		| 'danger';
 	type ButtonType = 'button' | 'submit' | 'reset';
 
 	let {
@@ -37,7 +43,9 @@
 			'secondary-pill': 'preset-outlined-surface-500',
 			'dark-utility': 'preset-filled-surface-950-50',
 			'pearl-capsule': 'preset-tonal',
-			ghost: 'hover:preset-tonal text-muted'
+			ghost: 'hover:preset-tonal text-muted',
+			// 파괴적 동작은 채움 금지(DS §7-0 `.btn.danger`, v1.7.1)
+			danger: 'preset-outlined-error-700-300'
 		}[variant]
 	);
 

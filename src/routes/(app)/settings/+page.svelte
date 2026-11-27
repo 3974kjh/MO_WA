@@ -291,7 +291,7 @@
 									<Button type="submit" variant="ghost" compact label="한도 변경" />
 								</form>
 								<Button
-									variant="secondary-pill"
+									variant="danger"
 									compact
 									label="폐기"
 									onclick={() => (revokeTarget = bot)}
@@ -338,8 +338,9 @@
 		</form>
 	{/if}
 	{#snippet footer()}
-		<Button variant="secondary-pill" compact label="취소" onclick={() => (revokeTarget = null)} />
-		<Button type="submit" form="revoke-form" variant="primary" compact label="폐기" />
+		<!-- 파괴적 확인 시트(DS §0-2-7): 안전한 '취소'가 기본(채움) 버튼, '폐기'는 danger 외곽선 -->
+		<Button variant="primary" compact label="취소" onclick={() => (revokeTarget = null)} />
+		<Button type="submit" form="revoke-form" variant="danger" compact label="폐기" />
 	{/snippet}
 </Sheet>
 
