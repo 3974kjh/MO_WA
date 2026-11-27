@@ -153,7 +153,7 @@
 	{#if data.rows.length === 0 && !data.error}
 		<Card>
 			<EmptyState
-				icon="🧾"
+				icon={active ? '🔍' : '🧾'}
 				title={active ? '조건에 맞는 기록이 없어요' : '아직 활동 기록이 없어요'}
 				desc={active ? '필터를 바꾸거나 초기화해 보세요.' : '봇이 일하면 여기에 쌓여요.'}
 			/>

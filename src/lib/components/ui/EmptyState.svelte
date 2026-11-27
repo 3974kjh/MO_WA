@@ -11,6 +11,7 @@
 	import Target from '@lucide/svelte/icons/target';
 	import Briefcase from '@lucide/svelte/icons/briefcase';
 	import KeyRound from '@lucide/svelte/icons/key-round';
+	import ScrollText from '@lucide/svelte/icons/scroll-text';
 	import Icon from './Icon.svelte';
 
 	let {
@@ -27,7 +28,7 @@
 		action?: Snippet;
 	} = $props();
 
-	// icons.md §2 #23·#36~39·#48~53: 빈 상태 기호 → Lucide 24(장식). 대응표에 없는 기호는 글자 그대로
+	// icons.md §2 #23·#36~39·#48~54: 빈 상태 기호 → Lucide 24(장식). 대응표에 없는 기호는 글자 그대로
 	const LUCIDE = {
 		'✓': CircleCheck,
 		'🔍': SearchX,
@@ -39,7 +40,8 @@
 		'📈': ChartLine,
 		'🎯': Target,
 		'💼': Briefcase,
-		'🔑': KeyRound
+		'🔑': KeyRound,
+		'🧾': ScrollText
 	} as const;
 	// 이모지 표시 선택자(U+FE0F)가 붙은 '🗂️'도 같은 기호로 본다
 	const glyph = $derived(LUCIDE[icon.replace(/\uFE0F/g, '') as keyof typeof LUCIDE]);

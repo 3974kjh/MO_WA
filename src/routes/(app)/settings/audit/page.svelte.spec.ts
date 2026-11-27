@@ -81,6 +81,19 @@ describe('FE-09 활동 기록 화면', () => {
 		expect(text(container)).toContain('조건에 맞는 기록이 없어요');
 		expect(container.querySelector('[data-testid="audit-reset"]')).toBeTruthy();
 		expect(container.querySelector('table')).toBeNull();
+		const svg = container.querySelector('.ico svg');
+		expect(svg?.classList.contains('lucide-search-x')).toBe(true);
+		expect(svg?.getAttribute('width')).toBe('24');
+	});
+
+	it('필터 없는 빈 목록은 scroll-text 아이콘과 「아직 활동 기록이 없어요」(icons.md #54)', () => {
+		const { container } = render(Page, { data: makeData({ rows: [] }) });
+		expect(text(container)).toContain('아직 활동 기록이 없어요');
+		expect(text(container)).not.toContain('조건에 맞는 기록이 없어요');
+		const svg = container.querySelector('.ico svg');
+		expect(svg?.classList.contains('lucide-scroll-text')).toBe(true);
+		expect(svg?.getAttribute('width')).toBe('24');
+		expect(svg?.getAttribute('aria-hidden')).toBe('true');
 	});
 
 	it('상세 시트에 args_preview를 보여 준다', () => {

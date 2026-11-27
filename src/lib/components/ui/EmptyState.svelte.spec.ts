@@ -15,7 +15,8 @@ const CASES: [string, string][] = [
 	['📒', 'notebook'],
 	['🗂', 'folder-open'],
 	['🗂️', 'folder-open'],
-	['🗓', 'calendar-x']
+	['🗓', 'calendar-x'],
+	['🧾', 'scroll-text']
 ];
 
 describe('EmptyState 아이콘', () => {
@@ -31,8 +32,8 @@ describe('EmptyState 아이콘', () => {
 	});
 
 	it('대응표에 없는 기호는 글자 그대로 둔다', () => {
-		const { container } = render(EmptyState, { icon: '🧾', title: '제목' });
+		const { container } = render(EmptyState, { icon: '✳️', title: '제목' });
 		expect(container.querySelector('.ico svg')).toBeNull();
-		expect(container.querySelector('.ico')?.textContent?.trim()).toBe('🧾');
+		expect(container.querySelector('.ico')?.textContent?.trim()).toBe('✳️');
 	});
 });
