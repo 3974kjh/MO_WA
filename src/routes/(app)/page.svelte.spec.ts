@@ -40,7 +40,8 @@ describe('홈 대시보드 렌더 (FE-03)', () => {
 			expect(t, msg).toContain(msg);
 		}
 		expect(t).not.toMatch(/4,869|P-0412|NAVER|로보티즈|예시/);
-		expect(container.querySelector('svg')).toBeNull();
+		// 차트를 지어내지 않는다. 빈 상태 기호 아이콘(Lucide, icons.md §2 #23)은 차트가 아니므로 뺀다
+		expect(container.querySelector('svg:not(.lucide)')).toBeNull();
 	});
 
 	it('오류면 일반 오류 상태(원문 없음)', async () => {
