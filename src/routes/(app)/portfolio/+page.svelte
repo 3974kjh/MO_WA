@@ -212,6 +212,19 @@
 		}
 	}
 
+	// 즉시 전송하는 동작(거절·보류·확인했어요) 뒤 재조회. 실패해도 처리 안 된 거부로 남기지 않고,
+	// 다음 이동·새로고침 때 다시 읽는다. busy는 재조회 전에 이미 풀려 있어 잠금이 남지 않는다.
+	async function refresh() {
+		try {
+			await invalidateAll();
+		} catch {
+			/* 다음 이동·새로고침 때 다시 읽는다 */
+		}
+	}
+
+	const SIBLING_LOCK_TEXT =
+		'같은 종목의 다른 요청을 처리하는 중이에요 · 끝난 뒤 다시 확인해 주세요';
+
 	function setBusy(id: string, on: boolean) {
 		if (on) busy[id] = true;
 		else delete busy[id];
@@ -224,7 +237,7 @@
 		note: string | null
 	) {
 		if (siblingLocked(item)) {
-			toast.show('같은 종목의 다른 요청을 처리하는 중이에요 · 끝난 뒤 다시 확인해 주세요');
+			toast.show(SIBLING_LOCK_TEXT);
 			return;
 		}
 		optimistic[item.id] = {
@@ -323,7 +336,7 @@
 		setBusy(item.id, false);
 		if (out.kind === 'ok') toast.show('요청을 거절했어요', { tone: 'ok' });
 		else toast.show(out.kind === 'error' ? out.message : ACTION_ERROR_TEXT, { tone: 'err' });
-		await invalidateAll();
+		await refresh();
 	}
 
 	async function doHold(item: QueueItem, hold: boolean) {
@@ -336,7 +349,7 @@
 		if (out.kind === 'ok') {
 			toast.show(hold ? '요청을 보류했어요' : '확인 대기로 되돌렸어요', { tone: 'ok' });
 		} else toast.show(out.kind === 'error' ? out.message : ACTION_ERROR_TEXT, { tone: 'err' });
-		await invalidateAll();
+		await refresh();
 	}
 
 	async function doAck(item: QueueItem) {
@@ -347,7 +360,7 @@
 			delete conflicted[item.id];
 			toast.show('확인했어요 · ‘확인 필요’에서 내렸고 기록은 지난 내역에 남아요', { tone: 'ok' });
 		} else toast.show(out.kind === 'error' ? out.message : ACTION_ERROR_TEXT, { tone: 'err' });
-		await invalidateAll();
+		await refresh();
 	}
 
 	/* ── 기록 수정(§7-12, G-2 5초 유예) ── */

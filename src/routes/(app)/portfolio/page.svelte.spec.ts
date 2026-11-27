@@ -431,6 +431,27 @@ describe('FE-07 변경 요청 렌더', () => {
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
+	it('확인했어요: 전송 뒤 재조회가 실패해도 처리 안 된 거부 없이 안내가 나오고 버튼이 다시 눌린다', async () => {
+		vi.mocked(invalidateAll).mockImplementationOnce(async () => {
+			throw new Error('network');
+		});
+		const { container } = render(Page, {
+			data: {
+				...base,
+				attentionNeeded: [makeItem({ id: 'k', display_id: 'P-0901', status: 'expired' })]
+			} as never
+		});
+		const ack = () => container.querySelector('[data-action="ack"]') as HTMLElement;
+		ack().click();
+		await vi.waitFor(() => expect(invalidateAll).toHaveBeenCalledTimes(1));
+		await vi.waitFor(() => {
+			flushSync();
+			expect(ack().getAttribute('aria-disabled')).toBeNull();
+		});
+		expect(toast.items.some((t) => t.message.startsWith('확인했어요'))).toBe(true);
+		expect(toast.items.some((t) => t.tone === 'err')).toBe(false);
+	});
+
 	it('거절은 확인 뒤 바로 보낸다(5초 유예 없음)', async () => {
 		vi.useFakeTimers();
 		const { container } = render(Page, {
