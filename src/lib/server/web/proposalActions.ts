@@ -118,6 +118,19 @@ async function loadProposalMeta(
 	};
 }
 
+/**
+ * BE-17 Low-2: 동시 승인 교착(40P01)은 DB가 한쪽 트랜잭션을 통째로 되돌린 것이라(부분 반영 없음)
+ * 같은 호출을 한 번만 다시 시도한다. 두 번째도 실패하면 그 오류를 그대로 돌려준다.
+ */
+export async function retryOnceOnDeadlock<T extends { error: unknown }>(
+	call: () => PromiseLike<T>
+): Promise<T> {
+	const first = await call();
+	if ((first.error as { code?: unknown } | null)?.code !== '40P01') return first;
+	console.warn('[action] deadlock (40P01) — retrying once');
+	return await call();
+}
+
 export async function handleApprove(
 	supabase: SupabaseClient<Database>,
 	ownerId: string,
@@ -147,11 +160,13 @@ export async function handleApprove(
 	}
 
 	const repo = forUser(supabase, ownerId);
-	const { data, error } = await approveProposalRpc(repo, {
-		id,
-		overrides: validated.overrides,
-		note
-	});
+	const { data, error } = await retryOnceOnDeadlock(() =>
+		approveProposalRpc(repo, {
+			id,
+			overrides: validated.overrides,
+			note
+		})
+	);
 	if (error) {
 		const status = isConflictDbError(error) ? 409 : 400;
 		return failFromDbError(status, error);
@@ -290,12 +305,14 @@ export async function handleApprovePrinciple(
 	const summary = typeof summaryRaw === 'string' && summaryRaw.trim() ? summaryRaw.trim() : null;
 
 	const repo = forUser(supabase, ownerId);
-	const { data, error } = await approvePrincipleProposalRpc(repo, {
-		id,
-		finalBodyMd,
-		summary,
-		note
-	});
+	const { data, error } = await retryOnceOnDeadlock(() =>
+		approvePrincipleProposalRpc(repo, {
+			id,
+			finalBodyMd,
+			summary,
+			note
+		})
+	);
 	if (error) {
 		return failFromDbError(isConflictDbError(error) ? 409 : 400, error);
 	}

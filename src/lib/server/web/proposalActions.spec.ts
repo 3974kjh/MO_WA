@@ -18,16 +18,25 @@ vi.mock('$lib/server/repo', () => ({
 	applyUserCorrectionRpc: vi.fn(),
 	acknowledgeProposalRpc: vi.fn(),
 	acknowledgePrincipleProposalRpc: vi.fn(),
+	approvePrincipleProposalRpc: vi.fn(),
+	decidePrincipleProposalRpc: vi.fn(),
 	archiveRow: vi.fn(),
 	restoreRow: vi.fn()
 }));
 
 import {
 	approveProposalRpc,
+	approvePrincipleProposalRpc,
 	applyUserCorrectionRpc,
 	acknowledgeProposalRpc
 } from '$lib/server/repo';
-import { handleAck, handleApprove, handleCorrect } from './proposalActions';
+import {
+	handleAck,
+	handleApprove,
+	handleApprovePrinciple,
+	handleCorrect,
+	retryOnceOnDeadlock
+} from './proposalActions';
 
 beforeEach(() => {
 	vi.clearAllMocks();
@@ -139,6 +148,53 @@ describe('BE-11 approve action', () => {
 		expect(result.status).toBe(400);
 		expect(result.data).toMatchObject({ code: 'SUPERSEDED', status: 'superseded' });
 		expect(String(result.data.message)).not.toContain('proposal is already');
+	});
+
+	it('동시 승인 교착(40P01)은 한 번만 다시 시도해 성공을 돌려준다 (BE-17 Low-2)', async () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		vi.mocked(approveProposalRpc)
+			.mockResolvedValueOnce({
+				data: null,
+				error: { code: '40P01', message: 'deadlock detected' }
+			} as never)
+			.mockResolvedValueOnce({ data: { id: 'p1', status: 'approved' }, error: null } as never);
+		const form = new FormData();
+		form.set('id', 'p1');
+		const result = (await handleApprove(fakeSupabase({}), 'owner', form)) as {
+			ok?: boolean;
+			proposal?: { status: string };
+		};
+		warn.mockRestore();
+		expect(approveProposalRpc).toHaveBeenCalledTimes(2);
+		expect(result).toEqual({ ok: true, proposal: { id: 'p1', status: 'approved' } });
+	});
+
+	it('40P01이 두 번 이어지면 더 시도하지 않고 일반 오류(400), 다른 오류는 재시도 없음', async () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+		vi.mocked(approveProposalRpc).mockResolvedValue({
+			data: null,
+			error: { code: '40P01', message: 'deadlock detected' }
+		} as never);
+		const form = new FormData();
+		form.set('id', 'p1');
+		const r1 = (await handleApprove(fakeSupabase({}), 'owner', form)) as {
+			status: number;
+			data: Record<string, unknown>;
+		};
+		expect(approveProposalRpc).toHaveBeenCalledTimes(2);
+		expect(r1.status).toBe(400);
+		expect(r1.data.code).toBeUndefined();
+
+		vi.mocked(approveProposalRpc).mockClear();
+		vi.mocked(approveProposalRpc).mockResolvedValue({
+			data: null,
+			error: { code: '42501', message: 'nope' }
+		} as never);
+		await handleApprove(fakeSupabase({}), 'owner', form);
+		expect(approveProposalRpc).toHaveBeenCalledTimes(1);
+		warn.mockRestore();
+		log.mockRestore();
 	});
 
 	it('blocks disallowed override keys before RPC', async () => {
@@ -326,5 +382,34 @@ describe('BE-19 correct / ack actions', () => {
 			ok: true,
 			proposal: { status: 'conflict', acknowledged_at: expect.any(String) }
 		});
+	});
+});
+
+describe('BE-17 Low-2 교착 재시도', () => {
+	it('원칙 승인도 40P01이면 한 번 다시 시도한다', async () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		vi.mocked(approvePrincipleProposalRpc)
+			.mockResolvedValueOnce({ data: null, error: { code: '40P01', message: 'deadlock' } } as never)
+			.mockResolvedValueOnce({ data: { id: 'r1', status: 'approved' }, error: null } as never);
+		const form = new FormData();
+		form.set('id', 'r1');
+		const r = await handleApprovePrinciple({} as never, 'owner', form);
+		warn.mockRestore();
+		expect(approvePrincipleProposalRpc).toHaveBeenCalledTimes(2);
+		expect(r).toEqual({ ok: true, proposal: { id: 'r1', status: 'approved' } });
+	});
+
+	it('retryOnceOnDeadlock: 성공·다른 오류는 1번, 40P01은 최대 2번', async () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const ok = vi.fn(async () => ({ data: 1, error: null }));
+		expect(await retryOnceOnDeadlock(ok)).toEqual({ data: 1, error: null });
+		expect(ok).toHaveBeenCalledTimes(1);
+		const other = vi.fn(async () => ({ data: null, error: { code: '40001' } }));
+		await retryOnceOnDeadlock(other);
+		expect(other).toHaveBeenCalledTimes(1);
+		const dl = vi.fn(async () => ({ data: null, error: { code: '40P01' } }));
+		expect((await retryOnceOnDeadlock(dl)).error).toEqual({ code: '40P01' });
+		expect(dl).toHaveBeenCalledTimes(2);
+		warn.mockRestore();
 	});
 });
