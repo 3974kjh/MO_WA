@@ -3,6 +3,7 @@
 	 * 표 (FE-02, DS §7-3, H §3)
 	 * - PC: 헤더 고정, 숫자 우측 정렬 + tabular-nums, 행 호버
 	 * - 모바일(<640): mobile='auto'면 열 ≥5 & 행 ≤10 → 카드형(data-label 자동), 아니면 가로 스크롤 + 첫 열 고정 + 우측 스크롤 힌트
+	 * - PC(≥640): nowrap이면 칸 줄바꿈 없이 가로 스크롤(열이 많아 칸이 글자 단위로 꺾이는 것을 막는다). 첫 열 고정은 stickyFirst와 함께 쓴다
 	 * - 행 클릭: tabindex=0 + Enter
 	 */
 	import type { Snippet } from 'svelte';
@@ -15,6 +16,7 @@
 		rows,
 		mobile = 'auto',
 		stickyFirst = false,
+		nowrap = false,
 		caption,
 		rowKey,
 		rowLabel,
@@ -27,6 +29,8 @@
 		mobile?: MobileMode | 'auto';
 		/** PC에서도 첫 열 고정(가로 스크롤 표). 모바일 스크롤형은 항상 고정 */
 		stickyFirst?: boolean;
+		/** ≥640 에서 칸 안 줄바꿈 금지 + 넘치면 가로 스크롤(+우측 힌트). 열이 많은 표용. <640 카드형·스크롤형 규칙은 그대로 */
+		nowrap?: boolean;
 		/** 스크린리더용 표 제목 */
 		caption?: string;
 		rowKey?: (row: T, i: number) => string | number;
@@ -64,11 +68,17 @@
 	}
 </script>
 
-<div class="tbl-outer" class:hint={canScrollRight && mode === 'scroll'} data-mode={mode}>
+<div
+	class="tbl-outer"
+	class:hint={canScrollRight && (mode === 'scroll' || nowrap)}
+	data-mode={mode}
+	data-nowrap={nowrap ? '' : undefined}
+>
 	<div class="tbl-wrap table-wrap" bind:this={wrap} onscroll={updateHint}>
 		<table
 			class="tbl table {mode}"
 			class:sticky-first={stickyFirst}
+			class:nowrap
 			class:sticky-m={mode === 'scroll'}
 		>
 			{#if caption}<caption class="sr-only">{caption}</caption>{/if}
@@ -219,7 +229,23 @@
 		background: var(--color-surface-2);
 	}
 
+	@media (min-width: 640px) {
+		/* 열이 많은 표(포트폴리오 등): 표 폭을 내용 폭(max-content)으로 잡아 칸이 글자 단위로 꺾이지 않게 한다.
+		   감싸는 영역보다 넓으면 .tbl-wrap 이 가로 스크롤, 좁으면 min-width:100% 로 꽉 채운다 */
+		.nowrap {
+			width: max-content;
+			min-width: 100%;
+		}
+	}
+
 	@media (max-width: 639px) {
+		/* 카드형에서는 stickyFirst 가 카드 제목 칸을 고정하지 않는다(카드는 줄 단위로 쌓임) */
+		.cards.sticky-first th:first-child,
+		.cards.sticky-first td:first-child {
+			position: static;
+			box-shadow: none;
+			background: transparent;
+		}
 		/* 스크롤형: 첫 열 고정 */
 		.sticky-m th:first-child,
 		.sticky-m td:first-child {

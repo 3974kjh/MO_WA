@@ -662,6 +662,8 @@
 						{columns}
 						rows={visibleRows}
 						mobile="cards"
+						nowrap
+						stickyFirst
 						caption="보유·매수 계획"
 						rowKey={(r) => r.id}
 					>
