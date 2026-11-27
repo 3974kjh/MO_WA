@@ -123,3 +123,20 @@ describe('BE-11 override allowlist', () => {
 		expect(() => assertNoRemainingDaysField({ display_id: 'P-0001' })).not.toThrow();
 	});
 });
+
+describe('Nit-1: 잘못된 currency 는 R-VAL-M01(revalidate·MCP 와 같음)', () => {
+	it.each(['EUR', 'usd', '', 1, null])('open_holding override currency=%j → R-VAL-M01', (c) => {
+		const r = validateOverrides({
+			changeType: 'open_holding',
+			overrides: { currency: c as never }
+		});
+		expect(r).toMatchObject({ ok: false, ruleId: 'R-VAL-M01', key: 'currency' });
+	});
+	it('KRW·USD 는 통과', () => {
+		for (const c of ['KRW', 'USD']) {
+			expect(validateOverrides({ changeType: 'open_holding', overrides: { currency: c } }).ok).toBe(
+				true
+			);
+		}
+	});
+});

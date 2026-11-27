@@ -34,13 +34,23 @@ export function failFromDbError(
 	const mapped = all.filter((id) => !id.startsWith(UNMAPPED_MARKER));
 	const ruleIds = mapped.length > 0 ? mapped : [UNMAPPED_MARKER];
 	const conflict = isConflictDbError(err);
-	const superseded = !conflict && isSupersededDbError(err);
+	const archived = !conflict ? archivedTargetOf(err) : null;
+	const superseded = !conflict && !archived && isSupersededDbError(err);
 	console.error('[action] db error', {
 		code: err.code ?? undefined,
 		message: err.message ?? undefined,
 		constraint: err.constraint ?? undefined,
 		ruleIds: all
 	});
+	if (archived) {
+		return fail(httpStatus, {
+			ok: false as const,
+			message: ACTION_FAILED_MESSAGE,
+			ruleIds,
+			code: archived === 'position' ? 'ARCHIVED_POSITION' : 'ARCHIVED_INSTRUMENT',
+			...extra
+		});
+	}
 	if (superseded) {
 		return fail(httpStatus, {
 			ok: false as const,
@@ -70,6 +80,16 @@ export function isSupersededDbError(err: {
 	message?: string | null;
 }): boolean {
 	return err.code === 'P0001' && err.message === 'proposal is already superseded';
+}
+
+/**
+ * approve_proposal(G3)이 보관된 대상에 내는 오류. SQLSTATE MW001 = 보유 기록 보관, MW002 = 종목 보관.
+ * 코드로만 구분한다(메시지 단어로 판별하지 않는다).
+ */
+export function archivedTargetOf(err: { code?: string | null }): 'position' | 'instrument' | null {
+	if (err.code === 'MW001') return 'position';
+	if (err.code === 'MW002') return 'instrument';
+	return null;
 }
 
 export function failValidation(

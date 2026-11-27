@@ -22,6 +22,7 @@
 		overrideKeys,
 		prefill,
 		preBlockedNote,
+		proposedProblemNote,
 		readMine,
 		type FieldValues,
 		type OverrideKey,
@@ -123,6 +124,10 @@
 				<Banner tone="err"
 					><b>지금은 반영할 수 없어요</b>
 					{preBlockedNote(item)} 값을 고쳐도 반영되지 않아요.</Banner
+				>
+			{:else if proposedProblemNote(item)}
+				<Banner tone="warn"
+					><span data-testid="override-proposed-problem">{proposedProblemNote(item)}</span></Banner
 				>
 			{/if}
 

@@ -124,4 +124,31 @@ describe('승인 시점 재검증 (합친 값)', () => {
 			ruleId: 'R-FMT-13'
 		});
 	});
+
+	it('빈 값 오류는 missing 으로 표시한다(고쳐서 채울 수 있음): open_holding 필수값·set_qty_avg 둘 다 없음', () => {
+		expect(
+			run({ changeType: 'open_holding', proposedValues: { qty: 3, currency: 'KRW' } })
+		).toMatchObject({ ruleId: 'R-VAL-P04', missing: true });
+		expect(run({ proposedValues: {} })).toMatchObject({ ruleId: 'R-VAL-P07', missing: true });
+		// 값이 있는데 틀린 경우는 missing 이 아니다
+		expect(run({ proposedValues: { avg_price: 1.00005 } })).not.toHaveProperty('missing');
+		expect(run({ proposedValues: { qty: 0 } })).not.toHaveProperty('missing');
+	});
+
+	it('포지션 없는 open_holding(hasPosition=false)은 통화가 있어야 한다(M01·missing), 있거나 hasPosition 생략이면 통과', () => {
+		const v = { qty: 3, avg_price: 10 };
+		expect(
+			run({ changeType: 'open_holding', proposedValues: v, hasPosition: false })
+		).toMatchObject({ ruleId: 'R-VAL-M01', key: 'currency', missing: true });
+		expect(
+			run({
+				changeType: 'open_holding',
+				proposedValues: v,
+				overrides: { currency: 'USD' },
+				hasPosition: false
+			}).ok
+		).toBe(true);
+		expect(run({ changeType: 'open_holding', proposedValues: v }).ok).toBe(true);
+		expect(run({ changeType: 'open_holding', proposedValues: v, hasPosition: true }).ok).toBe(true);
+	});
 });

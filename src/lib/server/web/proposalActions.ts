@@ -87,6 +87,15 @@ export function parseOverrides(
 	return { ok: true, overrides: parsed as Record<string, unknown> };
 }
 
+/** pending(만료 전)·on_hold 만 재검증 대상. 만료는 DB 시계가 최종이지만 이미 지난 건 여기서 RPC 로 넘긴다. */
+function shouldRevalidate(meta: { status: string; expires_at: string | null }): boolean {
+	if (meta.status === 'on_hold') return true;
+	if (meta.status !== 'pending') return false;
+	if (!meta.expires_at) return true;
+	const t = Date.parse(meta.expires_at);
+	return Number.isNaN(t) || t > Date.now();
+}
+
 async function loadProposalMeta(
 	supabase: SupabaseClient<Database>,
 	ownerId: string,
@@ -96,10 +105,15 @@ async function loadProposalMeta(
 	proposed_by_type: 'bot' | 'user';
 	asset_type: string | null;
 	proposed_values: unknown;
+	has_position: boolean;
+	status: string;
+	expires_at: string | null;
 } | null> {
 	const { data } = await supabase
 		.from('position_proposals')
-		.select('change_type, proposed_by_type, instrument_id, proposed_values')
+		.select(
+			'change_type, proposed_by_type, instrument_id, position_id, proposed_values, status, expires_at'
+		)
 		.eq('id', id)
 		.eq('owner_id', ownerId)
 		.maybeSingle();
@@ -118,7 +132,10 @@ async function loadProposalMeta(
 		change_type: data.change_type as ProposalChangeType,
 		proposed_by_type: data.proposed_by_type as 'bot' | 'user',
 		asset_type,
-		proposed_values: data.proposed_values
+		proposed_values: data.proposed_values,
+		has_position: data.position_id != null,
+		status: data.status,
+		expires_at: data.expires_at
 	};
 }
 
@@ -169,17 +186,25 @@ export async function handleApprove(
 	}
 
 	// 승인 시점 재검증: 고치지 않은 proposed_values 까지 합친 값을 propose 때와 같은 규칙으로 다시 본다(R-FMT-13 등).
-	const merged = revalidateMergedForApprove({
-		changeType: meta.change_type,
-		proposedByType: meta.proposed_by_type,
-		proposedValues: meta.proposed_values,
-		overrides: validated.overrides,
-		assetType: meta.asset_type as 'stock' | 'etf' | 'bond' | 'cash' | null
-	});
+	// 이미 읽은 행이 아직 처리 대기(pending·on_hold)이고 만료 전일 때만 본다. 만료·superseded·종결·버전 충돌은
+	// RPC 가 먼저 가려야 하므로(L-2) 그대로 RPC 로 보낸다. RPC 도 같은 순서로 값을 다시 검사한다(G3).
+	let merged: ReturnType<typeof revalidateMergedForApprove> = { ok: true, merged: {} };
+	if (shouldRevalidate(meta)) {
+		merged = revalidateMergedForApprove({
+			changeType: meta.change_type,
+			proposedByType: meta.proposed_by_type,
+			proposedValues: meta.proposed_values,
+			overrides: validated.overrides,
+			assetType: meta.asset_type as 'stock' | 'etf' | 'bond' | 'cash' | null,
+			hasPosition: meta.has_position
+		});
+	}
 	if (!merged.ok) {
 		return failValidation(400, merged.ruleId, merged.message, {
 			key: merged.key,
-			source: merged.source
+			source: merged.source,
+			asset: meta.asset_type,
+			...(merged.missing ? { missing: true } : {})
 		});
 	}
 

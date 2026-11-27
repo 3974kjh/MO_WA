@@ -6,6 +6,7 @@
  */
 import { formatMoney } from '$lib/format/money';
 import { formatQty, type QtyAssetType } from '$lib/format/number';
+import { parseQty, type AssetType } from '$lib/schemas/qty';
 
 export type QueueStatus =
 	| 'pending'
@@ -296,6 +297,85 @@ export function itemTitle(
 
 /* ── 고쳐서 반영 입력 ── */
 
+/** 봇 평균 단가가 양수인데 소수 4자리를 넘는다(서버 R-FMT-13). 화면은 반올림해 보이므로 눈으로는 같아 보인다. */
+function needsRounding(item: Pick<QueueItem, 'proposed_values'>): boolean {
+	const a = item.proposed_values.avg_price;
+	return typeof a === 'number' && Number.isFinite(a) && a > 0 && Number(a.toFixed(4)) !== a;
+}
+
+/** 봇 요청 값과 정확히 같은가(반올림 없이). 4자리 미만 차이도 '변경'이다(M-1). 통화는 문자열 비교. */
+function sameAsBot(item: QueueItem, k: OverrideKey, v: unknown): boolean {
+	const b = item.proposed_values[k];
+	if (k === 'currency') return normValue(v) === normValue(b);
+	return num(v) === num(b);
+}
+
+/* ── 봇이 보낸 값이 그대로는 반영 안 되는 요청(승인 시점 재검증과 같은 규칙) ── */
+
+export type ProposedProblemRule =
+	| 'R-FMT-13'
+	| 'R-VAL-M02'
+	| 'R-VAL-M01'
+	| 'R-VAL-M03'
+	| 'R-VAL-P04';
+export type ProposedProblem = { ruleId: ProposedProblemRule; keys: OverrideKey[] };
+
+/**
+ * 대기·보류 봇 요청 중 봇이 보낸 값이 서버 재검증(revalidate.ts)에서 막힐 것이 확실한 건을 미리 찾는다.
+ * 규칙·순서는 revalidate.ts·MCP propose 와 같다(패리티 테스트가 고정). 맞으면 null.
+ * 대상: 값이 없거나(open_holding 의 qty·avg_price, set_qty_avg 둘 다), 수량/단가/통화가 규칙에 안 맞는 경우.
+ */
+export function proposedProblem(item: QueueItem): ProposedProblem | null {
+	if (item.kind !== 'position' || !isOpenStatus(item.status)) return null;
+	const keys = overrideKeys(item);
+	if (keys.length === 0) return null;
+	const pv = item.proposed_values;
+	const has = (k: OverrideKey) => Object.hasOwn(pv, k) && pv[k] !== undefined;
+	const bad: OverrideKey[] = [];
+	let rule: ProposedProblemRule | null = null;
+	const hit = (r: ProposedProblemRule, k: OverrideKey) => {
+		rule ??= r;
+		if (!bad.includes(k)) bad.push(k);
+	};
+	if (item.change_type === 'open_holding') {
+		if (!has('qty')) hit('R-VAL-P04', 'qty');
+		if (!has('avg_price')) hit('R-VAL-P04', 'avg_price');
+	} else if (item.change_type === 'set_qty_avg' && !has('qty') && !has('avg_price')) {
+		hit('R-VAL-P04', 'qty');
+		hit('R-VAL-P04', 'avg_price');
+	}
+	if (has('qty')) {
+		const q = pv.qty;
+		if (typeof q !== 'number' || !Number.isFinite(q)) hit('R-VAL-M03', 'qty');
+		else if (q <= 0) hit('R-VAL-P04', 'qty');
+		else if (item.asset_type && !parseQty(item.asset_type as AssetType, q, 'holding').success)
+			hit('R-VAL-M03', 'qty');
+	}
+	if (has('avg_price')) {
+		const a = pv.avg_price;
+		if (typeof a !== 'number' || !Number.isFinite(a) || a <= 0) hit('R-VAL-M02', 'avg_price');
+		else if (Number(a.toFixed(4)) !== a) hit('R-FMT-13', 'avg_price');
+	}
+	if (has('currency') && pv.currency !== 'KRW' && pv.currency !== 'USD') {
+		hit('R-VAL-M01', 'currency');
+	}
+	if (item.change_type === 'open_holding' && !item.position_id && !has('currency')) {
+		hit('R-VAL-M01', 'currency');
+	}
+	return rule ? { ruleId: rule, keys: bad } : null;
+}
+
+/** 카드·시트 안내 문장(봇 값 문제 + 푸는 방법). 규칙 코드는 넣지 않는다. */
+export function proposedProblemNote(item: QueueItem): string {
+	const p = proposedProblem(item);
+	if (!p) return '';
+	if (p.ruleId === 'R-VAL-P04' && p.keys.some((k) => !Object.hasOwn(item.proposed_values, k))) {
+		return MISSING_TEXT;
+	}
+	if (p.ruleId === 'R-VAL-M03') return qtyProblemText(item.asset_type);
+	return PROPOSED_RULE_TEXT[p.ruleId] ?? '';
+}
+
 /** 입력란 미리 채움: 봇 요청 값. USD 평균 단가는 2자리(D-4, 저장은 그대로). */
 export function prefill(item: QueueItem): Record<OverrideKey, string> {
 	const out: Record<OverrideKey, string> = { qty: '', avg_price: '', currency: '' };
@@ -303,6 +383,7 @@ export function prefill(item: QueueItem): Record<OverrideKey, string> {
 		const v = item.proposed_values[k];
 		if (v == null) continue;
 		if (k === 'currency') out[k] = String(v);
+		else if (k === 'avg_price' && needsRounding(item)) out[k] = String(Number(num(v)!.toFixed(4)));
 		else if (k === 'avg_price' && item.currency === 'USD') out[k] = (num(v) ?? 0).toFixed(2);
 		else out[k] = String(num(v) ?? '');
 	}
@@ -310,14 +391,16 @@ export function prefill(item: QueueItem): Record<OverrideKey, string> {
 }
 
 /**
- * 입력 문자열 → 내가 고친 값. 미리 채운 글자를 그대로 두면 봇 요청 원래 값(4자리)을 쓴다.
+ * 입력 문자열 → 내가 고친 값. 미리 채운 글자를 그대로 두면 봇 요청 원래 값을 쓴다.
+ * 단, 봇 평균 단가가 소수 4자리를 넘으면(그대로는 반영 불가) 미리 채운 값이 4자리로 맞춘 값이므로
+ * 원래 값이 아니라 그 값을 '내가 고친 값'으로 읽는다(M-1: 반올림 값이 변경으로 보내진다).
  */
 export function readMine(item: QueueItem, inputs: Record<OverrideKey, string>): FieldValues {
 	const pre = prefill(item);
 	const out: FieldValues = {};
 	for (const k of overrideKeys(item)) {
 		const raw = (inputs[k] ?? '').trim();
-		if (raw === pre[k]) {
+		if (raw === pre[k] && !(k === 'avg_price' && needsRounding(item))) {
 			out[k] = item.proposed_values[k] ?? null;
 		} else if (k === 'currency') {
 			out[k] = raw || null;
@@ -388,6 +471,9 @@ export function checkOverrideDraft(
 		if (a == null || !(a > 0)) {
 			errs.push('평균 단가를 입력하세요');
 			invalid.push('avg_price');
+		} else if (Number(a.toFixed(4)) !== a) {
+			errs.push('평균 단가는 소수점 아래 4자리까지 입력할 수 있어요');
+			invalid.push('avg_price');
 		}
 	}
 	if (keys.includes('currency') && mine.currency !== 'KRW' && mine.currency !== 'USD') {
@@ -411,7 +497,7 @@ export function checkOverrideDraft(
 			invalid: []
 		};
 	}
-	if (keys.every((k) => normValue(mine[k]) === normValue(item.proposed_values[k]))) {
+	if (keys.every((k) => sameAsBot(item, k, mine[k]))) {
 		return {
 			ok: false,
 			message: '봇 요청 값과 같아요. 그대로 반영하려면 시트를 닫고 ‘반영’을 누르세요.',
@@ -428,7 +514,7 @@ export function checkOverrideDraft(
 			invalid: []
 		};
 	}
-	const changed = keys.filter((k) => normValue(mine[k]) !== normValue(item.proposed_values[k]));
+	const changed = keys.filter((k) => !sameAsBot(item, k, mine[k]));
 	return {
 		ok: true,
 		message: `확인 단계로 넘어갈 수 있어요. 고친 항목: ${changed.map((k) => FIELD_LABEL[k]).join('·')}`,
@@ -441,7 +527,7 @@ export function checkOverrideDraft(
 export function buildOverrides(item: QueueItem, mine: FieldValues): Record<string, unknown> | null {
 	const out: Record<string, unknown> = {};
 	for (const k of overrideKeys(item)) {
-		if (normValue(mine[k]) === normValue(item.proposed_values[k])) continue;
+		if (sameAsBot(item, k, mine[k])) continue;
 		out[k] = k === 'currency' ? mine[k] : num(mine[k]);
 	}
 	return Object.keys(out).length > 0 ? out : null;
@@ -466,7 +552,7 @@ export function diff3Rows(item: QueueItem, mine: FieldValues): Diff3Row[] {
 		now: f(k, cur[k]),
 		bot: f(k, item.proposed_values[k]),
 		mine: f(k, mine[k]),
-		changed: normValue(mine[k]) !== normValue(item.proposed_values[k])
+		changed: !sameAsBot(item, k, mine[k])
 	}));
 }
 
@@ -589,6 +675,8 @@ export const SUPERSEDED_TEXT = '이미 새 요청으로 바뀌었어요. 새 요
 const RULE_TEXT: Record<string, string> = {
 	'R-VAL-M03': '주식·ETF 수량은 1주 단위로만 입력할 수 있어요.',
 	'R-VAL-M02': '수량·평균 단가·통화를 확인해 주세요.',
+	'R-VAL-M01': '통화는 원 또는 달러만 고를 수 있어요.',
+	'R-VAL-P04': '수량과 평균 단가는 0보다 큰 값으로 입력해 주세요.',
 	'R-VAL-P07': '고칠 수 없는 값이 들어 있어요. 시트를 닫고 다시 시도해 주세요.',
 	'R-VAL-P11': '수정 이유는 한 줄, 120자 안으로 입력해 주세요.',
 	'R-FMT-13': '평균 단가는 소수 넷째 자리까지 입력할 수 있어요.'
@@ -598,19 +686,39 @@ const RULE_TEXT: Record<string, string> = {
  * 승인 시점 재검증(서버 `source: 'proposed'`): 문제가 사용자가 입력한 값이 아니라 봇이 보낸 값에 있다.
  * 사용자 입력 안내(RULE_TEXT)와 문구가 다르다 — 어떻게 풀지(고쳐서 반영 / 거절)를 알려 준다.
  */
+/** 수량 단위 안내: 괄호는 종목 종류에 맞게(주식·ETF 정수 / 현금 소수 둘째 자리), 모르면 뺀다. */
+function qtyProblemText(asset: string | null): string {
+	const unit =
+		asset === 'stock' || asset === 'etf'
+			? '(주식·ETF는 정수만)'
+			: asset === 'cash'
+				? '(현금은 소수 둘째 자리까지)'
+				: '';
+	return `봇이 보낸 수량이 0 이하이거나 이 종목에 쓸 수 없는 단위예요${unit}. ‘고쳐서 반영’으로 값을 맞추거나 거절해 주세요.`;
+}
+
+const MISSING_TEXT =
+	'봇이 보낸 요청에 수량이나 평균 단가가 빠져 있어요. ‘고쳐서 반영’으로 값을 채우거나 거절해 주세요.';
+
+const ARCHIVED_TEXT = {
+	ARCHIVED_POSITION:
+		'이 보유 기록은 보관돼 있어서 반영할 수 없어요. 거절하거나, 보관함에서 복원한 뒤 새 요청을 받아 주세요.',
+	ARCHIVED_INSTRUMENT:
+		'이 종목은 보관돼 있어서 반영할 수 없어요. 거절하거나, 보관함에서 복원한 뒤 새 요청을 받아 주세요.'
+} as const;
+
 const PROPOSED_RULE_TEXT: Record<string, string> = {
 	'R-FMT-13':
-		'봇이 보낸 평균 단가가 소수 넷째 자리를 넘어서 그대로는 반영할 수 없어요. ‘고쳐서 반영’으로 값을 맞추거나 거절해 주세요.',
+		'봇이 보낸 평균 단가가 소수점 아래 4자리를 넘어서 그대로는 반영할 수 없어요. ‘고쳐서 반영’으로 값을 맞추거나 거절해 주세요.',
 	'R-VAL-M02':
-		'봇이 보낸 평균 단가가 올바르지 않아 그대로는 반영할 수 없어요. ‘고쳐서 반영’으로 값을 맞추거나 거절해 주세요.',
+		'봇이 보낸 평균 단가가 숫자가 아니거나 0 이하라서 그대로는 반영할 수 없어요. ‘고쳐서 반영’으로 값을 맞추거나 거절해 주세요.',
 	'R-VAL-M01':
 		'봇이 보낸 통화가 원화·달러가 아니라서 그대로는 반영할 수 없어요. ‘고쳐서 반영’으로 값을 맞추거나 거절해 주세요.',
-	'R-VAL-M03':
-		'봇이 보낸 수량이 규칙에 맞지 않아 그대로는 반영할 수 없어요. ‘고쳐서 반영’으로 값을 맞추거나 거절해 주세요.',
+	'R-VAL-M03': qtyProblemText(null),
 	'R-VAL-P04':
 		'봇이 보낸 요청에 수량이나 평균 단가가 빠졌거나 0 이하예요. ‘고쳐서 반영’으로 값을 채우거나 거절해 주세요.',
-	'R-VAL-P07': '봇이 보낸 값에 고칠 수 없는 항목이 있어요. 이 요청은 거절해 주세요.',
-	'R-PERM-13': '봇이 보낸 값에 고칠 수 없는 항목이 있어요. 이 요청은 거절해 주세요.'
+	'R-VAL-P07': '봇이 바꿀 수 없는 항목까지 보내서 이 요청은 반영할 수 없어요. 거절해 주세요.',
+	'R-PERM-13': '봇이 바꿀 수 없는 항목까지 보내서 이 요청은 반영할 수 없어요. 거절해 주세요.'
 };
 
 /**
@@ -627,6 +735,8 @@ export function classifyActionResult(result: {
 		status?: unknown;
 		ruleIds?: unknown;
 		source?: unknown;
+		missing?: unknown;
+		asset?: unknown;
 		proposal?: { status?: unknown } | null;
 	};
 	if (result.type === 'success') {
@@ -638,8 +748,20 @@ export function classifyActionResult(result: {
 		if (result.status === 409 || data.code === 'CONFLICT' || data.status === 'conflict') {
 			return { kind: 'conflict' };
 		}
+		if (data.code === 'ARCHIVED_POSITION' || data.code === 'ARCHIVED_INSTRUMENT') {
+			return { kind: 'error', message: ARCHIVED_TEXT[data.code] };
+		}
 		const ids = Array.isArray(data.ruleIds) ? (data.ruleIds as unknown[]) : [];
+		if (data.source === 'proposed' && data.missing === true) {
+			return { kind: 'error', message: MISSING_TEXT };
+		}
 		const texts = data.source === 'proposed' ? PROPOSED_RULE_TEXT : RULE_TEXT;
+		if (data.source === 'proposed' && ids.includes('R-VAL-M03')) {
+			return {
+				kind: 'error',
+				message: qtyProblemText(typeof data.asset === 'string' ? data.asset : null)
+			};
+		}
 		for (const id of ids) {
 			if (typeof id === 'string' && texts[id]) return { kind: 'error', message: texts[id] };
 		}

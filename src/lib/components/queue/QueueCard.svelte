@@ -14,6 +14,8 @@
 		isPreBlocked,
 		itemTitle,
 		preBlockedNote,
+		proposedProblem,
+		proposedProblemNote,
 		type QueueItem
 	} from '$lib/queue/proposals';
 	import DiffTable from './DiffTable.svelte';
@@ -44,12 +46,23 @@
 	let modified = $derived(badge === 'modified');
 	let blocked = $derived(mode === 'open' && isPreBlocked(item));
 	let overridable = $derived(canOverride(item));
+	// 봇이 보낸 값이 그대로는 반영 안 됨: '반영'만 막고 '고쳐서 반영'·보류·거절은 연다.
+	let problem = $derived(mode === 'open' && !blocked && !!proposedProblem(item));
 	let noteId = $derived(`why-${item.id}`);
 	let isUser = $derived(item.proposed_by_type === 'user');
 	let isPrinciple = $derived(item.kind === 'principle');
 	let noteEl = $state<HTMLElement>();
 
 	const kst = (d: string | null) => (d ? formatKstShort(d) : '');
+
+	function guardApprove(fn: (() => void) | undefined) {
+		if (busy) return;
+		if (problem) {
+			noteEl?.focus();
+			return;
+		}
+		guard(fn);
+	}
 
 	function guard(fn: (() => void) | undefined) {
 		if (busy) return;
@@ -174,14 +187,26 @@
 				<span><b>지금은 반영할 수 없어요</b> {preBlockedNote(item)}</span>
 			</p>
 		{/if}
+		{#if problem}
+			<p
+				class="status-note alert"
+				id={noteId}
+				tabindex="-1"
+				bind:this={noteEl}
+				data-testid="proposed-problem"
+			>
+				<span aria-hidden="true">⚠</span>
+				<span>{proposedProblemNote(item)}</span>
+			</p>
+		{/if}
 		<div class="acts" class:c3={!overridable}>
 			<button
 				type="button"
 				class="btn-primary-m btn preset-filled-brand"
 				data-action="approve"
-				aria-disabled={blocked || busy ? 'true' : undefined}
-				aria-describedby={blocked ? noteId : undefined}
-				onclick={() => guard(() => onapprove?.(item))}>반영</button
+				aria-disabled={blocked || problem || busy ? 'true' : undefined}
+				aria-describedby={blocked || problem ? noteId : undefined}
+				onclick={() => guardApprove(() => onapprove?.(item))}>반영</button
 			>
 			{#if overridable}
 				<button

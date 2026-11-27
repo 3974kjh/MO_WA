@@ -18,6 +18,9 @@ import {
 	readMine,
 	sortHistory,
 	badgeKind,
+	diff3Rows,
+	proposedProblem,
+	proposedProblemNote,
 	type CorrectionTarget
 } from './proposals';
 import { makeItem } from '../../../tests/queue/testItem';
@@ -226,10 +229,46 @@ describe('폼 액션 결과 분류', () => {
 		});
 		expect(r).toMatchObject({ kind: 'error' });
 		expect((r as { message: string }).message).toContain(
-			'봇이 보낸 평균 단가가 소수 넷째 자리를 넘어서'
+			'봇이 보낸 평균 단가가 소수점 아래 4자리를 넘어서'
 		);
 		expect((r as { message: string }).message).toContain('고쳐서 반영');
 		expect((r as { message: string }).message).not.toMatch(/R-[A-Z]+-\d+/);
+		expect(
+			(
+				classifyActionResult({
+					type: 'failure',
+					status: 400,
+					data: { ruleIds: ['R-VAL-M02'], source: 'proposed' }
+				}) as { message: string }
+			).message
+		).toContain('숫자가 아니거나 0 이하');
+		expect(
+			(
+				classifyActionResult({
+					type: 'failure',
+					status: 400,
+					data: { ruleIds: ['R-VAL-M03'], source: 'proposed', asset: 'stock' }
+				}) as { message: string }
+			).message
+		).toContain('이 종목에 쓸 수 없는 단위예요(주식·ETF는 정수만)');
+		expect(
+			(
+				classifyActionResult({
+					type: 'failure',
+					status: 400,
+					data: { ruleIds: ['R-VAL-P07'], source: 'proposed' }
+				}) as { message: string }
+			).message
+		).toBe('봇이 바꿀 수 없는 항목까지 보내서 이 요청은 반영할 수 없어요. 거절해 주세요.');
+		expect(
+			(
+				classifyActionResult({
+					type: 'failure',
+					status: 400,
+					data: { ruleIds: ['R-PERM-13'], source: 'proposed' }
+				}) as { message: string }
+			).message
+		).toBe('봇이 바꿀 수 없는 항목까지 보내서 이 요청은 반영할 수 없어요. 거절해 주세요.');
 		// 사용자 입력 문제(source 없음/override)는 기존 문구
 		for (const data of [{ ruleIds: ['R-FMT-13'] }, { ruleIds: ['R-FMT-13'], source: 'override' }]) {
 			expect(classifyActionResult({ type: 'failure', status: 400, data })).toEqual({
@@ -295,5 +334,171 @@ describe('폼 액션 결과 분류', () => {
 				data: { proposal: { status: 'expired' } }
 			})
 		).toEqual({ kind: 'ok', status: 'expired' });
+	});
+});
+
+/* ── M-1: 반올림 표시와 '고쳐서 반영' 루프 ── */
+describe('M-1: 봇 평균 단가가 소수 5자리 이상일 때(화면은 반올림해 보임)', () => {
+	const usd = (v: number) =>
+		makeItem({
+			currency: 'USD',
+			proposed_values: { qty: 5, avg_price: v },
+			live_values: { qty: 4, avg_price: 1, currency: 'USD', status: 'holding' }
+		});
+	const krw = (v: number) =>
+		makeItem({
+			currency: 'KRW',
+			proposed_values: { qty: 5, avg_price: v },
+			live_values: { qty: 4, avg_price: 1, currency: 'KRW', status: 'holding' }
+		});
+
+	for (const [name, mk, v, rounded] of [
+		['USD 1.00005', usd, 1.00005, '1.0001'],
+		['KRW 100.00005', krw, 100.00005, '100.0001']
+	] as const) {
+		it(`${name}: 문제로 표시되고 입력칸에는 4자리로 맞춘 값이 채워진다(2자리 '1.00' 아님)`, () => {
+			const item = mk(v);
+			expect(proposedProblem(item)).toEqual({ ruleId: 'R-FMT-13', keys: ['avg_price'] });
+			expect(prefill(item).avg_price).toBe(rounded);
+			expect(proposedProblemNote(item)).toContain('소수점 아래 4자리를 넘어서');
+		});
+
+		it(`${name}: 채워진 값을 그대로 두면 변경으로 읽어 overrides 로 보낸다(루프 없음)`, () => {
+			const item = mk(v);
+			const mine = readMine(item, { ...prefill(item) });
+			expect(mine.avg_price).toBe(Number(rounded));
+			expect(buildOverrides(item, mine)).toEqual({ avg_price: Number(rounded) });
+			expect(diff3Rows(item, mine).find((r) => r.key === 'avg_price')?.changed).toBe(true);
+			const check = checkOverrideDraft(item, mine, '4자리로 맞춤');
+			expect(check.ok).toBe(true);
+			expect(checkOverrideDraft(item, mine, '').message).not.toContain('봇 요청 값과 같아요');
+			expect(checkOverrideDraft(item, mine, '').field).toBe('reason');
+		});
+
+		it(`${name}: 사용자가 다른 4자리 값을 입력해도 그 값이 보내진다`, () => {
+			const item = mk(v);
+			const mine = readMine(item, { ...prefill(item), avg_price: '1.5' });
+			expect(buildOverrides(item, mine)).toEqual({ avg_price: 1.5 });
+		});
+	}
+
+	it('사용자가 5자리 이상을 직접 입력하면 입력 오류로 막는다(서버 R-FMT-13 과 같은 규칙)', () => {
+		const item = usd(1.00005);
+		const mine = readMine(item, { ...prefill(item), avg_price: '2.00005' });
+		const c = checkOverrideDraft(item, mine, '이유');
+		expect(c).toMatchObject({ ok: false, field: 'avg_price', invalid: ['avg_price'] });
+		expect(c.message).toContain('소수점 아래 4자리');
+		expect(c.message).not.toMatch(/R-[A-Z]+-\d+/);
+	});
+
+	it('4자리 이내 값은 문제 없음: 2자리 표시로 두면 원래 값을 그대로 쓴다(변경 아님)', () => {
+		const item = usd(1.2345);
+		expect(proposedProblem(item)).toBeNull();
+		expect(prefill(item).avg_price).toBe('1.23');
+		const mine = readMine(item, { ...prefill(item) });
+		expect(mine.avg_price).toBe(1.2345);
+		expect(buildOverrides(item, mine)).toBeNull();
+		expect(checkOverrideDraft(item, mine, '').message).toContain('봇 요청 값과 같아요');
+	});
+
+	it('4자리 미만 차이(1.2345 → 1.23)도 변경으로 센다(반올림 비교로 지워지지 않는다)', () => {
+		const item = usd(1.2345);
+		const mine = readMine(item, { ...prefill(item), avg_price: '1.2346' });
+		expect(buildOverrides(item, mine)).toEqual({ avg_price: 1.2346 });
+	});
+
+	it('이미 처리된(approved 등) 요청과 close·사용자 기록 수정은 문제로 보지 않는다', () => {
+		expect(proposedProblem({ ...usd(1.00005), status: 'approved' })).toBeNull();
+		expect(proposedProblem({ ...usd(1.00005), change_type: 'close' })).toBeNull();
+		expect(proposedProblem({ ...usd(1.00005), proposed_by_type: 'user' })).toBeNull();
+	});
+});
+
+describe('proposedProblem: 서버 재검증과 같은 규칙으로 미리 찾기', () => {
+	const mk = (pv: Record<string, unknown>, over = {}) =>
+		makeItem({ proposed_values: pv as never, ...over });
+	it.each([
+		[{ qty: 2, avg_price: 0 }, 'R-VAL-M02', ['avg_price']],
+		[{ qty: 2, avg_price: -1 }, 'R-VAL-M02', ['avg_price']],
+		[{ qty: 2, avg_price: '5' }, 'R-VAL-M02', ['avg_price']],
+		[{ qty: 0 }, 'R-VAL-P04', ['qty']],
+		[{ qty: -3 }, 'R-VAL-P04', ['qty']],
+		[{ qty: 1.5 }, 'R-VAL-M03', ['qty']],
+		[{ qty: '3' }, 'R-VAL-M03', ['qty']],
+		[{ qty: 2, avg_price: 1.00005 }, 'R-FMT-13', ['avg_price']],
+		[{}, 'R-VAL-P04', ['qty', 'avg_price']]
+	])('set_qty_avg %j → %s', (pv, rule, keys) => {
+		expect(proposedProblem(mk(pv))).toEqual({ ruleId: rule, keys });
+	});
+	it('정상 값·KRW 큰 단가는 문제 없음', () => {
+		expect(proposedProblem(mk({ qty: 10, avg_price: 70000 }))).toBeNull();
+		expect(proposedProblem(mk({ avg_price: 23090.0123 }))).toBeNull();
+	});
+	it('open_holding: 값 누락·통화 오류·포지션 없는 새 보유의 통화 누락', () => {
+		const oh = (pv: Record<string, unknown>, over = {}) =>
+			mk(pv, { change_type: 'open_holding', ...over });
+		expect(proposedProblem(oh({ qty: 3, currency: 'KRW' }))?.ruleId).toBe('R-VAL-P04');
+		expect(proposedProblem(oh({ qty: 3, avg_price: 1, currency: 'EUR' }))).toEqual({
+			ruleId: 'R-VAL-M01',
+			keys: ['currency']
+		});
+		expect(proposedProblem(oh({ qty: 3, avg_price: 1 }, { position_id: null }))).toEqual({
+			ruleId: 'R-VAL-M01',
+			keys: ['currency']
+		});
+		expect(proposedProblem(oh({ qty: 3, avg_price: 1 }))).toBeNull(); // 포지션 있음: 통화는 기존 값
+		expect(
+			proposedProblem(oh({ qty: 3, avg_price: 1, currency: 'USD' }, { position_id: null }))
+		).toBeNull();
+	});
+	it('수량 단위 안내는 종목 종류에 맞는다(주식·ETF 정수 / 현금 둘째 자리 / 그 밖은 괄호 없음)', () => {
+		expect(proposedProblemNote(mk({ qty: 1.5 }, { asset_type: 'stock' }))).toContain(
+			'(주식·ETF는 정수만)'
+		);
+		expect(proposedProblemNote(mk({ qty: 1.555 }, { asset_type: 'cash' }))).toContain(
+			'(현금은 소수 둘째 자리까지)'
+		);
+		const n = proposedProblemNote(mk({ qty: 0 }, { asset_type: 'bond' }));
+		expect(n).not.toContain('(');
+		expect(n).toContain('고쳐서 반영');
+	});
+	it('안내 문장에는 규칙 코드가 없다', () => {
+		for (const pv of [{ qty: 0 }, { avg_price: 0 }, { avg_price: 1.00005 }, {}]) {
+			expect(proposedProblemNote(mk(pv))).not.toMatch(/R-[A-Z]+-\d+/);
+		}
+	});
+});
+
+describe('Nit-2·G3: 사용자 입력 문구와 보관 오류 문구', () => {
+	const cls = (data: Record<string, unknown>) =>
+		classifyActionResult({ type: 'failure', status: 400, data }) as { message: string };
+	it('R-VAL-P04·R-VAL-M01(사용자 입력)은 일반 문구가 아니라 전용 문구', () => {
+		expect(cls({ ruleIds: ['R-VAL-P04'] }).message).toBe(
+			'수량과 평균 단가는 0보다 큰 값으로 입력해 주세요.'
+		);
+		expect(cls({ ruleIds: ['R-VAL-M01'] }).message).toBe('통화는 원 또는 달러만 고를 수 있어요.');
+	});
+	it('봇 값이 비어서 막힌 경우(missing)는 거절만이 아니라 고쳐서 반영을 안내한다', () => {
+		for (const ruleId of ['R-VAL-P07', 'R-VAL-P04', 'R-VAL-M01']) {
+			const m = cls({ ruleIds: [ruleId], source: 'proposed', missing: true }).message;
+			expect(m).toContain('고쳐서 반영');
+			expect(m).toContain('빠져 있어요');
+		}
+		// 비어 있지 않은 P07(바꿀 수 없는 항목)은 그대로 거절 안내
+		expect(cls({ ruleIds: ['R-VAL-P07'], source: 'proposed' }).message).toContain('거절해 주세요');
+		expect(cls({ ruleIds: ['R-VAL-P07'], source: 'proposed' }).message).not.toContain(
+			'고쳐서 반영'
+		);
+	});
+	it('보관된 보유 기록·종목은 코드로 구분해 서로 다른 문구, 규칙 코드·영문 없음', () => {
+		const a = cls({ code: 'ARCHIVED_POSITION', ruleIds: ['R-VAL-P02'] }).message;
+		const b = cls({ code: 'ARCHIVED_INSTRUMENT', ruleIds: ['R-VAL-P02'] }).message;
+		expect(a).toContain('보유 기록은 보관');
+		expect(b).toContain('종목은 보관');
+		expect(a).not.toBe(b);
+		for (const m of [a, b]) {
+			expect(m).toContain('거절');
+			expect(m).not.toMatch(/R-[A-Z]+-\d+|archived/);
+		}
 	});
 });

@@ -35,6 +35,8 @@ export type RevalidateErr = {
 	key: string;
 	/** 문제 값이 봇이 보낸 값(proposed)인지 사용자가 고친 값(override)인지. 화면 문구가 달라진다 */
 	source: 'proposed' | 'override';
+	/** 값이 비어 있어서(필수 값 없음) 생긴 오류. '고쳐서 반영'으로 채울 수 있다(화면이 '거절'만 안내하지 않게). */
+	missing?: true;
 };
 export type RevalidateOk = { ok: true; merged: Record<string, unknown> };
 
@@ -48,6 +50,8 @@ export function revalidateMergedForApprove(input: {
 	/** validateOverrides 를 통과한 값 */
 	overrides: Record<string, unknown>;
 	assetType?: AssetType | null;
+	/** false 이면(포지션 없는 open_holding) 새 보유를 만들므로 통화가 필요하다. 생략하면 이 검사를 건너뛴다. */
+	hasPosition?: boolean;
 }): RevalidateOk | RevalidateErr {
 	const { proposedValues, overrides } = input;
 	const fail = (ruleId: RevalidateRuleId, key: string, message: string): RevalidateErr => ({
@@ -88,14 +92,17 @@ export function revalidateMergedForApprove(input: {
 	}
 
 	if (input.changeType === 'open_holding' && !(has(merged, 'qty') && has(merged, 'avg_price'))) {
-		return fail('R-VAL-P04', 'proposed_values', '[R-VAL-P04] open_holding needs qty and avg_price');
+		return {
+			...fail('R-VAL-P04', 'proposed_values', '[R-VAL-P04] open_holding needs qty and avg_price'),
+			missing: true
+		};
 	}
 	if (input.changeType === 'set_qty_avg' && !has(merged, 'qty') && !has(merged, 'avg_price')) {
-		return fail(
-			'R-VAL-P07',
-			'proposed_values',
-			'[R-VAL-P07] set_qty_avg needs qty and/or avg_price'
-		);
+		// MCP propose 와 같은 규칙 ID(R-VAL-P07)를 쓰되 missing 으로 표시해 화면이 '고쳐서 반영'을 안내하게 한다.
+		return {
+			...fail('R-VAL-P07', 'proposed_values', '[R-VAL-P07] set_qty_avg needs qty and/or avg_price'),
+			missing: true
+		};
 	}
 
 	if (has(merged, 'qty')) {
@@ -124,6 +131,16 @@ export function revalidateMergedForApprove(input: {
 	}
 	if (has(merged, 'currency') && !CURRENCIES.includes(merged.currency as string)) {
 		return fail('R-VAL-M01', 'currency', "[R-VAL-M01] currency must be 'KRW' or 'USD'");
+	}
+	if (
+		input.changeType === 'open_holding' &&
+		input.hasPosition === false &&
+		!has(merged, 'currency')
+	) {
+		return {
+			...fail('R-VAL-M01', 'currency', '[R-VAL-M01] currency is required to open a new holding'),
+			missing: true
+		};
 	}
 	return { ok: true, merged };
 }

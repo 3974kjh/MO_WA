@@ -47,6 +47,10 @@ function fakeSupabase(meta: {
 	proposed_by_type?: string;
 	asset_type?: string;
 	proposed_values?: unknown;
+	status?: string;
+	/** ISO. 생략하면 한 시간 뒤(만료 전) */
+	expires_at?: string | null;
+	position_id?: string | null;
 	position?: { id: string; instrument_id: string; approval_version: number } | null;
 }) {
 	return {
@@ -61,7 +65,13 @@ function fakeSupabase(meta: {
 										change_type: meta.change_type ?? 'set_qty_avg',
 										proposed_by_type: meta.proposed_by_type ?? 'bot',
 										proposed_values: 'proposed_values' in meta ? meta.proposed_values : { qty: 2 },
-										instrument_id: 'inst-1'
+										instrument_id: 'inst-1',
+										position_id: 'position_id' in meta ? meta.position_id : 'pos-1',
+										status: meta.status ?? 'pending',
+										expires_at:
+											'expires_at' in meta
+												? meta.expires_at
+												: new Date(Date.now() + 3_600_000).toISOString()
 									}
 								})
 							})
@@ -388,6 +398,146 @@ describe('승인 시점 재검증 (proposed_values 를 합친 값으로 다시 �
 		expect(approveProposalRpc).not.toHaveBeenCalled();
 		const good = await handleApprove(sb(), 'owner', form({ avg_price: 1000 }));
 		expect(good).toMatchObject({ ok: true });
+	});
+
+	// ── L-2: 만료·superseded·종결은 RPC 가 먼저 가린다 ──
+	describe('L-2 순서: 이미 읽은 행이 처리 대기가 아니거나 만료면 재검증을 건너뛰고 RPC 로 보낸다', () => {
+		const badValues = { qty: 2, avg_price: 1.00005 };
+		for (const status of [
+			'superseded',
+			'expired',
+			'approved',
+			'rejected',
+			'conflict',
+			'cancelled'
+		]) {
+			it(`status=${status} + 잘못된 값 → 재검증 없이 RPC`, async () => {
+				vi.mocked(approveProposalRpc).mockResolvedValue({
+					data: null,
+					error: { code: 'P0001', message: `proposal is already ${status}` }
+				} as never);
+				const r = (await handleApprove(
+					fakeSupabase({ proposed_values: badValues, status }),
+					'owner',
+					form()
+				)) as Fail & { data: { code?: string } };
+				expect(approveProposalRpc).toHaveBeenCalledTimes(1);
+				expect(r.data.ruleIds).not.toContain('R-FMT-13');
+				if (status === 'superseded') expect(r.data.code).toBe('SUPERSEDED');
+			});
+		}
+
+		it('pending 이지만 만료 시각이 지났다 → RPC(expired 로 바꿈)가 먼저', async () => {
+			vi.mocked(approveProposalRpc).mockResolvedValue({
+				data: { id: 'p1', status: 'expired' },
+				error: null
+			} as never);
+			const r = await handleApprove(
+				fakeSupabase({
+					proposed_values: badValues,
+					expires_at: new Date(Date.now() - 1000).toISOString()
+				}),
+				'owner',
+				form()
+			);
+			expect(approveProposalRpc).toHaveBeenCalledTimes(1);
+			expect(r).toMatchObject({ ok: true, proposal: { status: 'expired' } });
+		});
+
+		it('on_hold 는 만료 대상이 아니므로 재검증한다', async () => {
+			const r = (await handleApprove(
+				fakeSupabase({
+					proposed_values: badValues,
+					status: 'on_hold',
+					expires_at: new Date(Date.now() - 1000).toISOString()
+				}),
+				'owner',
+				form()
+			)) as Fail;
+			expect(r.data.ruleIds).toEqual(['R-FMT-13']);
+			expect(approveProposalRpc).not.toHaveBeenCalled();
+		});
+
+		it('pending 이고 만료 전이면 재검증한다', async () => {
+			const r = (await handleApprove(
+				fakeSupabase({ proposed_values: badValues, status: 'pending' }),
+				'owner',
+				form()
+			)) as Fail;
+			expect(r.data.ruleIds).toEqual(['R-FMT-13']);
+		});
+	});
+
+	// ── L-3: RPC 가 받는 overrides 는 검사를 통과한 바로 그 객체 ──
+	it('RPC 는 validateOverrides 를 통과(정규화)한 overrides 를 받는다 — 원본 파싱 값이 아니다', async () => {
+		vi.mocked(approveProposalRpc).mockResolvedValue(okRpc);
+		await handleApprove(
+			fakeSupabase({ proposed_values: { qty: 2, avg_price: 10 } }),
+			'owner',
+			form({ avg_price: '12.5000' })
+		);
+		const sent = vi.mocked(approveProposalRpc).mock.calls[0]![1].overrides;
+		expect(sent).toEqual({ avg_price: 12.5 });
+		expect(typeof (sent as { avg_price: unknown }).avg_price).toBe('number');
+	});
+
+	it('RPC 로 가는 overrides 에는 검사를 통과하지 못한 추가 키가 섞이지 않는다', async () => {
+		vi.mocked(approveProposalRpc).mockResolvedValue(okRpc);
+		const r = (await handleApprove(
+			fakeSupabase({ proposed_values: { qty: 2 } }),
+			'owner',
+			form({ qty: 3, trigger_price: 5 })
+		)) as Fail;
+		expect(r.status).toBe(400);
+		expect(approveProposalRpc).not.toHaveBeenCalled();
+	});
+
+	// ── Nit-2: 빈 값은 '고쳐서 반영'으로 채울 수 있다고 표시 ──
+	it('set_qty_avg 에 두 값이 모두 없으면 missing 표시(화면이 고쳐서 반영을 안내)', async () => {
+		const r = (await handleApprove(
+			fakeSupabase({ proposed_values: {} }),
+			'owner',
+			form()
+		)) as Fail & { data: { missing?: boolean } };
+		expect(r.data).toMatchObject({ ruleIds: ['R-VAL-P07'], source: 'proposed', missing: true });
+		const fixed = await (async () => {
+			vi.mocked(approveProposalRpc).mockResolvedValue(okRpc);
+			return handleApprove(fakeSupabase({ proposed_values: {} }), 'owner', form({ qty: 3 }));
+		})();
+		expect(fixed).toMatchObject({ ok: true });
+	});
+
+	it('포지션 없는 open_holding 에 통화가 없으면 M01(missing) — 고쳐서 채울 수 있다', async () => {
+		const r = (await handleApprove(
+			fakeSupabase({
+				change_type: 'open_holding',
+				position_id: null,
+				proposed_values: { qty: 3, avg_price: 10 }
+			}),
+			'owner',
+			form()
+		)) as Fail & { data: { missing?: boolean } };
+		expect(r.data).toMatchObject({ ruleIds: ['R-VAL-M01'], missing: true, source: 'proposed' });
+		expect(approveProposalRpc).not.toHaveBeenCalled();
+	});
+
+	// ── G3: 보관 대상 오류 코드 ──
+	it('RPC 가 MW001(보관된 보유 기록)·MW002(보관된 종목)를 내면 코드로 구분해 돌려준다', async () => {
+		for (const [code, want] of [
+			['MW001', 'ARCHIVED_POSITION'],
+			['MW002', 'ARCHIVED_INSTRUMENT']
+		] as const) {
+			vi.mocked(approveProposalRpc).mockResolvedValue({
+				data: null,
+				error: { code, message: '[R-VAL-P02] position is archived; restore it or reject' }
+			} as never);
+			const r = (await handleApprove(fakeSupabase({}), 'owner', form())) as Fail & {
+				data: { code?: string; message: string };
+			};
+			expect(r.status).toBe(400);
+			expect(r.data.code).toBe(want);
+			expect(r.data.message).not.toMatch(/R-|archived/);
+		}
 	});
 
 	it('close 승인은 proposed {} 라 재검증을 그대로 통과한다', async () => {

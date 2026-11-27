@@ -43,7 +43,7 @@ export type OverrideValidationOk = {
 
 export type OverrideValidationErr = {
 	ok: false;
-	ruleId: 'R-VAL-P07' | 'R-PERM-13' | 'R-VAL-M03' | 'R-VAL-M02' | 'R-FMT-13';
+	ruleId: 'R-VAL-P07' | 'R-PERM-13' | 'R-VAL-M03' | 'R-VAL-M02' | 'R-VAL-M01' | 'R-FMT-13';
 	message: string;
 	key?: string;
 };
@@ -131,9 +131,9 @@ export function validateOverrides(input: {
 			if (value !== 'KRW' && value !== 'USD') {
 				return {
 					ok: false,
-					ruleId: 'R-VAL-M02',
+					ruleId: 'R-VAL-M01',
 					key: 'currency',
-					message: '[R-VAL-M02] currency must be KRW or USD'
+					message: '[R-VAL-M01] currency must be KRW or USD'
 				};
 			}
 			out.currency = value;

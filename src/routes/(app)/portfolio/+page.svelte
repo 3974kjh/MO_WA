@@ -66,6 +66,7 @@
 		classifyActionResult,
 		diffRows,
 		isPreBlocked,
+		proposedProblem,
 		sortHistory,
 		SUPERSEDED_TEXT,
 		type ActionOutcome,
@@ -325,7 +326,7 @@
 
 	function confirmApprove() {
 		const item = approveTarget;
-		if (!item || isPreBlocked(item)) return;
+		if (!item || isPreBlocked(item) || proposedProblem(item)) return;
 		approveTarget = null;
 		commitApprove(item, null, null);
 	}
@@ -852,7 +853,10 @@
 			type="button"
 			class="btn-primary-m btn preset-filled-brand"
 			data-action="approve-confirm"
-			aria-disabled={approveTarget && isPreBlocked(approveTarget) ? 'true' : undefined}
+			aria-disabled={approveTarget &&
+			(isPreBlocked(approveTarget) || proposedProblem(approveTarget))
+				? 'true'
+				: undefined}
 			onclick={confirmApprove}>반영하기</button
 		>
 	{/snippet}
