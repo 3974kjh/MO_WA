@@ -12,7 +12,7 @@ vi.mock('$app/navigation', () => ({
 vi.mock('$app/forms', () => ({ deserialize: (t: string) => JSON.parse(t) }));
 
 import Page from './+page.svelte';
-import { makeRow } from '$lib/portfolio/testRow';
+import { makeRow } from '../../../../tests/portfolio/testRow';
 import { G4_NOTICE } from '$lib/portfolio/view';
 
 const base = {

@@ -14,7 +14,7 @@ vi.mock('$app/forms', () => ({ deserialize: (t: string) => JSON.parse(t) }));
 import { invalidateAll } from '$app/navigation';
 import Page from './+page.svelte';
 import { makeItem } from '../../../../tests/queue/testItem';
-import { makeRow } from '$lib/portfolio/testRow';
+import { makeRow } from '../../../../tests/portfolio/testRow';
 import { toast } from '$lib/components/ui/toast.svelte';
 
 const base = {

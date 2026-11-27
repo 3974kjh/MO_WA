@@ -17,7 +17,7 @@ import {
 	sortRows,
 	unitText
 } from './view';
-import { makeRow } from './testRow';
+import { makeRow } from '../../../tests/portfolio/testRow';
 
 const detail = (over: Record<string, unknown>) => ({
 	id: 'p1',
