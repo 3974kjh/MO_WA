@@ -1105,6 +1105,47 @@ describe('FE-07 변경 요청 렌더', () => {
 			expect((fetchSpy.mock.calls[0] as [string])[0]).toBe('?/approve');
 		});
 
+		// F2 후속 Nit-1: 거절·보류 뒤 재조회 실패도 처리 안 된 거부 없이 버튼이 다시 눌린다.
+		it('거절 뒤 재조회가 실패해도 처리 안 된 거부가 없고 버튼이 다시 눌리며 거절 토스트가 남는다', async () => {
+			vi.mocked(invalidateAll).mockImplementationOnce(async () => {
+				throw new Error('network');
+			});
+			const { container } = setup([loose({ instrument_id: 'inst-9' })]);
+			(cardOf(container, 'P-0802').querySelector('[data-action="reject"]') as HTMLElement).click();
+			flushSync();
+			(document.querySelector('[data-action="reject-confirm"]') as HTMLElement).click();
+			await vi.waitFor(() => expect(invalidateAll).toHaveBeenCalledTimes(1));
+			await vi.waitFor(() => {
+				flushSync();
+				expect(
+					cardOf(container, 'P-0802')
+						.querySelector('[data-action="reject"]')!
+						.getAttribute('aria-disabled')
+				).toBeNull();
+			});
+			expect(toast.items.some((t) => t.message === '요청을 거절했어요')).toBe(true);
+			expect(toast.items.some((t) => t.tone === 'err')).toBe(false);
+		});
+
+		it('보류 뒤 재조회가 실패해도 처리 안 된 거부가 없고 버튼이 다시 눌리며 보류 토스트가 남는다', async () => {
+			vi.mocked(invalidateAll).mockImplementationOnce(async () => {
+				throw new Error('network');
+			});
+			const { container } = setup([loose({ instrument_id: 'inst-9' })]);
+			(cardOf(container, 'P-0802').querySelector('[data-action="hold"]') as HTMLElement).click();
+			await vi.waitFor(() => expect(invalidateAll).toHaveBeenCalledTimes(1));
+			await vi.waitFor(() => {
+				flushSync();
+				expect(
+					cardOf(container, 'P-0802')
+						.querySelector('[data-action="hold"]')!
+						.getAttribute('aria-disabled')
+				).toBeNull();
+			});
+			expect(toast.items.some((t) => t.message === '요청을 보류했어요')).toBe(true);
+			expect(toast.items.some((t) => t.tone === 'err')).toBe(false);
+		});
+
 		it('형제가 없으면 거절은 그대로 바로 전송된다', async () => {
 			vi.useFakeTimers();
 			const { container } = setup([linked(), loose({ instrument_id: 'inst-2' })]);
