@@ -164,13 +164,37 @@ describe('FE-09 설정 화면', () => {
 		expect(cancel.className).toContain('preset-filled-brand');
 	});
 
+	it('확인 시트 설명은 시안 문구(즉시 연결 불가·되돌릴 수 없음)이고, 중지된 키 행은 흐리게 · 버튼 없음 (DS §7 설정)', () => {
+		const stopped = {
+			...BOT,
+			id: '22222222-2222-4222-8222-222222222222',
+			name: '멈춘봇',
+			revoked_at: '2026-11-25T00:00:00Z'
+		};
+		const { container } = render(Page, { data: makeData({ botClients: [BOT, stopped] }) });
+		const rows = [...container.querySelectorAll('li.row')] as HTMLElement[];
+		const live = rows.find((r) => r.dataset.botId === BOT.id)!;
+		const dead = rows.find((r) => r.dataset.botId === stopped.id)!;
+		expect(getComputedStyle(live).opacity).toBe('1');
+		expect(getComputedStyle(dead).opacity).toBe('0.6');
+		expect([...dead.querySelectorAll('button')].some((b) => text(b).trim() === '사용 중지')).toBe(
+			false
+		);
+		expect(text(dead)).toContain('중지됨');
+		btn('사용 중지')!.click();
+		flushSync();
+		const body = text(document.querySelector('[data-testid="revoke-confirm"]'));
+		expect(body).toContain('사용을 중지하면 즉시 이 키로 연결할 수 없고 되돌릴 수 없어요.');
+		expect(body).not.toContain('폐기');
+	});
+
 	it('사용 중지는 확인 시트를 거쳐야 제출된다(폼은 시트 안에만 있다)', () => {
 		const { container } = render(Page, { data: makeData() });
 		// N-1: 대상 키를 고르기 전에는 사용 중지 폼이 아예 없다(id를 상시 들고 있지 않음).
 		expect(document.getElementById('revoke-form')).toBeNull();
 		btn('사용 중지')!.click();
 		flushSync();
-		expect(text(document.body)).toContain('키를 사용 중지할까요?');
+		expect(text(document.body)).toContain('키 사용을 중지할까요?');
 		expect(text(document.querySelector('[data-testid="revoke-confirm"]'))).toContain('더미봇');
 		const form = document.getElementById('revoke-form') as HTMLFormElement;
 		expect(form).toBeTruthy();

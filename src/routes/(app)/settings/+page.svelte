@@ -254,7 +254,7 @@
 								<span class="muted">만료 {formatKstShort(bot.expires_at)}</span>
 							{/if}
 							{#if bot.revoked_at}
-								<span class="revoked">사용 중지됨 {formatKstShort(bot.revoked_at)}</span>
+								<span class="revoked">중지됨 {formatKstShort(bot.revoked_at)}</span>
 							{/if}
 						</div>
 						{#if !bot.revoked_at}
@@ -316,11 +316,12 @@
 	open={revokeTarget != null}
 	onclose={() => (revokeTarget = null)}
 	variant="center"
-	title="키를 사용 중지할까요?"
+	title="키 사용을 중지할까요?"
 >
 	{#if revokeTarget}
 		<p class="confirm" data-testid="revoke-confirm">
-			<b>{revokeTarget.name}</b> 키를 사용 중지하면 이 봇은 바로 접속할 수 없고, 되돌릴 수 없어요.
+			<b>{revokeTarget.name}</b> 키 — 사용을 중지하면 <b>즉시</b> 이 키로 연결할 수 없고 되돌릴 수 없어요.
+			봇이 계속 쓰려면 새 연결 키를 만들어 봇 설정을 바꿔야 해요.
 		</p>
 		<form
 			id="revoke-form"
@@ -462,6 +463,10 @@
 		flex-wrap: wrap;
 		gap: 8px;
 		align-items: end;
+	}
+	/* 사용 중지된 키 행은 흐리게(DS §7 설정 · 봇 연결) */
+	.row[data-revoked='1'] {
+		opacity: 0.6;
 	}
 	.muted {
 		margin: 0;
