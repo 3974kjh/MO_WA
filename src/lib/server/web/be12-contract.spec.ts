@@ -59,7 +59,8 @@ describe('BE-12 route contracts', () => {
 		expect(server).toMatch(/handleIssueBotKey\([\s\S]*\{\s*setHeaders\s*\}/);
 		expect(actions).toMatch(/cache-control['"]:\s*['"]no-store['"]/);
 		expect(page).toMatch(/from '\$app\/forms'/);
-		expect(page).toMatch(/use:enhance/);
+		// 발급 폼 자체가 enhance를 써야 한다(주석·다른 폼의 use:enhance로는 통과하지 않게, BE-12 N-5).
+		expect(page).toMatch(/<form\b[^>]*data-testid="bot-issue-form"[^>]*use:enhance=\{kstEnhance\}/);
 	});
 
 	it('issue action documents one-time apiKey field', () => {
