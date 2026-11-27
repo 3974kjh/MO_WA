@@ -1,4 +1,8 @@
 <script lang="ts">
+	import CircleAlert from '@lucide/svelte/icons/circle-alert';
+	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
+	import Icon from './Icon.svelte';
+
 	let {
 		title = '데이터를 불러오지 못했어요',
 		desc,
@@ -8,11 +12,11 @@
 </script>
 
 <div class="state" role="alert">
-	<div class="ico" aria-hidden="true">!</div>
+	<div class="ico" aria-hidden="true"><Icon icon={CircleAlert} size={24} /></div>
 	<h4>{title}</h4>
 	{#if desc}<p class="desc">{desc}</p>{/if}
 	{#if onretry}<button type="button" class="btn-primary-m btn preset-filled-brand" onclick={onretry}
-			>{retryLabel}</button
+			><Icon icon={RefreshCw} />{retryLabel}</button
 		>{/if}
 </div>
 

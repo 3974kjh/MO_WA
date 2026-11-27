@@ -29,4 +29,4 @@
 	let Cmp = $derived(MAP[icon]);
 </script>
 
-<Cmp {size} strokeWidth={1.8} aria-hidden="true" />
+<Cmp {size} strokeWidth={1.8} class="shrink-0" aria-hidden="true" focusable="false" />

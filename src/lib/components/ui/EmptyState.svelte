@@ -1,5 +1,11 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import SearchX from '@lucide/svelte/icons/search-x';
+	import Notebook from '@lucide/svelte/icons/notebook';
+	import FolderOpen from '@lucide/svelte/icons/folder-open';
+	import CalendarX from '@lucide/svelte/icons/calendar-x';
+	import Icon from './Icon.svelte';
 
 	let {
 		icon = '🔍',
@@ -14,10 +20,22 @@
 		/** 행동 버튼(필터 초기화 등) */
 		action?: Snippet;
 	} = $props();
+
+	// icons.md §2 #23·#36~39: 빈 상태 기호 → Lucide 24. 대응표에 없는 기호는 글자 그대로(READY.md 열린 질문)
+	const LUCIDE = {
+		'✓': CircleCheck,
+		'🔍': SearchX,
+		'📒': Notebook,
+		'🗂': FolderOpen,
+		'🗓': CalendarX
+	} as const;
+	const glyph = $derived(LUCIDE[icon as keyof typeof LUCIDE]);
 </script>
 
 <div class="state">
-	<div class="ico" aria-hidden="true">{icon}</div>
+	<div class="ico" aria-hidden="true">
+		{#if glyph}<Icon icon={glyph} size={24} />{:else}{icon}{/if}
+	</div>
 	<h4>{title}</h4>
 	{#if desc}<p class="desc">{desc}</p>{/if}
 	{#if action}<div class="act">{@render action()}</div>{/if}
