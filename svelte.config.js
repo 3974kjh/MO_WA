@@ -1,4 +1,8 @@
 import adapter from '@sveltejs/adapter-cloudflare';
+import { installDevRouteOmit } from './scripts/prod-omit-dev-routes.mjs';
+
+// CF_PAGES=1 only (Pages Git + `pnpm build`). No-op for dev/tests. See scripts/prod-omit-dev-routes.mjs.
+installDevRouteOmit();
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
