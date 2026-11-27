@@ -262,10 +262,18 @@
 					delete optimistic[item.id];
 					toast.show('기한이 지나 반영하지 않았어요 · ‘확인 필요’에서 볼 수 있어요');
 				}
-				await invalidateAll();
-				delete optimistic[item.id];
+				// 재조회가 실패(throw)해도 낙관 상태는 풀어 카드가 잠긴 채 남지 않게 한다.
+				try {
+					await invalidateAll();
+				} catch {
+					// 재조회 실패는 다음 이동·새로고침 때 다시 읽는다(처리되지 않은 거부로 남기지 않음).
+				} finally {
+					delete optimistic[item.id];
+				}
 			},
 			() => {
+				// 화면 이동·닫기로 버려지면 더는 누를 수 없는 '되돌리기' 토스트도 내린다.
+				toast.dismiss(toastId);
 				delete optimistic[item.id];
 			}
 		);
@@ -384,10 +392,17 @@
 				} else if (out.kind === 'error') {
 					toast.show(out.message, { tone: 'err' });
 				}
-				await invalidateAll();
-				delete correctionLocal[target.id];
+				// 잠금은 재조회가 끝난 뒤에 푼다(먼저 풀면 재조회 중 두 번째 수정이 409). throw해도 푼다.
+				try {
+					await invalidateAll();
+				} catch {
+					// 재조회 실패는 다음 이동·새로고침 때 다시 읽는다(처리되지 않은 거부로 남기지 않음).
+				} finally {
+					delete correctionLocal[target.id];
+				}
 			},
 			() => {
+				toast.dismiss(toastId);
 				delete correctionLocal[target.id];
 			}
 		);

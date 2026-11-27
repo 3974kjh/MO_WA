@@ -11,6 +11,7 @@ vi.mock('$app/navigation', () => ({
 }));
 vi.mock('$app/forms', () => ({ deserialize: (t: string) => JSON.parse(t) }));
 
+import { invalidateAll } from '$app/navigation';
 import Page from './+page.svelte';
 import { makeItem } from '../../../../tests/queue/testItem';
 import { makeRow } from '$lib/portfolio/testRow';
@@ -53,6 +54,10 @@ const cardOf = (c: Element, id: string) =>
 
 let fetchSpy: ReturnType<typeof vi.fn>;
 beforeEach(() => {
+	// 토스트는 앱 전역 싱글턴이라 앞 테스트의 토스트가 남으면 다음 단언이 공허하게 통과한다.
+	toast.items = [];
+	vi.mocked(invalidateAll).mockReset();
+	vi.mocked(invalidateAll).mockImplementation(async () => {});
 	fetchSpy = vi.fn(
 		async () =>
 			new Response(
@@ -543,11 +548,28 @@ describe('FE-07 변경 요청 렌더', () => {
 		flushSync();
 		expect(correctionSheet()).toBeNull();
 
-		// 전송 완료 → 풀림, 두 번째 예약은 없었다
+		// 전송은 끝났지만 재조회(invalidateAll)가 아직이면 계속 잠김
+		let refreshed: () => void = () => {};
+		vi.mocked(invalidateAll).mockImplementationOnce(
+			() =>
+				new Promise<void>((resolve) => {
+					refreshed = resolve;
+				})
+		);
 		release(new Response(JSON.stringify({ type: 'success', status: 200, data: { ok: true } })));
-		await vi.advanceTimersByTimeAsync(10);
+		await vi.waitFor(() => expect(invalidateAll).toHaveBeenCalledTimes(1));
 		flushSync();
-		expect(correctBtn(container).getAttribute('aria-disabled')).toBeNull();
+		expect(correctBtn(container).getAttribute('aria-disabled')).toBe('true');
+		correctBtn(container).click();
+		flushSync();
+		expect(correctionSheet()).toBeNull();
+
+		// 재조회가 끝나야 풀림, 두 번째 예약은 없었다
+		refreshed();
+		await vi.waitFor(() => {
+			flushSync();
+			expect(correctBtn(container).getAttribute('aria-disabled')).toBeNull();
+		});
 		await vi.advanceTimersByTimeAsync(6000);
 		expect(correctCalls()).toHaveLength(1);
 		correctBtn(container).click();
@@ -570,6 +592,43 @@ describe('FE-07 변경 요청 렌더', () => {
 		expect(correctBody(0).get('qty')).toBe('9');
 		expect(correctBody(0).get('reason')).toBe('다시 수정');
 		expect(correctBody(0).get('base_version')).toBe('5');
+	});
+
+	it('Low-2: 재조회(invalidateAll)가 실패해도 잠금이 풀린다', async () => {
+		vi.useFakeTimers();
+		vi.mocked(invalidateAll).mockImplementationOnce(async () => {
+			throw new Error('network');
+		});
+		const { container } = render(Page, { data: correctionData as never });
+		submitCorrection(container, '8', '증권사 앱 확인');
+		expect(correctBtn(container).getAttribute('aria-disabled')).toBe('true');
+		await vi.advanceTimersByTimeAsync(5100);
+		expect(correctCalls()).toHaveLength(1);
+		await vi.waitFor(() => {
+			flushSync();
+			expect(correctBtn(container).getAttribute('aria-disabled')).toBeNull();
+		});
+	});
+
+	it('pagehide로 버려진 예약은 누를 수 없는 되돌리기 토스트도 내린다(반영·기록 수정)', async () => {
+		vi.useFakeTimers();
+		const { container } = render(Page, {
+			data: {
+				...correctionData,
+				queue: { items: [makeItem({ id: 'd', display_id: 'P-0901' })], total: 1 }
+			} as never
+		});
+		(cardOf(container, 'P-0901').querySelector('[data-action="approve"]') as HTMLElement).click();
+		flushSync();
+		(document.querySelector('[data-action="approve-confirm"]') as HTMLElement).click();
+		flushSync();
+		submitCorrection(container, '8', '증권사 앱 확인');
+		expect(toast.items.filter((t) => t.action?.label === '되돌리기')).toHaveLength(2);
+		window.dispatchEvent(new Event('pagehide'));
+		flushSync();
+		expect(toast.items.filter((t) => t.action?.label === '되돌리기')).toHaveLength(0);
+		await vi.advanceTimersByTimeAsync(6000);
+		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
 	const principleItem = (over: Parameters<typeof makeItem>[0] = {}) =>
@@ -882,6 +941,36 @@ describe('FE-07 변경 요청 렌더', () => {
 			expect(locked(container, 'P-0801')).toBe(false);
 		});
 
+		it('과잠금 없음: 보유 position의 set_qty_avg 유예 중에도 같은 종목 planned position의 open_holding은 열려 있다', () => {
+			vi.useFakeTimers();
+			const { container } = setup([
+				linked(),
+				makeItem({
+					id: 'c',
+					display_id: 'P-0803',
+					change_type: 'open_holding',
+					position_id: 'pos-2',
+					instrument_id: 'inst-1'
+				})
+			]);
+			confirmApproveOf(container, 'P-0801');
+			expect(locked(container, 'P-0803')).toBe(false);
+		});
+
+		it('과잠금 없음: 종목이 다른 position 없는 open_holding 둘은 서로 잠그지 않는다', async () => {
+			vi.useFakeTimers();
+			const { container } = setup([
+				loose({ id: 'b1', display_id: 'P-0811', instrument_id: 'inst-1' }),
+				loose({ id: 'b2', display_id: 'P-0812', instrument_id: 'inst-2' })
+			]);
+			confirmApproveOf(container, 'P-0811');
+			expect(locked(container, 'P-0812')).toBe(false);
+			confirmApproveOf(container, 'P-0812');
+			await vi.advanceTimersByTimeAsync(5100);
+			expect(fetchSpy).toHaveBeenCalledTimes(2);
+			expect(toast.items.some((t) => t.message.startsWith('같은 종목의 다른 요청'))).toBe(false);
+		});
+
 		it('같은 position_id는 방어적으로 계속 잠근다', () => {
 			vi.useFakeTimers();
 			const { container } = setup([
@@ -918,7 +1007,9 @@ describe('FE-07 변경 요청 렌더', () => {
 		await vi.advanceTimersByTimeAsync(5100);
 		expect((fetchSpy.mock.calls[0] as [string])[0]).toBe('?/approvePrinciple');
 		await vi.waitFor(() =>
-			expect(toast.items.some((t) => t.message.includes('확인 필요'))).toBe(true)
+			expect(
+				toast.items.some((t) => t.message === '반영 안 됨(보유가 달라짐) · ‘확인 필요’로 옮겼어요')
+			).toBe(true)
 		);
 		expect(document.querySelector('[data-testid="override-edit"]')).toBeNull();
 	});
