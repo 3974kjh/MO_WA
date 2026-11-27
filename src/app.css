@@ -357,6 +357,10 @@ input[type='datetime-local'].field-control--plain::-webkit-calendar-picker-indic
 	.sheet .btn:not(.btn-sm) {
 		min-height: 2.75rem;
 	}
+	/* DS v1.7.2: 주 행동 btn-primary-m 은 모바일 44·16px (overrides 는 높이만 지정 — 시안 파일은 그대로 두고 여기서 글자만 보강) */
+	.btn-primary-m {
+		font-size: 1rem;
+	}
 }
 
 @keyframes mw-spin {

@@ -340,9 +340,15 @@
 		</form>
 	{/if}
 	{#snippet footer()}
-		<!-- 파괴적 확인 시트(DS §7 설정 시안): 안전한 '취소'는 외곽선 기본 버튼, '사용 중지'는 danger 외곽선 -->
-		<Button variant="secondary-pill" compact label="취소" onclick={() => (revokeTarget = null)} />
-		<Button type="submit" form="revoke-form" variant="danger" compact label="사용 중지" />
+		<!-- 파괴적 확인 시트(DS §7 설정 시안 v1.7.2): 두 버튼은 주 행동이라 compact/btn-sm 금지. btn + btn-primary-m(PC·태블릿 40, 모바일 44·16px). 취소=외곽선 기본, 사용 중지=danger 외곽선 -->
+		<button
+			type="button"
+			class="btn-primary-m btn preset-outlined-surface-500"
+			onclick={() => (revokeTarget = null)}>취소</button
+		>
+		<button type="submit" form="revoke-form" class="btn-primary-m btn preset-outlined-error-700-300"
+			>사용 중지</button
+		>
 	{/snippet}
 </Sheet>
 
@@ -375,8 +381,15 @@
 		</form>
 	{/if}
 	{#snippet footer()}
-		<Button variant="secondary-pill" compact label="취소" onclick={() => (clearTarget = null)} />
-		<Button type="submit" form="expiry-clear-form" variant="primary" compact label="만료 해제" />
+		<!-- 확인 시트 두 버튼은 주 행동(DS v1.7.2): compact/btn-sm 금지, btn + btn-primary-m -->
+		<button
+			type="button"
+			class="btn-primary-m btn preset-outlined-surface-500"
+			onclick={() => (clearTarget = null)}>취소</button
+		>
+		<button type="submit" form="expiry-clear-form" class="btn-primary-m btn preset-filled-brand"
+			>만료 해제</button
+		>
 	{/snippet}
 </Sheet>
 

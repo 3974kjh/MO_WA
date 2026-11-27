@@ -845,7 +845,7 @@
 	{#snippet footer()}
 		<button
 			type="button"
-			class="btn preset-outlined-surface-500"
+			class="btn-primary-m btn preset-outlined-surface-500"
 			onclick={() => (approveTarget = null)}>취소</button
 		>
 		<button
@@ -895,7 +895,7 @@
 	{#snippet footer()}
 		<button
 			type="button"
-			class="btn preset-outlined-surface-500"
+			class="btn-primary-m btn preset-outlined-surface-500"
 			onclick={() => {
 				rejectTarget = null;
 				rejectNotice = null;
@@ -903,7 +903,7 @@
 		>
 		<button
 			type="button"
-			class="btn preset-outlined-error-700-300"
+			class="btn-primary-m btn preset-outlined-error-700-300"
 			data-action="reject-confirm"
 			onclick={confirmReject}>거절</button
 		>

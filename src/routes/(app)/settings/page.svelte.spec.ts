@@ -157,12 +157,19 @@ describe('FE-09 설정 화면', () => {
 		const confirm = document.querySelector('button[form="revoke-form"]') as HTMLButtonElement;
 		expect(confirm.textContent?.trim()).toBe('사용 중지');
 		expect(confirm.className).toContain('preset-outlined-error-700-300');
+		expect(confirm.className).toContain('btn-primary-m');
+		expect(confirm.className).not.toContain('btn-sm');
 		expect(confirm.className).not.toContain('preset-filled');
 		const cancel = [...document.querySelectorAll('[role="dialog"] button')].find(
 			(b) => b.textContent?.trim() === '취소'
 		) as HTMLElement;
 		expect(cancel.className).toContain('preset-outlined-surface-500');
+		expect(cancel.className).toContain('btn-primary-m');
+		expect(cancel.className).not.toContain('btn-sm');
 		expect(cancel.className).not.toContain('preset-filled');
+		// 목록의 '사용 중지'는 행 보조 버튼이라 compact 유지
+		expect(listBtn.className).toContain('btn-sm');
+		expect(listBtn.className).not.toContain('btn-primary-m');
 	});
 
 	it('확인 시트 설명은 시안 문구(즉시 연결 불가·되돌릴 수 없음)이고, 중지된 키 행은 흐리게 · 버튼 없음 (DS §7 설정)', () => {
