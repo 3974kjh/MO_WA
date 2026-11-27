@@ -1,4 +1,4 @@
-/* MO_WA ← Skeleton 규칙 덮어쓰기 — v1.7.2 (2026-11-27, 디자이너 결정 D-2·D-4; v1.7.1 = select 화살표 여백; v1.7.2 = 위험 버튼 빨간 글자·hover)
+/* MO_WA ← Skeleton 규칙 덮어쓰기 — v1.7.3 (2026-11-27, 디자이너 결정 D-2·D-4; v1.7.1 = select 화살표 여백; v1.7.2 = 위험 버튼 빨간 글자·hover; v1.7.3 = 입력 테두리 한 줄·자동완성·mw-input-group)
  * 파일 위치(구현): src/lib/styles/skeleton-overrides.css, 전역 CSS 맨 마지막에 import(레이어 밖 → Skeleton @utility 보다 우선).
  * 왜: Skeleton 기본값은 --text-base(우리 15px) 기준이라 btn·input 높이가 28px 로 나와 클릭 하한 40/44 를 못 지킴. 포커스 색·비활성 표현도 우리 규칙과 다름.
  * 원칙: 크기·포커스·비활성·폼 리셋 색만 덮는다. 색 램프·모양은 skeleton-mowa.css 에서. dark: 변형 금지(값은 tokens.css 변수가 모드에 따라 바뀜).
@@ -42,10 +42,34 @@
 .input[aria-invalid="true"], .select[aria-invalid="true"], .textarea[aria-invalid="true"] { --tw-ring-color: var(--color-up); --tw-ring-shadow: inset 0 0 0 2px var(--color-up); }
 .label-text { font-size: var(--text-sm); line-height: 1.25rem; font-weight: 600; color: var(--color-text); } /* Skeleton 기본 12px → 13px(v1.1 보조 글자) */
 
-/* 포커스: @tailwindcss/forms 리셋의 파란 링(#2563eb)과 Skeleton primary-500 링을 우리 --color-focus 2px 외곽선으로 통일 */
+/* 포커스(v1.7.3): 선은 언제나 하나. @tailwindcss/forms 파란 링(#2563eb)·Skeleton 링을 끄고, --color-focus 2px 를 상자 "안쪽"에 그린다(outline-offset:-2px).
+ * 예전(v1.7.0~1.7.2): 안쪽 1px 링 + 1px 띄운 바깥 2px outline = 두 겹 선(사용자 지적 2026-11-27 22:25). 바깥으로도 3px 넘쳐 좁은 곳에서 잘려 보임 */
 .input:focus, .select:focus, .textarea:focus,
 [type="text"]:focus, [type="email"]:focus, [type="password"]:focus, [type="search"]:focus, [type="number"]:focus, select:focus, textarea:focus {
-	outline: 2px solid var(--color-focus); outline-offset: 1px; --tw-ring-color: var(--color-accent); --tw-ring-offset-width: 0px;
+	outline: 2px solid var(--color-focus); outline-offset: -2px; border-color: var(--color-focus);
+	--tw-ring-color: var(--color-focus); --tw-ring-offset-width: 0px; --tw-ring-shadow: 0 0 #0000; --tw-ring-offset-shadow: 0 0 #0000;
+}
+.input[aria-invalid="true"]:focus, .select[aria-invalid="true"]:focus, .textarea[aria-invalid="true"]:focus { outline-color: var(--color-up); } /* 오류 칸은 포커스여도 빨강 2px 한 줄 */
+/* 자동완성(저장된 이메일·비밀번호): 브라우저 하늘색 면 → surface, 글자색 유지. 링(테두리)은 맨 앞 그림자로 다시 얹어 안 가려지게 */
+.input:-webkit-autofill, .input:-webkit-autofill:hover, .input:-webkit-autofill:focus {
+	-webkit-text-fill-color: var(--color-text); caret-color: var(--color-text);
+	box-shadow: var(--tw-ring-shadow, 0 0 #0000), inset 0 0 0 100rem var(--color-surface); transition: background-color 9999s 0s;
+}
+
+/* 아이콘 붙은 입력 묶음 mw-input-group(v1.7.3, 우리 클래스지만 테두리 규칙을 한 곳에 두려고 여기 둠 — app.css 의 같은 속성은 지울 것)
+ * 진짜 border 1px(inset 그림자 금지: 자식 input 배경·자동완성 면이 부모의 inset 선을 덮어 위아래 선이 끊겨 보였음).
+ * padding-block 1px: 안쪽 input 이 포커스 선(안쪽 2px)과 겹치지 않게. 안쪽 input 은 테두리·링·outline 없음 */
+.mw-input-group { border: 1px solid var(--color-line-strong); box-shadow: none; padding-block: 1px; }
+.mw-input-group:hover { border-color: var(--color-muted); }
+.mw-input-group:focus-within { border-color: var(--color-focus); outline: 2px solid var(--color-focus); outline-offset: -2px; box-shadow: none; }
+.mw-input-group[data-invalid], .mw-input-group[data-invalid]:focus-within { border-color: var(--color-up); outline: 2px solid var(--color-up); outline-offset: -2px; box-shadow: none; }
+/* 묶음 안 눈 버튼에 키보드 포커스가 가면 고리는 버튼 하나만(상자 고리는 끔, 버튼 고리는 안쪽) — 두 겹 방지 */
+.mw-input-group:not([data-invalid]):has(.btn-icon:focus-visible) { border-color: var(--color-line-strong); outline: none; }
+.mw-input-group .btn-icon:focus-visible { outline-offset: -2px; }
+.mw-input-group input, .mw-input-group input:focus { border: 0; border-radius: 0; outline: none; box-shadow: none; background: transparent; }
+.mw-input-group input:-webkit-autofill, .mw-input-group input:-webkit-autofill:hover, .mw-input-group input:-webkit-autofill:focus {
+	-webkit-text-fill-color: var(--color-text); caret-color: var(--color-text);
+	box-shadow: inset 0 0 0 100rem var(--color-surface); transition: background-color 9999s 0s;
 }
 .checkbox:focus-visible, .radio:focus-visible, .btn:focus-visible, .btn-icon:focus-visible, .chip:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 

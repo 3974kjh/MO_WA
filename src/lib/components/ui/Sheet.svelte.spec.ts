@@ -3,8 +3,9 @@
  * 열린 직후 focus()가 무시되던 문제를 막는다. 실 브라우저에서 포커스·Esc·Tab 가둠을 확인한다.
  */
 import '../../../app.css';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import { page } from 'vitest/browser';
 import { flushSync } from 'svelte';
 import Harness from '../../../../tests/ui/SheetFocusHarness.svelte';
 import { registerOpenSheet, resetOpenSheets } from './sheetStack';
@@ -14,6 +15,7 @@ const opener = () => document.querySelector<HTMLElement>('[data-testid="sheet-op
 const confirm = () => document.querySelector<HTMLElement>('[data-testid="sheet-confirm"]')!;
 const cancel = () => document.querySelector<HTMLElement>('[data-testid="sheet-cancel"]')!;
 const closeBtn = () => dlg()?.querySelector<HTMLElement>('.close');
+const grabBtn = () => dlg()?.querySelector<HTMLElement>('.grab');
 const inside = () => !!dlg() && dlg()!.contains(document.activeElement);
 
 function openSheet() {
@@ -30,9 +32,14 @@ function key(el: HTMLElement | Document, key: string, shift = false) {
 	flushSync();
 }
 
-afterEach(() => {
+beforeEach(async () => {
+	await page.viewport(1280, 800);
+});
+
+afterEach(async () => {
 	document.body.style.overflow = '';
 	resetOpenSheets();
+	await page.viewport(1280, 800);
 });
 
 describe('Sheet 확인 시트 포커스 (L-1, 첫 대상이 .btn)', () => {
@@ -172,5 +179,55 @@ describe('겹친 시트 Esc (L-2)', () => {
 		} finally {
 			document.addEventListener = origAdd;
 		}
+	});
+});
+
+describe('바텀시트 <640 손잡이·첫 포커스 (v1.7.3)', () => {
+	beforeEach(async () => {
+		await page.viewport(390, 844);
+	});
+
+	it('손잡이는 닫기 버튼(120×44)이고 X는 숨긴다', async () => {
+		openSheet();
+		await expect.poll(inside, { timeout: 1000 }).toBe(true);
+		const grab = grabBtn()!;
+		const close = closeBtn()!;
+		expect(grab.tagName).toBe('BUTTON');
+		expect(grab.getAttribute('aria-label')).toBe('닫기');
+		expect(grab.getBoundingClientRect().width).toBe(120);
+		expect(grab.getBoundingClientRect().height).toBe(44);
+		expect(getComputedStyle(close).display).toBe('none');
+		expect(close.getClientRects().length).toBe(0);
+	});
+
+	it('첫 포커스는 손잡이·X가 아닌 첫 내용(취소)이다', async () => {
+		openSheet();
+		await expect.poll(inside, { timeout: 1000 }).toBe(true);
+		expect(document.activeElement).toBe(cancel());
+		expect(document.activeElement).not.toBe(grabBtn());
+	});
+
+	it('손잡이에서 Enter를 누르면 닫히고, 포커스가 여는 버튼으로 돌아온다', async () => {
+		openSheet();
+		await expect.poll(inside, { timeout: 1000 }).toBe(true);
+		const grab = grabBtn()!;
+		grab.focus();
+		expect(document.activeElement).toBe(grab);
+		grab.click();
+		flushSync();
+		await expect.poll(() => dlg()?.hasAttribute('inert') ?? true, { timeout: 1000 }).toBe(true);
+		expect(document.activeElement).toBe(opener());
+	});
+
+	it('Tab은 손잡이를 첫 요소로 순환하고, 숨긴 X는 건너뛴다', async () => {
+		openSheet();
+		await expect.poll(inside, { timeout: 1000 }).toBe(true);
+		const grab = grabBtn()!;
+		confirm().focus();
+		key(confirm(), 'Tab');
+		expect(document.activeElement).toBe(grab);
+		key(grab, 'Tab', true);
+		expect(document.activeElement).toBe(confirm());
+		expect(inside()).toBe(true);
 	});
 });

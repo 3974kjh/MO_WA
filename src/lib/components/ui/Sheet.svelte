@@ -4,6 +4,7 @@
 	 * - <640: bottom(최대 var(--sheet-max-h), 그랩 핸들) 또는 full(전체 화면 + '← 목록으로')
 	 * - ≥640: center 520px 모달 (variant=center는 모든 폭에서 중앙)
 	 * - 포커스 트랩, 스크림 클릭·Esc·닫기 버튼으로 닫힘, 열릴 때 포커스 이동·닫힐 때 트리거로 복귀
+	 * - v1.7.3(DS §7-11-1): bottom <640 은 X 없음. 손잡이 = '닫기' 버튼(누름 120×44) + 아래로 끌어 닫기(sheetDrag)
 	 */
 	import type { Snippet } from 'svelte';
 	import { tick } from 'svelte';
@@ -11,6 +12,7 @@
 	import X from '@lucide/svelte/icons/x';
 	import { portal } from '$lib/actions/portal';
 	import { focusableIn, trapTab } from '$lib/actions/focusTrap';
+	import { sheetDrag } from '$lib/actions/sheetDrag';
 	import type { SheetVariant } from './types';
 	import { isTopEntry, registerOpenSheet, type OpenSheet } from './sheetStack';
 
@@ -35,6 +37,7 @@
 
 	const uid = $props.id();
 	let panel = $state<HTMLDivElement>();
+	let scrimEl = $state<HTMLDivElement>();
 	let returnTo: HTMLElement | null = null;
 	let stackEntry: OpenSheet | undefined;
 
@@ -48,8 +51,8 @@
 			if (!el.isConnected) return;
 			if (el.contains(document.activeElement)) return;
 			const items = focusableIn(el);
-			// 닫기 버튼 다음의 첫 요소가 있으면 그쪽으로, 없으면 닫기 버튼
-			(items[1] ?? items[0] ?? el).focus();
+			// 손잡이·X·뒤로 다음의 첫 내용 요소로, 없으면 보이는 닫기 컨트롤(<640 손잡이, ≥640 X)
+			(items.find((n) => !n.matches('.grab, .close, .back')) ?? items[0] ?? el).focus();
 		};
 		tick().then(focusFirst);
 		// 포커스가 시트 밖에 남아 있어도 Esc로 닫히게. 맨 위 시트만 처리(겹친 시트를 한 번에 닫지 않음).
@@ -79,7 +82,7 @@
 </script>
 
 <div use:portal class="sheet-root">
-	<div class="scrim" class:open aria-hidden="true" onclick={onclose}></div>
+	<div bind:this={scrimEl} class="scrim" class:open aria-hidden="true" onclick={onclose}></div>
 	<div
 		bind:this={panel}
 		class="sheet {variant}"
@@ -90,8 +93,17 @@
 		tabindex="-1"
 		inert={!open}
 		{onkeydown}
+		use:sheetDrag={{ enabled: open && variant === 'bottom', onclose, scrim: () => scrimEl }}
 	>
-		{#if variant === 'bottom'}<div class="grab" aria-hidden="true"></div>{/if}
+		{#if variant === 'bottom'}
+			<button
+				type="button"
+				class="grab"
+				aria-label="닫기"
+				title="아래로 끌거나 눌러서 닫기"
+				onclick={onclose}
+			></button>
+		{/if}
 		<div class="head">
 			{#if variant === 'full'}
 				<button
@@ -169,12 +181,63 @@
 		border-radius: 0;
 		padding-top: calc(8px + var(--safe-top));
 	}
+	/* 손잡이 = 버튼: 보이는 막대 40×4(위 12px), 누름 120×44. 자리는 예전 그랩과 같음(시트 위 8 패딩을 -8로 상쇄, 아래 -12) */
 	.grab {
-		width: var(--size-touch);
+		display: block;
+		position: relative;
+		z-index: 2;
+		width: 120px;
+		height: 44px;
+		margin: -8px auto -12px;
+		padding: 0;
+		border: 0;
+		border-radius: var(--radius-base);
+		background: transparent;
+		cursor: grab;
+		touch-action: none;
+		-webkit-tap-highlight-color: transparent;
+	}
+	.grab::before {
+		content: '';
+		position: absolute;
+		left: 50%;
+		top: 12px;
+		width: 40px;
 		height: 4px;
+		margin-left: -20px;
 		border-radius: 2px;
 		background: var(--color-line-strong);
-		margin: 4px auto 12px;
+	}
+	.grab:hover::before {
+		background: var(--color-muted);
+	}
+	.grab:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: -2px;
+	}
+	/* 끄는 동안 손가락을 그대로 따라가게 전환 끔(놓으면 클래스가 빠져 원래 0.25s 전환으로 닫힘/되돌아감) */
+	.sheet:global(.dragging),
+	.scrim:global(.dragging) {
+		transition: none;
+	}
+	.sheet:global(.dragging) {
+		cursor: grabbing;
+		user-select: none;
+	}
+	@media (max-width: 639px) {
+		.sheet.bottom .head {
+			padding-top: 8px; /* 손잡이 누름 영역 아래 12px 이 제목 글자에 닿지 않게 */
+			touch-action: none;
+		}
+		.sheet.bottom .close {
+			display: none; /* X 없음 — 닫기: 손잡이(버튼)·끌기·스크림·Esc·'취소' */
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.sheet,
+		.scrim {
+			transition-duration: 0.01ms;
+		}
 	}
 	.head {
 		display: flex;

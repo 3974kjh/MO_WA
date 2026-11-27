@@ -310,8 +310,12 @@
 	.lg-form {
 		display: flex;
 		flex-direction: column;
-		gap: 16px;
-		margin-top: 24px;
+		gap: 20px;
+		margin-top: 28px;
+	}
+	/* v1.7.3: 로그인 칸은 모든 폭 44(= btn-lg 44) */
+	.lg-form :global(.mw-input-group) {
+		height: 44px;
 	}
 	.lg-form .label {
 		display: flex;
@@ -332,7 +336,7 @@
 		display: none;
 	}
 	.lg-foot {
-		margin-top: 20px;
+		margin-top: 24px;
 		font-size: var(--text-sm);
 		line-height: 1.25rem;
 		color: var(--color-subtle);
@@ -343,15 +347,7 @@
 	.pw-toggle[aria-pressed='true'] {
 		color: var(--color-accent);
 	}
-	/* 브라우저 자동완성 배경이 입력 그룹 모양을 깨지 않게 surface 로 덮는다 */
-	.mw-login :global(.mw-input-group input:-webkit-autofill),
-	.mw-login :global(.mw-input-group input:-webkit-autofill:hover),
-	.mw-login :global(.mw-input-group input:-webkit-autofill:focus) {
-		-webkit-text-fill-color: var(--color-text);
-		-webkit-box-shadow: 0 0 0 40px var(--color-surface) inset;
-		caret-color: var(--color-text);
-		transition: background-color 9999s;
-	}
+	/* 자동완성 덮기는 skeleton-overrides.css v1.7.3 공통 규칙(.mw-input-group input:-webkit-autofill) */
 	@media (max-width: 639px) {
 		.lg-panel h1 {
 			font-size: var(--text-xl);
@@ -383,17 +379,24 @@
 			grid-row: 2;
 			align-self: start;
 		}
+		/* v1.7.3: start → stretch — 윗선은 그대로 행 1 시작(=로고 윗선), 아랫선은 소개 열 끝까지. 남는 높이는 폼과 아래 안내 사이 */
 		.lg-panel {
 			grid-column: 2;
 			grid-row: 1 / 3;
-			align-self: start;
+			align-self: stretch;
+			display: flex;
+			flex-direction: column;
 			margin: 0;
 			max-width: none;
 			background: var(--color-surface);
 			border: 1px solid var(--color-card-line);
 			border-radius: var(--radius-container);
 			box-shadow: var(--shadow-card);
-			padding: 28px;
+			padding: 36px 32px;
+		}
+		.lg-panel .lg-foot {
+			margin-top: auto;
+			padding-top: 24px;
 		}
 		.lg-panel h1 {
 			font-size: var(--text-xl);
@@ -407,7 +410,7 @@
 			padding: 40px 32px;
 		}
 		.lg-panel {
-			padding: 32px;
+			padding: 40px;
 		}
 	}
 	.lg-intro h2 {
