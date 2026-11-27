@@ -26,7 +26,11 @@
 
 	/** 이미 Zag에 넘긴 id (반응형일 필요 없는 장부) */
 	const shown: Record<string, true> = {};
+	// Toast.Group 의 Zag 머신이 스토어를 구독하기 전에 create 하면 그 항목이 사라진다(지연 로드 직후 이미 떠 있던 토스트).
+	// 마운트 직후 한 틱 뒤부터 장부를 맞춘다.
+	let mounted = $state(false);
 	$effect(() => {
+		if (!mounted) return;
 		const live = toast.items.map((item) => String(item.id));
 		for (const item of toast.items) {
 			const id = String(item.id);
@@ -114,6 +118,7 @@
 	}
 
 	onMount(() => {
+		const t0 = setTimeout(() => (mounted = true), 0);
 		ro = new ResizeObserver(applyLift);
 		document.addEventListener('transitionend', onTransitionEnd, true);
 		const mo = new MutationObserver(applyLift);
@@ -126,6 +131,7 @@
 		window.addEventListener('resize', applyLift);
 		applyLift();
 		return () => {
+			clearTimeout(t0);
 			mo.disconnect();
 			ro?.disconnect();
 			ro = undefined;
