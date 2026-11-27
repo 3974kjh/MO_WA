@@ -320,8 +320,9 @@
 >
 	{#if revokeTarget}
 		<p class="confirm" data-testid="revoke-confirm">
-			<b>{revokeTarget.name}</b> 키 — 사용을 중지하면 <b>즉시</b> 이 키로 연결할 수 없고 되돌릴 수 없어요.
-			봇이 계속 쓰려면 새 연결 키를 만들어 봇 설정을 바꿔야 해요.
+			<b class="nm">{revokeTarget.name}</b>
+			사용을 중지하면 <b>즉시</b> 이 키로 연결할 수 없고 되돌릴 수 없어요. 봇이 계속 쓰려면 새 연결 키를
+			만들어 봇 설정을 바꿔야 해요.
 		</p>
 		<form
 			id="revoke-form"
@@ -472,6 +473,11 @@
 		margin: 0;
 		color: var(--color-muted);
 		font-size: 13px;
+	}
+	/* 시안: 키 이름이 위 줄, 설명이 아래 줄 */
+	.confirm .nm {
+		display: block;
+		margin-bottom: 4px;
 	}
 	.revoked {
 		color: var(--color-muted);
