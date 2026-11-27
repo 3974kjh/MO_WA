@@ -987,6 +987,64 @@ describe('FE-07 변경 요청 렌더', () => {
 			expect(locked(container, 'P-0802')).toBe(true);
 		});
 
+		// F1 후속 Nit-2: 반영 경로의 재조회(invalidateAll)와 잠금 해제 순서.
+		it('반영 전송 뒤 재조회가 실패해도 카드가 돌아오고 형제 잠금이 풀리며, 처리 안 된 거부가 없다', async () => {
+			vi.useFakeTimers();
+			vi.mocked(invalidateAll).mockImplementationOnce(async () => {
+				throw new Error('network');
+			});
+			const { container } = setup([linked(), loose()]);
+			confirmApproveOf(container, 'P-0801');
+			expect(locked(container, 'P-0802')).toBe(true);
+			await vi.advanceTimersByTimeAsync(5100);
+			expect(fetchSpy).toHaveBeenCalledTimes(1);
+			await vi.waitFor(() => {
+				flushSync();
+				expect(locked(container, 'P-0802')).toBe(false);
+				expect(cardOf(container, 'P-0801')).toBeTruthy();
+			});
+		});
+
+		it('반영 재조회가 끝나기 전에는 형제 잠금이 유지되고, 끝나면 풀린다', async () => {
+			vi.useFakeTimers();
+			let done: () => void = () => {};
+			vi.mocked(invalidateAll).mockImplementationOnce(
+				() =>
+					new Promise<void>((resolve) => {
+						done = resolve;
+					})
+			);
+			const { container } = setup([linked(), loose()]);
+			confirmApproveOf(container, 'P-0801');
+			await vi.advanceTimersByTimeAsync(5100);
+			await vi.waitFor(() => expect(invalidateAll).toHaveBeenCalledTimes(1));
+			flushSync();
+			expect(locked(container, 'P-0802')).toBe(true);
+			done();
+			await vi.waitFor(() => {
+				flushSync();
+				expect(locked(container, 'P-0802')).toBe(false);
+			});
+		});
+
+		it('기록 수정 재조회가 실패한 뒤에도 같은 행을 다시 수정해 한 번 더 보낼 수 있다', async () => {
+			vi.useFakeTimers();
+			vi.mocked(invalidateAll).mockImplementationOnce(async () => {
+				throw new Error('network');
+			});
+			const { container } = render(Page, { data: correctionData as never });
+			submitCorrection(container, '8', '증권사 앱 확인');
+			await vi.advanceTimersByTimeAsync(5100);
+			await vi.waitFor(() => {
+				flushSync();
+				expect(correctBtn(container).getAttribute('aria-disabled')).toBeNull();
+			});
+			submitCorrection(container, '9', '증권사 앱 확인');
+			await vi.advanceTimersByTimeAsync(5100);
+			await vi.waitFor(() => expect(correctCalls()).toHaveLength(2));
+			expect(correctBody(1).get('qty')).toBe('9');
+		});
+
 		// F1 후속 Nit-3: 화면 이동·닫기·unmount 때 대기 전송을 버리고 되돌리기 토스트도 내린다.
 		describe('유예 중 화면 이동(beforeNavigate)', () => {
 			const undoCount = () => toast.items.filter((t) => t.action?.label === '되돌리기').length;
