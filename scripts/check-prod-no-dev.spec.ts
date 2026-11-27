@@ -134,6 +134,30 @@ describe('collectProdDevLeaks', () => {
 		);
 		expect(collectProdDevLeaks(root)).toEqual([]);
 	});
+
+	it('fails when the server manifest is missing (even if the client manifest is present)', () => {
+		const root = fakeOutput();
+		writeFileSync(join(root, 'client/.vite/manifest.json'), '{}');
+		const leaks = collectProdDevLeaks(root);
+		expect(leaks.some((l) => l.includes('missing server manifest'))).toBe(true);
+	});
+
+	it('fails when the client vite manifest is missing (even if the server manifest is present)', () => {
+		const root = fakeOutput();
+		writeFileSync(
+			join(root, 'server/manifest.js'),
+			'export const manifest = { routes: [{ id: "/login" }] };'
+		);
+		const leaks = collectProdDevLeaks(root);
+		expect(leaks.some((l) => l.includes('missing client vite manifest'))).toBe(true);
+	});
+
+	it('fails when both manifests are missing, even if the output root exists', () => {
+		const root = fakeOutput();
+		const leaks = collectProdDevLeaks(root);
+		expect(leaks.some((l) => l.includes('missing server manifest'))).toBe(true);
+		expect(leaks.some((l) => l.includes('missing client vite manifest'))).toBe(true);
+	});
 });
 
 describe('installDevRouteOmit', () => {

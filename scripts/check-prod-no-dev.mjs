@@ -7,6 +7,8 @@
  *
  * Wired from `pnpm build` (`CF_PAGES=1 vite build && node scripts/check-prod-no-dev.mjs`).
  * Cloudflare Pages Git builds use `pnpm install && pnpm build` (docs/cloudflare-deploy.md §4).
+ * Fail-closed: if either server/manifest.js or client/.vite/manifest.json is
+ * missing, that is an error — skipping the check would pass an incomplete tree.
  *
  * Usage: node scripts/check-prod-no-dev.mjs [outputRoot]
  * Default outputRoot: .svelte-kit/output
@@ -57,7 +59,9 @@ export function collectProdDevLeaks(outputRoot) {
 	}
 
 	const serverManifest = join(outputRoot, 'server/manifest.js');
-	if (existsSync(serverManifest)) {
+	if (!existsSync(serverManifest)) {
+		leaks.push(`missing server manifest: ${serverManifest}`);
+	} else {
 		const text = readFileSync(serverManifest, 'utf8');
 		for (const m of text.matchAll(/id:\s*"([^"]+)"/g)) {
 			if (isDevRouteId(m[1])) leaks.push(`server manifest route ${m[1]}`);
@@ -69,7 +73,9 @@ export function collectProdDevLeaks(outputRoot) {
 
 	const clientDir = join(outputRoot, 'client');
 	const viteManifest = join(clientDir, '.vite/manifest.json');
-	if (existsSync(viteManifest)) {
+	if (!existsSync(viteManifest)) {
+		leaks.push(`missing client vite manifest: ${viteManifest}`);
+	} else {
 		const man = JSON.parse(readFileSync(viteManifest, 'utf8'));
 		for (const key of Object.keys(man)) {
 			if (/(^|[\\/])src[\\/]routes[\\/]dev[\\/]/.test(key) || /src\/routes\/dev\b/.test(key)) {

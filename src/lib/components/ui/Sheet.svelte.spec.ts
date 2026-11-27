@@ -3,11 +3,11 @@
  * 열린 직후 focus()가 무시되던 문제를 막는다. 실 브라우저에서 포커스·Esc·Tab 가둠을 확인한다.
  */
 import '../../../app.css';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { flushSync } from 'svelte';
 import Harness from '../../../../tests/ui/SheetFocusHarness.svelte';
-import { resetOpenSheets } from './sheetStack';
+import { registerOpenSheet, resetOpenSheets } from './sheetStack';
 
 const dlg = () => document.querySelector<HTMLElement>('[role="dialog"]');
 const opener = () => document.querySelector<HTMLElement>('[data-testid="sheet-opener"]')!;
@@ -107,5 +107,70 @@ describe('겹친 시트 Esc (L-2)', () => {
 		key(document, 'Escape');
 		await expect.poll(() => dialogs().length, { timeout: 1000 }).toBe(0);
 		expect(document.activeElement).toBe(opener);
+	});
+
+	it('Esc는 같은 document 캡처 리스너가 이어서 돌지 못하게 막는다 (stopImmediatePropagation)', () => {
+		const close = vi.fn();
+		const { unregister } = registerOpenSheet(close);
+		const later = vi.fn();
+		document.addEventListener('keydown', later, true);
+		try {
+			key(document, 'Escape');
+			expect(close).toHaveBeenCalledTimes(1);
+			expect(later).not.toHaveBeenCalled();
+		} finally {
+			document.removeEventListener('keydown', later, true);
+			unregister();
+		}
+	});
+
+	it('패널 keydown은 맨 위 시트가 아니면 Esc를 무시한다 (isTopEntry 가드)', async () => {
+		// document 캡처 리스너가 패널 핸들러보다 먼저 Esc를 소비하므로,
+		// 가드 자체를 시험하려면 스택의 document 리스너만 설치하지 않는다.
+		const origAdd = document.addEventListener.bind(document);
+		document.addEventListener = ((
+			type: string,
+			listener: EventListenerOrEventListenerObject,
+			options?: boolean | AddEventListenerOptions
+		) => {
+			const capture =
+				options === true || (typeof options === 'object' && options != null && options.capture);
+			if (type === 'keydown' && capture) return;
+			return origAdd(type, listener, options);
+		}) as typeof document.addEventListener;
+		try {
+			const StackHarness = (await import('../../../../tests/ui/StackedSheetHarness.svelte'))
+				.default;
+			render(StackHarness);
+			const opener = document.querySelector<HTMLElement>('[data-testid="stack-opener"]')!;
+			opener.click();
+			flushSync();
+			await expect
+				.poll(() => !!document.querySelector('.sheet.full.open'), { timeout: 1000 })
+				.toBe(true);
+			document.querySelector<HTMLElement>('[data-testid="stack-archive"]')!.click();
+			flushSync();
+			await expect
+				.poll(() => !!document.querySelector('[data-action="journal-archive-confirm"]'), {
+					timeout: 1000
+				})
+				.toBe(true);
+			const dialogs = () =>
+				[...document.querySelectorAll<HTMLElement>('[role="dialog"]')].filter(
+					(d) => !d.hasAttribute('inert')
+				);
+			expect(dialogs()).toHaveLength(2);
+			const lower = document.querySelector<HTMLElement>('.sheet.full.open')!;
+			key(lower, 'Escape');
+			expect(dialogs()).toHaveLength(2);
+			const upper = document
+				.querySelector('[data-action="journal-archive-confirm"]')!
+				.closest<HTMLElement>('[role="dialog"]')!;
+			key(upper, 'Escape');
+			await expect.poll(() => dialogs().length, { timeout: 1000 }).toBe(1);
+			expect(lower.hasAttribute('inert')).toBe(false);
+		} finally {
+			document.addEventListener = origAdd;
+		}
 	});
 });

@@ -10,13 +10,21 @@
  * svelte-check do not set CF_PAGES, so /dev pages and their tests stay.
  *
  * Mechanism: when the signal is set, filter the `dev` entry out of directory
- * listings of `src/routes` only (readdirSync / readdir / promises.readdir /
- * opendir / opendirSync / promises.opendir, including recursive listings).
- * Scope is strictly `src/routes/dev` — not `src/routes/x/dev` or `(g)/dev`.
+ * listings of `src/routes` only (default + callback + promise `readdir` /
+ * `readdirSync`, and `opendir`/`opendirSync`/`promises.opendir` when the
+ * caller uses `read`/`readSync`). Scope is strictly `src/routes/dev` — not
+ * `src/routes/x/dev` or `(g)/dev`.
  *
- * Named ESM `import { readdirSync } from 'node:fs'` is a live binding that this
- * patch cannot wrap. Kit 2.61.1 uses `import fs from 'node:fs'; fs.readdirSync`.
- * If that changes, the post-build guard still fails the `pnpm build`.
+ * These listing paths are NOT filtered (do not extend the wrappers for them):
+ * - `readdir`/`readdirSync` with `{ recursive: true, withFileTypes: true }`
+ *   (Dirent.name is the basename, so `dev/...` children are not matched)
+ * - `opendir` async iteration (`for await` / `dir.entries()`), which uses
+ *   an internal `#readPromisified` rather than the wrapped `read`
+ * - named ESM `import { readdirSync } from 'node:fs'` (live binding)
+ * `dir.read`/`readSync` (including the callback form of `read`) are filtered.
+ * Kit 2.61.1 uses `import fs from 'node:fs'; fs.readdirSync` and does not
+ * take the unfiltered paths above. The post-build guard is the backstop: if
+ * a future Kit starts using an unfiltered path, `pnpm build` still fails.
  *
  * Source files are not moved; hooks, +layout.server, and kit.files.routes stay unchanged.
  */
@@ -80,6 +88,9 @@ function isRoutesRoot(dir, routesAbs) {
 	}
 }
 
+// Wraps Dir.read / Dir.readSync only. `for await` / `dir.entries()` use
+// internal `#readPromisified` and are not filtered; the post-build guard is
+// the backstop if a caller uses those.
 function wrapDirentIterator(dir, filter) {
 	const origRead = dir.read.bind(dir);
 	const origReadSync = typeof dir.readSync === 'function' ? dir.readSync.bind(dir) : null;
@@ -150,6 +161,10 @@ export function installDevRouteOmit(cwd = process.cwd(), env = process.env) {
 		return origProm.call(this, dir, options).then((result) => filterIf(result, dir));
 	};
 
+	// opendir* wrappers only filter through wrapDirentIterator (read/readSync).
+	// Unfiltered: Dir async iteration (`for await` / entries()), recursive
+	// +withFileTypes readdir Dirents, named ESM readdirSync. The production
+	// guard is the backstop.
 	fs.opendirSync = function (dir, options) {
 		const d = origOpendirSync.call(this, dir, options);
 		return isRoutesRoot(dir, routesAbs) ? wrapDirentIterator(d, isDevListing) : d;

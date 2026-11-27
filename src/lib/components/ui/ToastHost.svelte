@@ -7,7 +7,6 @@
 	 */
 	import { onMount, type Component } from 'svelte';
 	import { toast } from './toast.svelte';
-	import { watchToastLift } from './toastLiftDom';
 	import { loadWithRetry } from './dynamicImportRetry';
 
 	let {
@@ -61,13 +60,20 @@
 		if (toast.items.length > 0) load();
 	});
 
-	/** 정적 import: 대체 토스트가 필요한 때(ToastGroup 청크 실패)에도 lift 청크를 따로 받지 않는다. */
+	/** 대체 토스트가 보일 때만 lift 모듈을 불러 같은 --mw-toast-bottom-lift 를 쓴다(첫 페인트·로그인 청크에 안 넣음). 로드 실패는 삼킨다. */
 	function lift(node: HTMLElement) {
-		void node;
-		const stop = watchToastLift();
+		let stop: (() => void) | undefined;
+		let cancelled = false;
+		import('./toastLiftDom')
+			.then((m) => {
+				if (cancelled || !node.isConnected) return;
+				stop = m.watchToastLift();
+			})
+			.catch(() => {});
 		return {
 			destroy() {
-				stop();
+				cancelled = true;
+				stop?.();
 			}
 		};
 	}
