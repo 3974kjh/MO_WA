@@ -23,13 +23,17 @@
 	--inset-b: max(var(--app-inset-b, 0px), env(safe-area-inset-bottom, 0px), 8px);
 }
 
-/* 토스트 바닥 거리 (DS §7-0 '하단 탭 위'). 시트 안에서 생긴 안내는 시트 안 mw-callout 이고, 토스트는 시트가 닫힌 뒤 결과 알림 전용이라 시트 위로 올리지 않는다(v1.7.1) */
+/* 토스트 바닥 거리 (DS §7-0 '하단 탭 위'). 시트와 겹치면 ToastGroup이 `--mw-toast-bottom-lift`를
+   시트 *실제* 윗선 위 12px(자리 없으면 상단바 바로 아래)로 넣는다. 86dvh는 쓰지 않는다. */
 :root {
-	--mw-toast-bottom: 24px;
+	--mw-toast-bottom: var(--mw-toast-bottom-lift, 24px);
 }
 @media (max-width: 639px) {
 	:root {
-		--mw-toast-bottom: calc(var(--size-tabbar) + var(--inset-b) + 20px);
+		--mw-toast-bottom: var(
+			--mw-toast-bottom-lift,
+			calc(var(--size-tabbar) + var(--inset-b) + 20px)
+		);
 	}
 }
 

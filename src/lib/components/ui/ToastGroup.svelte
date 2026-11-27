@@ -2,12 +2,14 @@
 	/**
 	 * Skeleton 토스트 묶음 (DS §7-0: `createToaster()` + 루트 `<Toast.Group>` 하나). ToastHost가 지연 로드한다.
 	 * toast.svelte.ts의 `toast.items`를 그대로 비춘다: 새 항목은 create, 빠진 항목은 dismiss. Zag 자체 타이머는 끈다(duration ∞).
-	 * 위치: app.css `--mw-toast-bottom` (기본 24px · 모바일 하단 탭 위). 시트 안 안내는 시트 안 mw-callout 이라 시트 위로 올리지 않는다(DS §0-2-7).
+	 * 위치: app.css `--mw-toast-bottom` (기본 24px · 모바일 하단 탭 위). 열린 시트와 겹치면 시트 실제 윗선 위 12px, 자리 없으면 상단바 바로 아래(DS §7-0). 86dvh 금지.
 	 */
+	import { onMount } from 'svelte';
 	import { Toast, createToaster } from '@skeletonlabs/skeleton-svelte';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import { toast, type ToastTone } from './toast.svelte';
+	import { toastBottomOffset } from './toastLift';
 
 	const TYPE: Record<ToastTone, 'info' | 'success' | 'error'> = {
 		default: 'info',
@@ -40,6 +42,70 @@
 	});
 
 	const itemOf = (id: string | undefined) => toast.items.find((t) => String(t.id) === id);
+
+	// 토스트가 생기거나 높이가 바뀌면 위치를 다시 계산한다.
+	$effect(() => {
+		void toast.items.length;
+		if (typeof document !== 'undefined') queueMicrotask(applyLift);
+	});
+
+	function defaultBottomPx(): number {
+		// lift 변수를 읽지 않고 CSS 기본값과 같은 값을 쓴다(순환 계산 방지).
+		if (window.matchMedia('(max-width: 639px)').matches) {
+			const cs = getComputedStyle(document.documentElement);
+			const tab = parseFloat(cs.getPropertyValue('--size-tabbar')) || 52;
+			const inset = parseFloat(cs.getPropertyValue('--inset-b')) || 8;
+			return tab + inset + 20;
+		}
+		return 24;
+	}
+
+	function applyLift() {
+		const sheet = document.querySelector('.sheet.open') as HTMLElement | null;
+		const root = document.documentElement;
+		if (!sheet) {
+			root.style.removeProperty('--mw-toast-bottom-lift');
+			return;
+		}
+		const sb = sheet.getBoundingClientRect();
+		// visibility:hidden 인 닫힌 시트(클래스는 남을 수 있음)는 건너뛴다
+		if (sb.height <= 0 || getComputedStyle(sheet).visibility === 'hidden') {
+			root.style.removeProperty('--mw-toast-bottom-lift');
+			return;
+		}
+		const group = document.querySelector('.mw-toasts[data-part="group"]') as HTMLElement | null;
+		const bar = document.querySelector('header.topbar') as HTMLElement | null;
+		const toastW = Math.min(420, window.innerWidth - 32);
+		const toastH = group?.getBoundingClientRect().height || 48;
+		const next = toastBottomOffset({
+			sheet: { top: sb.top, right: sb.right, bottom: sb.bottom, left: sb.left },
+			viewportH: window.innerHeight,
+			viewportW: window.innerWidth,
+			toastH,
+			toastW,
+			defaultBottom: defaultBottomPx(),
+			barBottom: bar?.getBoundingClientRect().bottom ?? 0
+		});
+		if (next == null) root.style.removeProperty('--mw-toast-bottom-lift');
+		else root.style.setProperty('--mw-toast-bottom-lift', `${next}px`);
+	}
+
+	onMount(() => {
+		const mo = new MutationObserver(applyLift);
+		mo.observe(document.body, {
+			subtree: true,
+			attributes: true,
+			attributeFilter: ['class'],
+			childList: true
+		});
+		window.addEventListener('resize', applyLift);
+		applyLift();
+		return () => {
+			mo.disconnect();
+			window.removeEventListener('resize', applyLift);
+			document.documentElement.style.removeProperty('--mw-toast-bottom-lift');
+		};
+	});
 </script>
 
 <Toast.Group {toaster} class="mw-toasts">
