@@ -465,6 +465,24 @@ describe('proposedProblem: 서버 재검증과 같은 규칙으로 미리 찾기
 		expect(invalid).toContain('고쳐서 반영');
 		expect(invalid).not.toBe(missing);
 	});
+	it('Nit-1: legacy {currency:null}은 통화 누락이 아니라 잘못된 통화로 안내한다', () => {
+		const oh = (pv: Record<string, unknown>, over = {}) =>
+			mk(pv, { change_type: 'open_holding', position_id: null, ...over });
+		const legacy = oh({ qty: 3, avg_price: 1, currency: null });
+		expect(proposedProblem(legacy)).toEqual({ ruleId: 'R-VAL-M01', keys: ['currency'] });
+		const note = proposedProblemNote(legacy);
+		expect(note).toContain('통화가 원화·달러가 아니라서');
+		expect(note).not.toContain('통화가 빠져 있어요');
+		expect(note).not.toBe(proposedProblemNote(oh({ qty: 3, avg_price: 1 })));
+		// 서버 안내도 동일: missing 이 아니면(값이 있으나 무효) 누락 문구가 아니다.
+		const server = classifyActionResult({
+			type: 'failure',
+			status: 400,
+			data: { ruleIds: ['R-VAL-M01'], source: 'proposed' }
+		}) as { message: string };
+		expect(server.message).toContain('통화가 원화·달러가 아니라서');
+		expect(server.message).not.toContain('통화가 빠져 있어요');
+	});
 	it('수량 단위 안내는 종목 종류에 맞는다(주식·ETF 정수 / 현금 둘째 자리 / 그 밖은 괄호 없음)', () => {
 		expect(proposedProblemNote(mk({ qty: 1.5 }, { asset_type: 'stock' }))).toContain(
 			'(주식·ETF는 정수만)'

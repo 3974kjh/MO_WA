@@ -1474,6 +1474,27 @@ describe('FE-07 변경 요청 렌더', () => {
 		expect(toast.items.some((t) => t.action?.label === '되돌리기')).toBe(false);
 	});
 
+	it('Nit-2: proposedProblem이면 확인 버튼이 aria-disabled이다', async () => {
+		const item = makeItem({
+			id: 'n2',
+			display_id: 'P-1302',
+			proposed_values: { qty: 13, avg_price: 1234 }
+		});
+		const { container } = render(Page, {
+			data: { ...base, queue: { items: [item], total: 1 } } as never
+		});
+		// 카드의 problem $derived는 첫 렌더에서 이미 false로 계산됨.
+		// 모킹을 켠 뒤 flush 없이 반영을 누르면 카드 가드는 그대로 통과하고,
+		// 시트가 처음 그려질 때 proposedProblem 이 참이라 aria-disabled 가 붙는다.
+		// (시트를 연 뒤에 모킹을 켜면, approveTarget 이 바뀌지 않아 속성이 다시 계산되지 않음.)
+		nitbBlock.on = true;
+		(cardOf(container, 'P-1302').querySelector('[data-action="approve"]') as HTMLElement).click();
+		flushSync();
+		const btn = document.querySelector('[data-action="approve-confirm"]') as HTMLElement;
+		expect(btn).not.toBeNull();
+		expect(btn.getAttribute('aria-disabled')).toBe('true');
+	});
+
 	it('원칙 반영 409는 확인 필요로 옮기고 중립 토스트(시트 없음)', async () => {
 		vi.useFakeTimers();
 		fetchSpy.mockImplementation(
