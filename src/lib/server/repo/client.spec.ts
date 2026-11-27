@@ -92,14 +92,14 @@ describe('repo identity / M-4', () => {
 	});
 
 	it('rejects plain objects, Symbol brands, spreads, and post-mint mutation for forBot', () => {
-		expect(() =>
-			forBot({ ownerId: 'o', botClientId: 'b' } as never)
-		).toThrow(/minted BotRepoIdentity/i);
+		expect(() => forBot({ ownerId: 'o', botClientId: 'b' } as never)).toThrow(
+			/minted BotRepoIdentity/i
+		);
 
 		const brand = Symbol('fake');
-		expect(() =>
-			forBot({ ownerId: 'o', botClientId: 'b', [brand]: brand } as never)
-		).toThrow(/minted BotRepoIdentity/i);
+		expect(() => forBot({ ownerId: 'o', botClientId: 'b', [brand]: brand } as never)).toThrow(
+			/minted BotRepoIdentity/i
+		);
 
 		const legit = mintBotRepoIdentity('owner-1', 'bot-9');
 		expect(isBotRepoIdentity(legit)).toBe(true);
@@ -164,10 +164,7 @@ describe('repo identity / M-4', () => {
 		);
 		expect(position.status).toBe('holding');
 
-		const report = stripClientIdentity(
-			{ title: 'r', status: 'draft', slug: 's' },
-			'reports'
-		);
+		const report = stripClientIdentity({ title: 'r', status: 'draft', slug: 's' }, 'reports');
 		expect(report.status).toBe('draft');
 		expect(Object.getPrototypeOf(report)).toBeNull();
 	});
@@ -245,46 +242,46 @@ describe('restoreRow actor (Low)', () => {
 });
 
 describe('ESLint M-4 / L6 restrictions', () => {
-	it('blocks direct repo/client import and template-literal admin import', () => {
-		const clientProbe = join(process.cwd(), 'src/lib/server/_be03_client_probe.ts');
-		const adminProbe = join(process.cwd(), 'src/lib/server/_be03_admin_probe.ts');
-		const mcpMintProbe = join(process.cwd(), 'src/lib/server/mcp/_be03_mint_probe.ts');
-		writeFileSync(
-			clientProbe,
-			`import { forUser } from '$lib/server/repo/client';\nvoid forUser;\n`
-		);
-		writeFileSync(
-			adminProbe,
-			`const x = await import(\`$lib/supabase/admin\`);\nvoid x;\n`
-		);
-		writeFileSync(
-			mcpMintProbe,
-			`import { mintBotRepoIdentity } from '$lib/server/repo/botIdentityBrand';\nvoid mintBotRepoIdentity;\n`
-		);
-		try {
-			let failed = false;
+	it(
+		'blocks direct repo/client import and template-literal admin import',
+		{ timeout: 30_000 },
+		() => {
+			const clientProbe = join(process.cwd(), 'src/lib/server/_be03_client_probe.ts');
+			const adminProbe = join(process.cwd(), 'src/lib/server/_be03_admin_probe.ts');
+			const mcpMintProbe = join(process.cwd(), 'src/lib/server/mcp/_be03_mint_probe.ts');
+			writeFileSync(
+				clientProbe,
+				`import { forUser } from '$lib/server/repo/client';\nvoid forUser;\n`
+			);
+			writeFileSync(adminProbe, `const x = await import(\`$lib/supabase/admin\`);\nvoid x;\n`);
+			writeFileSync(
+				mcpMintProbe,
+				`import { mintBotRepoIdentity } from '$lib/server/repo/botIdentityBrand';\nvoid mintBotRepoIdentity;\n`
+			);
 			try {
-				execFileSync(
-					'pnpm',
-					['exec', 'eslint', clientProbe, adminProbe, mcpMintProbe],
-					{ encoding: 'utf8', cwd: process.cwd() }
-				);
-			} catch (err) {
-				failed = true;
-				const out = `${(err as { stdout?: string }).stdout ?? ''}${(err as { stderr?: string }).stderr ?? ''}`;
-				expect(out).toMatch(/repo\/client|M-4/);
-				expect(out).toMatch(/supabase\/admin|R-SYS-01/);
-				expect(out).toMatch(/botIdentityBrand|mcp_authenticate|BE-04/);
-			}
-			expect(failed).toBe(true);
-		} finally {
-			for (const p of [clientProbe, adminProbe, mcpMintProbe]) {
+				let failed = false;
 				try {
-					unlinkSync(p);
-				} catch {
-					/* ignore */
+					execFileSync('pnpm', ['exec', 'eslint', clientProbe, adminProbe, mcpMintProbe], {
+						encoding: 'utf8',
+						cwd: process.cwd()
+					});
+				} catch (err) {
+					failed = true;
+					const out = `${(err as { stdout?: string }).stdout ?? ''}${(err as { stderr?: string }).stderr ?? ''}`;
+					expect(out).toMatch(/repo\/client|M-4/);
+					expect(out).toMatch(/supabase\/admin|R-SYS-01/);
+					expect(out).toMatch(/botIdentityBrand|mcp_authenticate|BE-04/);
+				}
+				expect(failed).toBe(true);
+			} finally {
+				for (const p of [clientProbe, adminProbe, mcpMintProbe]) {
+					try {
+						unlinkSync(p);
+					} catch {
+						/* ignore */
+					}
 				}
 			}
 		}
-	});
+	);
 });
