@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * BE-14 — Regenerate docs/mcp-tools.md from live MCP zod schemas.
+ * BE-14 — Regenerate docs/mcp-tools.generated.md from live MCP zod schemas.
+ * The Korean guide docs/mcp-tools.md is hand-written and never touched.
  *
  * Runs the server vitest project with GENERATE_MCP_TOOLS_DOCS=1 so the drift
  * spec writes the file, then re-asserts it matches.

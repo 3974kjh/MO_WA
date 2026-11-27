@@ -1,8 +1,10 @@
 import { readFileSync, writeFileSync } from 'node:fs';
+import { basename } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
 	buildToolDocEntries,
 	collectRegisteredTools,
+	MCP_TOOLS_DOCS_REL,
 	mcpToolsDocsAbsolutePath,
 	renderMcpToolsDocs,
 	scopesUnlockingAllTools
@@ -25,7 +27,12 @@ describe('BE-14 MCP tools docs generation', () => {
 		}
 	});
 
-	it('docs/mcp-tools.md matches live zod schemas (set GENERATE_MCP_TOOLS_DOCS=1 to refresh)', () => {
+	it('targets the generated reference, never the hand-written Korean guide', () => {
+		expect(MCP_TOOLS_DOCS_REL).toBe('docs/mcp-tools.generated.md');
+		expect(basename(mcpToolsDocsAbsolutePath())).toBe('mcp-tools.generated.md');
+	});
+
+	it('docs/mcp-tools.generated.md matches live zod schemas (set GENERATE_MCP_TOOLS_DOCS=1 to refresh)', () => {
 		const expected = renderMcpToolsDocs();
 		const path = mcpToolsDocsAbsolutePath();
 		if (process.env.GENERATE_MCP_TOOLS_DOCS === '1') {

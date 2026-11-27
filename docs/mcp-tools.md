@@ -1,7 +1,8 @@
 # MCP 툴 목록·사용법 (BE-14 골격)
 
 상태: 초안 (골격만). 도구별 입력·출력 스키마는 TBD(BE-07 이후 채움 — 구현은 main에 있으나 이 골격 문서에서는 스키마를 기입하지 않는다).  
-기준: GitHub `3974kjh/MO_WA` main `faaecc5df9bd1cf665333275c6e140b83a2b0e71` (2026-11-24 검증).
+기준: GitHub `3974kjh/MO_WA` main `faaecc5df9bd1cf665333275c6e140b83a2b0e71` (2026-11-24 검증).  
+자동 생성 영문 참조(도구별 입력 스키마 전체): [`docs/mcp-tools.generated.md`](./mcp-tools.generated.md) — `pnpm docs:mcp-tools`로 갱신하며, 이 한국어 문서는 생성기가 덮어쓰지 않는다.
 
 이 문서는 Grok Bot(및 다른 MCP 클라이언트)이 `POST /api/mcp`로 무엇을 호출할 수 있는지, 어떻게 인증하고, 오류와 규칙 ID를 어떻게 읽는지 설명한다.
 

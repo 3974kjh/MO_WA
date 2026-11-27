@@ -15,4 +15,6 @@ node_modules/
 src/tokens.css
 
 # BE-14 generated from live zod schemas (`pnpm docs:mcp-tools`)
+docs/mcp-tools.generated.md
+# 사용자 결정(11/27) 한국어 손글 골격 — 원문 서식 유지
 docs/mcp-tools.md

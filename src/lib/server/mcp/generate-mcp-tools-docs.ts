@@ -1,5 +1,6 @@
 /**
- * BE-14 — Generate docs/mcp-tools.md from live MCP tool zod schemas.
+ * BE-14 — Generate docs/mcp-tools.generated.md from live MCP tool zod schemas.
+ * (docs/mcp-tools.md is the hand-written Korean guide; the generator never writes it.)
  * Collects registrations via registerAllMcpTools (same path as production),
  * converts input shapes with zod's z.toJSONSchema, and assembles the operator guide
  * from auth / route / errors / scopes contracts already in code.
@@ -26,8 +27,8 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 /** `src/lib/server/mcp` → repo root */
 const REPO_ROOT = join(HERE, '../../../..');
 
-/** Checked-in markdown path (repo-relative). */
-export const MCP_TOOLS_DOCS_REL = 'docs/mcp-tools.md';
+/** Checked-in generated reference path (repo-relative). Not the Korean guide `docs/mcp-tools.md`. */
+export const MCP_TOOLS_DOCS_REL = 'docs/mcp-tools.generated.md';
 
 export function mcpToolsDocsAbsolutePath(repoRoot = REPO_ROOT): string {
 	return join(repoRoot, MCP_TOOLS_DOCS_REL);
@@ -348,7 +349,7 @@ function renderToolSection(entry: ToolDocEntry): string {
 	return lines.join('\n');
 }
 
-/** Full markdown for docs/mcp-tools.md. */
+/** Full markdown for docs/mcp-tools.generated.md. */
 export function renderMcpToolsDocs(repoRoot = REPO_ROOT): string {
 	const entries = buildToolDocEntries(repoRoot);
 	const parts: string[] = [
