@@ -168,10 +168,10 @@ const initBody = {
 	assert(r.status === 200, 'S4 tools/list → 200');
 	const tools = r.json?.result?.tools ?? [];
 	const names = tools.map((t) => t.name).sort();
-	assert(
-		JSON.stringify(names) === JSON.stringify(['db_ping', 'echo', 'whoami']),
-		`S4 tools=${names.join(',')}`
-	);
+	// 스파이크 전용 echo/db_ping은 제거됨. 키 스코프마다 목록이 달라 정확한 목록 대신 불변식만 본다.
+	assert(names.includes('whoami'), `S4 whoami listed (tools=${names.join(',')})`);
+	assert(!names.includes('echo') && !names.includes('db_ping'), 'S4 no spike tools (echo/db_ping)');
+	assert(new Set(names).size === names.length, 'S4 tool names unique');
 	for (const t of tools) {
 		assert(t.inputSchema && t.outputSchema, `S4 ${t.name} has inputSchema+outputSchema`);
 	}
@@ -217,14 +217,14 @@ const initBody = {
 	);
 }
 
-// S6 echo zod fail
+// S6 zod fail — get_report(read 스코프)에 uuid가 아닌 id. 인자 검증에서 끝나 DB를 읽지 않는다.
 {
 	const r = await post(
 		{
 			jsonrpc: '2.0',
 			id: 6,
 			method: 'tools/call',
-			params: { name: 'echo', arguments: { message: '' } }
+			params: { name: 'get_report', arguments: { id: 'not-a-uuid' } }
 		},
 		auth
 	);

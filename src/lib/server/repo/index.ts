@@ -33,7 +33,6 @@ export {
 	EVENT_PATCHABLE
 } from './patch';
 export { archiveRow, restoreRow, type ArchivableTable } from './archive';
-export { pingDatabase, type DatabasePingResult } from './health';
 export { createRepoAuditSink } from './mcpAuditSink';
 export * from './instruments.repo';
 export * from './journal.repo';
