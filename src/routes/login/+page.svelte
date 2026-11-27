@@ -4,6 +4,7 @@
 	import type { ActionData } from './$types';
 	import MoWaLogo from '$lib/components/brand/MoWaLogo.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
+	import { formatKstTime } from '$lib/format/datetime';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import ChartPie from '@lucide/svelte/icons/chart-pie';
 	import NotebookTabs from '@lucide/svelte/icons/notebook-tabs';
@@ -46,6 +47,10 @@
 		const i = m.indexOf('. ');
 		return i < 0 ? { lead: m, rest: '' } : { lead: m.slice(0, i + 1), rest: m.slice(i + 2) };
 	});
+
+	// 로그인 불가(DS §7-17): 서버가 인증 서버 연결 실패를 알려 준 직후. 다시 제출하는 동안에는 알림을 걷는다.
+	const unavailable = $derived(!!form?.unavailable && !submitting);
+	const checkedAt = $derived(form?.checkedAt ? formatKstTime(form.checkedAt) : '');
 
 	function validate(): boolean {
 		const e = email.trim();
@@ -111,6 +116,14 @@
 						{message.rest}
 					</div>
 				</div>
+			{:else if unavailable}
+				<div class="mw-callout warn" data-testid="login-unavailable">
+					<Icon icon={TriangleAlert} size={18} />
+					<div>
+						<b>지금은 로그인 서버에 연결할 수 없어요.</b>
+						잠시 후 다시 시도해 주세요.{checkedAt ? ` 마지막 확인 ${checkedAt}` : ''}
+					</div>
+				</div>
 			{/if}
 		</div>
 
@@ -129,7 +142,10 @@
 				return async ({ result, update }) => {
 					await update({ reset: false });
 					submitting = false;
-					if (result.type === 'failure') {
+					if (result.type === 'failure' && result.data?.unavailable) {
+						// 로그인 불가: 이메일 유지 · 비밀번호만 비움(빨간 테두리·포커스 이동 없음 — 입력 문제가 아니다)
+						password = '';
+					} else if (result.type === 'failure') {
 						// 틀린 정보: 이메일 유지 · 비밀번호 비움 · 비밀번호 칸 빨간 테두리 · 포커스
 						password = '';
 						passwordFlagged = true;
@@ -224,8 +240,9 @@
 			<button
 				type="submit"
 				class="btn w-full preset-filled-brand btn-lg"
-				disabled={submitting}
+				disabled={submitting || unavailable}
 				aria-busy={submitting}
+				aria-describedby={unavailable ? 'submit-why' : undefined}
 			>
 				{#if submitting}
 					<Icon icon={LoaderCircle} size={20} class="mw-spin" /><span>로그인 중…</span>
@@ -233,6 +250,13 @@
 					<span>로그인</span>
 				{/if}
 			</button>
+			{#if unavailable}
+				<p class="mw-help" id="submit-why">
+					<Icon icon={TriangleAlert} size={16} /><span
+						>로그인 서버 점검 중이라 버튼을 누를 수 없어요. 연결되면 자동으로 다시 켜져요.</span
+					>
+				</p>
+			{/if}
 		</form>
 
 		<p class="lg-foot">

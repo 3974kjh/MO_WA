@@ -23,6 +23,14 @@ export function formatKstShort(input: Date | string | number): string {
 	return `${p.month}/${p.day} ${p.hour}:${p.minute} KST`;
 }
 
+/** `13:04` — 시각만(KST). 해석할 수 없는 입력은 빈 문자열 */
+export function formatKstTime(input: Date | string | number): string {
+	const d = new Date(input);
+	if (Number.isNaN(d.getTime())) return '';
+	const p = parts(d);
+	return `${p.hour}:${p.minute}`;
+}
+
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
 const NAIVE_DATETIME = /^(\d{4})-(\d{2})-(\d{2})[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/;
 // 오프셋은 날짜·시각 뒤에 붙은 것만 인정한다(`11-20`·`x-12`처럼 끝의 `-20`을 오프셋으로 오인하지 않는다).

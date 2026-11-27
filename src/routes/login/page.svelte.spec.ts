@@ -70,4 +70,59 @@ describe('로그인 화면 (DS §7-17)', () => {
 		expect(alert?.querySelector('b')?.textContent).toBe('이메일 또는 비밀번호가 맞지 않아요.');
 		expect((container.querySelector('#email') as HTMLInputElement).value).toBe('a@b.co');
 	});
+
+	// 로그인 불가(DS §7-17, 사용자 확정 15:35): login.html?state=disabled 그대로
+	describe('로그인 불가 상태', () => {
+		const down = {
+			unavailable: true as const,
+			checkedAt: '2026-11-27T04:04:30.000Z',
+			email: 'a@b.co'
+		};
+
+		it('경고 알림(문장·KST 마지막 확인)·비활성 버튼·버튼 아래 이유 문구(aria-describedby)·이메일 유지', () => {
+			const { container } = render(Page, { form: down });
+			const alert = container.querySelector('[role="alert"]')!;
+			const callout = alert.querySelector('.mw-callout.warn')!;
+			expect(callout).not.toBeNull();
+			expect(callout.querySelector('b')?.textContent).toBe(
+				'지금은 로그인 서버에 연결할 수 없어요.'
+			);
+			expect(text(callout).replace(/\s+/g, ' ').trim()).toBe(
+				'지금은 로그인 서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요. 마지막 확인 13:04'
+			);
+			expect(callout.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+			const btn = container.querySelector('button[type="submit"]') as HTMLButtonElement;
+			expect(btn.disabled).toBe(true);
+			expect(btn.getAttribute('aria-describedby')).toBe('submit-why');
+			const why = container.querySelector('#submit-why')!;
+			expect(text(why).trim()).toBe(
+				'로그인 서버 점검 중이라 버튼을 누를 수 없어요. 연결되면 자동으로 다시 켜져요.'
+			);
+			expect(why.querySelector('svg')?.getAttribute('width')).toBe('16');
+			expect(btn.compareDocumentPosition(why) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+			expect((container.querySelector('#email') as HTMLInputElement).value).toBe('a@b.co');
+			expect(container.querySelector('.mw-callout.err')).toBeNull();
+		});
+
+		it('알아볼 수 없는 checkedAt 이면 마지막 확인은 빼고 문장은 그대로 둔다', () => {
+			const { container } = render(Page, { form: { ...down, checkedAt: 'nope' } });
+			const t = text(container.querySelector('.mw-callout.warn')!).replace(/\s+/g, ' ').trim();
+			expect(t).toBe('지금은 로그인 서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.');
+		});
+
+		it('평상시·틀린 정보 상태에서는 나타나지 않고 버튼은 켜져 있다', () => {
+			for (const form of [
+				null,
+				{ message: '이메일 또는 비밀번호가 맞지 않아요. 다시 입력해 주세요.', email: 'a@b.co' }
+			]) {
+				const { container, unmount } = render(Page, { form });
+				expect(container.querySelector('.mw-callout.warn')).toBeNull();
+				expect(container.querySelector('#submit-why')).toBeNull();
+				const btn = container.querySelector('button[type="submit"]') as HTMLButtonElement;
+				expect(btn.disabled).toBe(false);
+				expect(btn.hasAttribute('aria-describedby')).toBe(false);
+				unmount();
+			}
+		});
+	});
 });
