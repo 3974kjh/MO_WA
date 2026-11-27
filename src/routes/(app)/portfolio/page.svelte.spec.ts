@@ -1046,6 +1046,8 @@ describe('FE-07 변경 요청 렌더', () => {
 				change_type: 'open_holding',
 				position_id: null,
 				instrument_id: 'inst-1',
+				// 새 보유를 만드는 요청은 통화가 있어야 반영된다(RPC·재검증 M01)
+				proposed_values: { qty: 13, avg_price: 1234, currency: 'KRW' },
 				...over
 			});
 

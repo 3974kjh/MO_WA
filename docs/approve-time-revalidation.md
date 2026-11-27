@@ -1,80 +1,114 @@
 # 승인 시점 재검증 (approve-time re-validation) — 설계
 
-상태: **설계 + 구현(별도 브랜치 `cursor/approve-revalidate`, 0e335b4 기준). 번들에 포함하지 않음, 랜딩하지 않음.**
-위험도: 높음 — `proposalActions.ts`(승인 경로) 수정. 공식 pre-review PASS 전에는 main 에 올리지 않는다.
+상태: **설계 + 구현(별도 브랜치 `cursor/approve-revalidate`, 0e335b4 기준). main 에 올리지 않았고 운영 DB 에도 적용하지 않았다.**
+위험도: 높음 — `proposalActions.ts`(승인 경로)·`approve_proposal` RPC·마이그레이션. 공식 pre-review PASS 와 사용자 재확인 전에는 main 에 올리거나 운영에 적용하지 않는다(적용은 PM 만).
 
 ## 1. 문제
 
 `approve_proposal` RPC 는 `proposed_values || overrides` 를 그대로 `positions` 에 쓴다.
 
-| 입력                                                    | 어디서 검사하나                                                                                                                                      |
+| 입력                                                    | 어디서 검사했나(이 작업 이전)                                                                                                                        |
 | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | overrides (사용자가 고쳐 쓴 값)                         | 앱 `validateOverrides` + RPC 내부 키 허용목록·`mowa_check_qty`                                                                                       |
 | proposed_values (봇이 보낸 값), 고치지 않고 그대로 승인 | propose 시점 MCP `validateProposedValues` + DB INSERT 트리거(키 허용목록·필수값·수량 M03) + `positions` CHECK. **승인 때는 앱에서 다시 보지 않는다** |
 
-빈틈(코드로 확인):
+빈틈과 이 작업의 처리:
 
-- **G1 (이 브랜치가 막음)** 소수 자릿수 R-FMT-13(평균 단가 ≤ 4자리): MCP propose 에서만 본다. 다른 경로(직접 INSERT·MCP 이전 데이터·서비스 롤)로 들어온 `1.00005` 는 승인 시 `numeric(20,6)` 이 조용히 반올림/통과한다.
-- **G2 (이 브랜치가 문구 개선)** 승인 때 DB CHECK 에서 실패하면 사용자는 일반 오류만 본다. 어떤 값이 문제인지, 어떻게 풀지(고쳐서 반영/거절) 안내가 없다.
-- **G3 (이 브랜치가 막지 못함 — 마이그레이션 필요, §7)** 보관(archived)된 포지션/종목 위에 올라온 제안은 RPC 가 보지 않는다. `approval_version` 은 qty/avg/status/currency 변경에만 올라 보관 처리는 base_version 충돌로도 잡히지 않는다.
+- **G1** 소수 자릿수 R-FMT-13(평균 단가 ≤ 4자리): MCP propose 에서만 봤다. 다른 경로로 들어온 `1.00005` 는 승인 시 `numeric(20,6)` 이 조용히 반올림. → 앱(`revalidate.ts`)과 **RPC 둘 다** 승인 시점에 다시 검사.
+- **G2** 승인 때 실패하면 일반 오류만 보였다. → 봇이 보낸 값 문제는 무엇이 문제인지와 푸는 방법(고쳐서 반영/거절)을 안내(§4). 문제가 확실한 요청은 카드에서 **미리** 표시(M-1).
+- **G3** 보관(archived)된 포지션/종목 위 제안은 RPC 가 보지 않았다. → **마이그레이션 `20261127010000_approve_proposal_block_archived.sql`** 이 막는다(§7). 사용자 확인 후 PM 이 적용.
 
-## 2. 무엇을 다시 검사하나
+## 2. 무엇을 다시 검사하나 (합친 값 `merged = proposed_values ∪ overrides`, override 우선)
 
-합친 값 `merged = proposed_values ∪ overrides` (override 우선)에 대해, propose 시점과 같은 규칙을 한 번 더:
+| 검사                                    | 규칙 ID                                  | 앱 revalidate |       RPC(G3)       |
+| --------------------------------------- | ---------------------------------------- | :-----------: | :-----------------: |
+| proposed_values 가 객체                 | R-VAL-P07                                |       ✓       |          ✓          |
+| 키 허용목록(변경 종류·제안자 종류별)    | 직접 쓰기 키 R-VAL-P07 / 그 밖 R-PERM-13 |       ✓       | override 키만(기존) |
+| open_holding: qty·avg_price 모두 있음   | R-VAL-P04 (`missing`)                    |       ✓       |          ✓          |
+| set_qty_avg: 둘 중 하나 이상            | R-VAL-P07 (`missing`)                    |       ✓       |          ✓          |
+| qty: 유한 숫자, > 0, 자산 종류별 단위   | R-VAL-M03 / R-VAL-P04                    |       ✓       |          ✓          |
+| avg_price: 숫자, > 0                    | R-VAL-M02                                |       ✓       |          ✓          |
+| avg_price 소수 ≤ 4자리                  | **R-FMT-13**                             |       ✓       |          ✓          |
+| currency ∈ {KRW, USD}                   | R-VAL-M01                                |       ✓       |          ✓          |
+| 포지션 없는 open_holding: currency 필수 | R-VAL-M01 (`missing`)                    |       ✓       |          ✓          |
+| 보관된 포지션 / 보관된 종목             | R-VAL-P02 · SQLSTATE MW001 / MW002       | (앱은 안내용) |          ✓          |
 
-| 검사                                              | 규칙 ID                                                | 비고                                                                                              |
-| ------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| proposed_values 가 객체                           | R-VAL-P07                                              | null·배열·문자열 거부                                                                             |
-| 키 허용목록(변경 종류·제안자 종류별)              | 직접 쓰기 키(breakeven 등) R-VAL-P07 / 그 밖 R-PERM-13 | `allowedOverrideKeys` 재사용(DB 트리거와 동일) — 봇의 set_qty_avg 에 currency 불가, 사용자는 가능 |
-| open_holding: qty·avg_price 모두 있음             | R-VAL-P04                                              |                                                                                                   |
-| set_qty_avg: 둘 중 하나 이상                      | R-VAL-P07                                              |                                                                                                   |
-| qty: 유한 숫자, > 0, 자산 종류별 단위(`parseQty`) | R-VAL-M03 / R-VAL-P04                                  | 주식·ETF 정수, 현금 소수 허용 등                                                                  |
-| avg_price: 숫자, > 0                              | R-VAL-M02                                              |                                                                                                   |
-| avg_price 소수 ≤ 4자리                            | **R-FMT-13**                                           | G1                                                                                                |
-| currency ∈ {KRW, USD}                             | R-VAL-M01                                              |                                                                                                   |
-| close: 값 없음                                    | R-PERM-13                                              |                                                                                                   |
+검사하지 **않는** 것(RPC 가 원자적으로 권위): 소유권, 상태/만료, base_version 충돌, 중복 보유. 앱 재검증은 포지션 현재 상태를 읽지 않는다.
 
-검사하지 **않는** 것(RPC 가 원자적으로 권위): 소유권, 상태/만료, base_version 충돌, 중복 보유, 포지션 존재·잠금. 이 함수는 포지션 현재 상태를 읽지 않으므로 새 경쟁 조건을 만들지 않는다. proposed_values 는 INSERT 후 DB 트리거로 불변이라 읽은 값과 RPC 가 쓸 값이 같다.
+### 순서 (L-2): 만료·superseded·버전 충돌이 값 재검사보다 먼저
+
+- 앱: `handleApprove` 는 이미 읽은 행이 `pending`(만료 시각 전) 또는 `on_hold` 일 때만 재검증한다. 만료됐거나 superseded/종결 상태면 재검증 없이 RPC 로 보내 RPC 가 상태를 먼저 가린다(만료 → `expired` 로 전환, superseded → 중립 안내). on_hold 는 만료 제외 규칙(G-1)대로 항상 재검증.
+- RPC: 세션 → 행 잠금 → 상태(superseded 등) → 만료 → 키 허용목록 → (포지션 FOR UPDATE → 종목 FOR SHARE → **보관 확인**) → base_version 충돌 → **값 재검사** → 쓰기. 보관 확인이 충돌보다 앞인 것은 의도: 보관된 대상은 어떤 경우에도 반영 불가이고, 충돌로 상태를 바꾸지 않아 사용자가 거절/복원할 수 있다.
 
 ## 3. 어디서
 
-- 순수 함수 `src/lib/server/domain/proposals/revalidate.ts` → `revalidateMergedForApprove(...)` (`index.ts` 에서 export). DB·네트워크 없음.
-- 호출 지점: `src/lib/server/web/proposalActions.ts` `handleApprove` — `validateOverrides` 통과 직후, `approveProposalRpc` **직전**. `loadProposalMeta` 가 `proposed_values` 를 함께 읽는다(같은 SELECT, 쿼리 수 증가 없음).
-- 실패 시 `failValidation(400, ruleId, message, { key, source })`, **RPC 호출 없음**(승인 상태·감사 로그 변화 없음).
-- 거절(`handleReject`)·고쳐쓰기(`handleCorrect`)·ack 는 건드리지 않는다. MCP 쪽(`tools/portfolio.ts`)도 건드리지 않는다.
+- 앱 서버: `src/lib/server/domain/proposals/revalidate.ts` → `revalidateMergedForApprove`. 호출: `proposalActions.ts` `handleApprove` — `validateOverrides` 뒤, `approveProposalRpc` 앞. RPC 는 **검사를 통과한 바로 그 overrides 객체**를 받는다(L-3, 테스트로 고정). 실패 시 `failValidation(400, ruleId, message, { key, source, asset, missing? })`, RPC 호출 없음.
+- 앱 클라이언트: `src/lib/queue/proposals.ts` `proposedProblem(item)` — 같은 규칙으로 대기 요청 카드에서 미리 찾는다(M-1).
+- DB: `approve_proposal` 재정의(§7).
+- 거절·고쳐쓰기·ack·MCP 소스는 건드리지 않는다.
 
-의도적으로 하지 않은 것: MCP propose 검증과 공유 검증기로 합치는 리팩터링(고위험 파일 수정 확대). 따라서 규칙이 두 곳에 있다 — 중복은 `revalidate.spec.ts` 의 경계 테스트로 감시하고, 합치는 일은 별도 작업으로 제안한다.
+### 규칙이 있는 곳 (REPORT.md 열린 점 (b) 의 5곳 + 새 RPC 검사)
 
-## 4. 오류 문구
+1. MCP `validateProposedValues` (`tools/portfolio.ts`, propose 시점)
+2. `revalidate.ts` (승인 시점, 앱 서버)
+3. `validateOverrides` (`overrides.ts`, 사용자가 고친 값)
+4. DB 트리거 / RPC — INSERT 트리거 + **새 `approve_proposal` 값 재검사**(G3 마이그레이션)
+5. 클라이언트 `checkOverrideDraft` (입력 안내) — 같은 파일의 `proposedProblem` 도 같은 규칙
 
-서버 응답: `{ ruleIds: [ruleId], message(영문 [R-…]), key, source }`. 화면은 `src/lib/queue/proposals.ts` `classifyActionResult` 에서 `source === 'proposed'` 일 때 **봇이 보낸 값 문제**용 문구를 쓴다(규칙 코드는 화면에 노출하지 않음). 사용자 입력(`override`/없음)은 기존 문구 그대로.
+드리프트 감시: `portfolio.parity.spec.ts` 가 같은 케이스 표(25건)를 MCP propose 핸들러(소스 수정 없음)·`revalidate.ts`·클라이언트 `proposedProblem` 에 돌려 첫 규칙 ID 를 비교하고, DB 는 `supabase/tests/approve_proposal_g3.psql` 이 같은 값들로 검증한다. 알려진 차이(표에 명시): ① set_qty_avg 에 두 값이 없을 때 MCP·revalidate 는 R-VAL-P07, 클라이언트는 안내용으로 R-VAL-P04; ② 포지션 없는 open_holding 에 통화가 없으면 MCP 는 통과시키지만 RPC·revalidate·클라이언트는 R-VAL-M01(원래도 positions.currency NOT NULL 로 일반 오류가 났던 건). 공유 검증 모듈은 이후 **별도 고위험 MCP 변경**으로.
 
-| 규칙                  | 문구 (source=proposed)                                                                                                  |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| R-FMT-13              | 봇이 보낸 평균 단가가 소수 넷째 자리를 넘어서 그대로는 반영할 수 없어요. ‘고쳐서 반영’으로 값을 맞추거나 거절해 주세요. |
-| R-VAL-M02             | 봇이 보낸 평균 단가가 올바르지 않아 그대로는 반영할 수 없어요. ‘고쳐서 반영’으로 …                                      |
-| R-VAL-M01             | 봇이 보낸 통화가 원화·달러가 아니라서 …                                                                                 |
-| R-VAL-M03             | 봇이 보낸 수량이 규칙에 맞지 않아 …                                                                                     |
-| R-VAL-P04             | 봇이 보낸 요청에 수량이나 평균 단가가 빠졌거나 0 이하예요. ‘고쳐서 반영’으로 값을 채우거나 거절해 주세요.               |
-| R-VAL-P07 / R-PERM-13 | 봇이 보낸 값에 고칠 수 없는 항목이 있어요. 이 요청은 거절해 주세요.                                                     |
+Info: avg_price ≥ 1e14 는 앱·RPC 어디서도 상한을 두지 않아 numeric(20,6) 오버플로가 일반 DB 오류로 실패한다(기존 상한 없음 건과 같은 문제, 이번에도 손대지 않음).
 
-포트폴리오 화면의 반영은 5초 유예 후 요청이므로(G-2), 실패 시 기존 롤백·오류 안내 경로를 그대로 탄다(UI 코드 변경 없음, 문구만 추가). 문구는 디자이너 카피 리뷰 대상.
+## 4. 오류 문구 (designer 확정 문구, 규칙 코드는 화면에 노출하지 않음)
 
-## 5. 테스트
+`classifyActionResult` 가 `source === 'proposed'` 면 봇 값 문제용 문구를 쓴다. 안내 위치: 시트 안에서 승인하다 실패하면 시트 안 `mw-callout`(role=alert), 카드에서 5초 유예 뒤 실패하면 기존 롤백·오류 경로.
 
-- `revalidate.spec.ts` (13): 정상·소수 5자리·override 가 proposed 문제를 덮음·source 구분·avg 0/음수/문자열/NaN·통화·open_holding 필수값·qty 경계(자산 종류별)·set_qty_avg 빈 값·close·직접 쓰기/허용 밖 키·객체 아님·가격 경계.
-- `proposalActions.spec.ts` (+6): 5자리 → 400 R-FMT-13 + RPC 미호출, 고쳐서 승인 → RPC 호출(overrides 전달), 정상 통과, 키/값 오류 4종 RPC 미호출, open_holding 필수값, close 통과. `fakeSupabase` 가 `proposed_values` 를 돌려주도록 확장(기본 `{ qty: 2 }`).
-- `queue/proposals.spec.ts` (+1): source=proposed 문구, 사용자 입력 문구 불변, 매핑 없는 규칙은 일반 안내.
-- 변이 검사: (M1) 소수 자릿수 검사 제거 → 4 실패, (M2) 호출 삭제 → 3 실패, (M3) 병합 순서 뒤집기 → 2 실패, (M4) source 무시 → 1 실패. 전부 감지.
-- 게이트: check 0/0, eslint 0, prettier, vitest 전체 113 files / 1384 tests 통과.
+| 규칙 (source=proposed)                 | 문구                                                                                                                                                    |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R-FMT-13                               | 봇이 보낸 평균 단가가 소수점 아래 4자리를 넘어서 그대로는 반영할 수 없어요. ‘고쳐서 반영’으로 값을 맞추거나 거절해 주세요.                              |
+| R-VAL-M02                              | 봇이 보낸 평균 단가가 숫자가 아니거나 0 이하라서 그대로는 반영할 수 없어요. ‘고쳐서 반영’으로 값을 맞추거나 거절해 주세요.                              |
+| R-VAL-M01                              | 봇이 보낸 통화가 원화·달러가 아니라서 그대로는 반영할 수 없어요. ‘고쳐서 반영’으로 값을 맞추거나 거절해 주세요.                                         |
+| R-VAL-M03                              | 봇이 보낸 수량이 0 이하이거나 이 종목에 쓸 수 없는 단위예요**(주식·ETF는 정수만 / 현금은 소수 둘째 자리까지 / 그 밖은 괄호 없음)**. ‘고쳐서 반영’으로 … |
+| R-VAL-P04                              | 봇이 보낸 요청에 수량이나 평균 단가가 빠졌거나 0 이하예요. ‘고쳐서 반영’으로 값을 채우거나 거절해 주세요.                                               |
+| 값이 비어서 막힘(`missing`)            | 봇이 보낸 요청에 수량이나 평균 단가가 빠져 있어요. ‘고쳐서 반영’으로 값을 채우거나 거절해 주세요. (Nit-2: 거절만 안내하지 않음)                         |
+| R-VAL-P07 / R-PERM-13                  | 봇이 바꿀 수 없는 항목까지 보내서 이 요청은 반영할 수 없어요. 거절해 주세요.                                                                            |
+| 보관된 보유 기록 (`ARCHIVED_POSITION`) | 이 보유 기록은 보관돼 있어서 반영할 수 없어요. 거절하거나, 보관함에서 복원한 뒤 새 요청을 받아 주세요.                                                  |
+| 보관된 종목 (`ARCHIVED_INSTRUMENT`)    | 이 종목은 보관돼 있어서 반영할 수 없어요. 거절하거나, 보관함에서 복원한 뒤 새 요청을 받아 주세요.                                                       |
 
-## 6. 잔여 위험
+사용자 입력 문구(source 없음/override)는 기존 그대로이고, 추가로 R-VAL-P04("수량과 평균 단가는 0보다 큰 값으로 입력해 주세요.")·R-VAL-M01("통화는 원 또는 달러만 고를 수 있어요.") 전용 문구를 넣었다(Nit-2).
 
-- TOCTOU: 재검증과 RPC 사이에 proposed_values 는 불변이라 값은 같다. 포지션 상태 변화는 RPC 의 base_version 이 담당(변경 없음).
-- 이미 승인된 과거 건은 영향 없음. 이미 PENDING 인 제안 중 규칙 위반 건은 승인이 막히고 거절/고쳐서 반영으로 풀어야 한다 — 운영 데이터에 해당 건이 있는지는 PM 이 읽기 쿼리로 확인(이 작업은 DB 접근 안 함).
-- 규칙 이중 관리(§3).
-- 새 규칙 추가 시 MCP·재검증 양쪽 갱신 필요.
+## 5. M-1 — 반올림 표시와 '고쳐서 반영' 루프 수정
 
-## 7. 마이그레이션이 필요한 항목 (구현하지 않음 — PM 에게 먼저 보고)
+원인: 화면은 USD 평균 단가를 2자리로 보여 주고(`prefill`), 비교는 4자리 반올림(`normValue`)이라, 봇 값 `1.00005` 가 `$1.00` 으로 보이고 입력칸도 `1.00` → 그대로 두면 "봇 요청 값과 같아요 — 시트를 닫고 ‘반영’을 누르세요" → 반영은 새 재검증에 막힘(루프). 수정:
 
-G3 보관 포지션/종목 위 제안 승인 방지는 원자성이 필요해 `approve_proposal` 에서 `FOR UPDATE` 로 잠근 뒤 `archived_at IS NULL`(포지션·종목)을 확인해야 한다. 앱 레벨 선검사는 읽기와 RPC 사이 경쟁이 남아 효과가 불완전하다. → 새 마이그레이션(+ RPC 재정의)이 필요하므로 **이번 범위에서 중단**. 대안(선택): `approval_version` 을 보관 처리에도 올리면 기존 base_version 충돌로 해결되나 역시 마이그레이션.
+- 봇 값과의 비교는 **반올림 없는 정확 비교**(`sameAsBot`). 4자리 미만 차이도 변경이다.
+- 봇 평균 단가가 4자리를 넘으면 `prefill` 이 4자리로 맞춘 값(`1.0001`)을 채우고 `readMine` 이 그 값을 '내가 고친 값'으로 읽어 `overrides` 로 보낸다(원래 값으로 되돌리지 않음). 직접 5자리 이상을 입력하면 입력 오류(클라이언트 4자리 검사 추가).
+- 대기 카드: 봇 값이 그대로는 반영 불가인 요청은 `proposedProblem` 으로 미리 찾아 안내(`data-testid="proposed-problem"`)를 보이고 **‘반영’만 막는다**(`aria-disabled`·클릭 무시, 확인 시트도 `confirmApprove` 에서 한 번 더 막음). ‘고쳐서 반영’·보류·거절은 열려 있고, 시트에도 같은 안내가 뜬다.
+- KRW(`100.00005` → `100.0001`)와 USD 모두 테스트.
+
+## 6. 테스트·변이 검사·게이트
+
+- 앱: `revalidate.spec.ts`(15), `overrides.spec.ts`(Nit-1), `proposalActions.spec.ts`(41: 만료·superseded·종결·on_hold 순서, L-3 객체 동일성, missing, MW001/MW002 코드), `queue/proposals.spec.ts`(M-1 루프 USD/KRW·proposedProblem 표·문구·보관 문구), `QueueCard.svelte.spec.ts`(카드 안내·‘반영’만 막힘), `portfolio.parity.spec.ts`(패리티 26).
+- DB(로컬 격리 클러스터 127.0.0.1:55435 `mowa_local_g3` 에서만): `supabase/tests/approve_proposal_g3.psql` 55건 + `run-approve-g3-local.sh` — 적용 → 테스트 → 롤백(정의·ACL 이 기준선과 md5 동일) → 구 동작 테스트 13건 → 재적용(첫 적용과 정의 동일) → 테스트. 직접 RPC 호출(소유자 세션)로 우회 불가, 만료·superseded·충돌이 값 오류보다 먼저, 보관 차단이 충돌보다 먼저, 권한(authenticated 만 EXECUTE)·SECURITY DEFINER·search_path 불변.
+- 변이 검사: 앱 17종 전부 감지(`mutation-app.log`), SQL 15종 전부 감지(`mutation-sql.log`).
+- 게이트: svelte-check 0/0, eslint 0, G-14 OK, 변경 파일 prettier 통과(전체 20개는 기준선 그대로), vitest 전체, `CF_PAGES=1 pnpm build` OK, 클라이언트 gzip 약 +1.2 KiB(기준 0e335b4).
+
+## 7. G3 마이그레이션
+
+`supabase/migrations/20261127010000_approve_proposal_block_archived.sql` — `approve_proposal` 하나만 `create or replace`(기존 정의와 같은 SECURITY DEFINER, `set search_path = public, pg_temp`, 소유자·세션 검사 유지, `revoke … from public, anon, service_role; grant execute … to authenticated` 재적용). 변경점:
+
+1. 포지션 `FOR UPDATE` → 종목 `FOR SHARE` 순으로 잠근 뒤 보관 여부 확인(포지션 없는 open_holding 도 종목을 잠금). 보관 처리(UPDATE)는 같은 행 잠금을 기다리므로 '확인 직후 보관' 경쟁이 없다. SQLSTATE `MW001`(보유 보관)·`MW002`(종목 보관), 메시지 태그 `[R-VAL-P02]`(새 규칙 ID 를 만들지 않음 — R-VAL-P16 은 이미 거리% 규칙이라 쓰지 않음). 앱 `actionErrors.ts` 가 코드로 구분(`ARCHIVED_POSITION`/`ARCHIVED_INSTRUMENT`)하고 위 문구로 바꾼다.
+2. 합친 값 재검사(§2 표 RPC 열). 초기 수량 단위 검사는 숫자일 때만(문자열이면 캐스팅 오류 대신 R-VAL-M03).
+3. `positions_guard`·`approval_version` 은 건드리지 않는다. 처음엔 보관 시 `approval_version` 을 올리는 안을 봤지만 잠금 + 확인으로 원자성이 확보돼 불필요하고, 트리거 재정의 위험만 늘어 뺐다.
+
+롤백: `supabase/rollbacks/20261127010000_approve_proposal_block_archived.down.sql`(0800 원본 정의를 그대로 복원 — 로컬 테스트에서 정의 md5 동일 확인). `supabase/migrations` 밖에 둬서 `db push` 가 자동 적용하지 않는다.
+
+적용 순서(PM): ① 앱 변경을 먼저 또는 같이 배포해도 안전(앱이 없는 코드 MW001 을 기다리지 않음) ② 마이그레이션 적용 ③ 문제 시 롤백 SQL. 앱 재검증은 마이그레이션 없이도 단독으로 동작한다.
+
+## 8. 운영 영향·잔여 위험
+
+- PM 읽기 확인(18:2x KST): `position_proposals` 0행, pending `principle_proposals` 0건 → 이미 대기 중인 제안이 이 변경으로 막히는 일은 없다. 적용 직전에 PM 이 다시 센다. 만료 기본 7일이라 영향은 어차피 한정.
+- 이미 승인된 과거 건은 영향 없음. 앞으로 규칙 위반 값이 든 대기 건은 승인이 막히고 거절/고쳐서 반영으로 푼다.
+- G3 적용과 main 착지는 사용자 재확인 뒤 PM 이 지시한다. 이 브랜치는 운영 DB·wrangler·환경변수·Preview 를 건드리지 않았다.
+- TOCTOU: proposed_values 는 INSERT 후 불변이라 재검증과 RPC 사이 값이 같다. 포지션 상태 변화는 RPC 잠금 + base_version.
+- 규칙 이중 관리(§3) — 패리티 테스트로 감시.
