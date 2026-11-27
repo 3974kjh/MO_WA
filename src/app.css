@@ -358,12 +358,6 @@ input[type='datetime-local'].field-control--plain::-webkit-calendar-picker-indic
 	}
 }
 
-/* select 화살표 자리: overrides 의 .select{padding-inline:.75rem} 가 forms 화살표 여백(2.5rem)을 지워 글자가 화살표 밑으로 들어간다
- * (Skeleton 경고 'select에 padding-inline 금지'). 특이도 0,1,1 로 오른쪽만 되돌린다 — READY.md 열린 질문 */
-select.select {
-	padding-inline-end: 2.5rem;
-}
-
 @keyframes mw-spin {
 	to {
 		transform: rotate(360deg);
