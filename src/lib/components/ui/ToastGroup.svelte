@@ -60,8 +60,22 @@
 		return 24;
 	}
 
+	/** 열린 시트·모달: `role=dialog` + aria-modal, 닫히면 Sheet 가 inert 를 붙인다(클래스 이름에 기대지 않는다) */
+	const OPEN_DIALOG = '[role="dialog"][aria-modal="true"]:not([inert])';
+
+	// 열린 시트의 크기가 바뀌면(내용 변화) 다시 잰다. transform 슬라이드는 ResizeObserver 에 안 잡혀 transitionend 가 맡는다.
+	let ro: ResizeObserver | undefined;
+	let watched: HTMLElement | null = null;
+	function watch(el: HTMLElement | null) {
+		if (watched === el) return;
+		if (watched) ro?.unobserve(watched);
+		watched = el;
+		if (el) ro?.observe(el);
+	}
+
 	function applyLift() {
-		const sheet = document.querySelector('.sheet.open') as HTMLElement | null;
+		const sheet = document.querySelector(OPEN_DIALOG) as HTMLElement | null;
+		watch(sheet);
 		const root = document.documentElement;
 		if (!sheet) {
 			root.style.removeProperty('--mw-toast-bottom-lift');
@@ -90,7 +104,18 @@
 		else root.style.setProperty('--mw-toast-bottom-lift', `${next}px`);
 	}
 
+	/**
+	 * 시트가 열리는 순간(class 변경)에는 아직 화면 밖(translateY)이라 겹침이 안 잡힌다 → 슬라이드가 끝난 뒤 다시 잰다(L-1).
+	 * 시트 안 자식(버튼 등)의 transitionend 는 걸러 낸다.
+	 */
+	function onTransitionEnd(e: TransitionEvent) {
+		const t = e.target;
+		if (t instanceof Element && t.matches('[role="dialog"]')) applyLift();
+	}
+
 	onMount(() => {
+		ro = new ResizeObserver(applyLift);
+		document.addEventListener('transitionend', onTransitionEnd, true);
 		const mo = new MutationObserver(applyLift);
 		mo.observe(document.body, {
 			subtree: true,
@@ -102,6 +127,10 @@
 		applyLift();
 		return () => {
 			mo.disconnect();
+			ro?.disconnect();
+			ro = undefined;
+			watched = null;
+			document.removeEventListener('transitionend', onTransitionEnd, true);
 			window.removeEventListener('resize', applyLift);
 			document.documentElement.style.removeProperty('--mw-toast-bottom-lift');
 		};
