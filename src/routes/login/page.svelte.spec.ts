@@ -96,12 +96,20 @@ describe('로그인 화면 (DS §7-17)', () => {
 			expect(btn.getAttribute('aria-describedby')).toBe('submit-why');
 			const why = container.querySelector('#submit-why')!;
 			expect(text(why).trim()).toBe(
-				'로그인 서버 점검 중이라 버튼을 누를 수 없어요. 연결되면 자동으로 다시 켜져요.'
+				'지금은 로그인 서버에 연결되지 않아 버튼을 누를 수 없어요. 잠시 뒤 다시 시도해 주세요.'
 			);
 			expect(why.querySelector('svg')?.getAttribute('width')).toBe('16');
 			expect(btn.compareDocumentPosition(why) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 			expect((container.querySelector('#email') as HTMLInputElement).value).toBe('a@b.co');
 			expect(container.querySelector('.mw-callout.err')).toBeNull();
+		});
+
+		it('불가 상태에서 비밀번호 칸은 빨간 테두리·aria-invalid가 아니다', () => {
+			const { container } = render(Page, { form: down });
+			const pw = container.querySelector('#password') as HTMLInputElement;
+			expect(pw.getAttribute('aria-invalid')).not.toBe('true');
+			expect(pw.closest('.mw-input-group')?.hasAttribute('data-invalid')).toBe(false);
+			expect(container.querySelector('#password-help')).toBeNull();
 		});
 
 		it('알아볼 수 없는 checkedAt 이면 마지막 확인은 빼고 문장은 그대로 둔다', () => {

@@ -253,7 +253,7 @@
 			{#if unavailable}
 				<p class="mw-help" id="submit-why">
 					<Icon icon={TriangleAlert} size={16} /><span
-						>로그인 서버 점검 중이라 버튼을 누를 수 없어요. 연결되면 자동으로 다시 켜져요.</span
+						>지금은 로그인 서버에 연결되지 않아 버튼을 누를 수 없어요. 잠시 뒤 다시 시도해 주세요.</span
 					>
 				</p>
 			{/if}
