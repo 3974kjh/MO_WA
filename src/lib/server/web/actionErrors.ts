@@ -63,6 +63,7 @@ export function failFromDbError(
 /**
  * approve_proposal·approve_principle_proposal·decide_principle_proposal이 종결 상태에서 내는
  * `raise exception 'proposal is already %'`(P0001) 중 superseded만. 다른 상태·다른 코드는 아니다.
+ * 거절·보류·확인했어요는 DB가 P0002 not found를 반환하므로 superseded 안내가 아니라 일반 오류로 실패한다(의도된 안전 실패).
  */
 export function isSupersededDbError(err: {
 	code?: string | null;

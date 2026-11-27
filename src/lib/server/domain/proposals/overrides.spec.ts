@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	allowedOverrideKeys,
 	assertNoRemainingDaysField,
+	hasAtMostNDecimals,
 	isApprovedEdited,
 	mergeAppliedValues,
 	validateOverrides
@@ -75,6 +76,23 @@ describe('BE-11 override allowlist', () => {
 		});
 		expect(r.ok).toBe(true);
 		if (r.ok) expect(r.overrides.avg_price).toBe(100.1234);
+	});
+
+	it('H-1: 정수부가 커도 소수 4자리 이하는 허용, 5자리와 1.00005는 거부 (반영 승인 경로)', () => {
+		for (const avg of [23090.01, 12517.62, 1350.063, 9481.2658, 9999999.1234]) {
+			expect(hasAtMostNDecimals(avg, 4), String(avg)).toBe(true);
+			const r = validateOverrides({ changeType: 'set_qty_avg', overrides: { avg_price: avg } });
+			expect(r.ok, String(avg)).toBe(true);
+			if (r.ok) expect(r.overrides.avg_price).toBe(avg);
+		}
+		for (const avg of [1.00005, 23090.01001, 9999999.12345]) {
+			expect(hasAtMostNDecimals(avg, 4), String(avg)).toBe(false);
+			const r = validateOverrides({ changeType: 'set_qty_avg', overrides: { avg_price: avg } });
+			expect(r.ok, String(avg)).toBe(false);
+			if (!r.ok) expect(r.ruleId).toBe('R-FMT-13');
+		}
+		expect(hasAtMostNDecimals(Number.POSITIVE_INFINITY, 4)).toBe(false);
+		expect(hasAtMostNDecimals(Number.NaN, 4)).toBe(false);
 	});
 
 	it('merges overrides into proposed_values for applied_values', () => {

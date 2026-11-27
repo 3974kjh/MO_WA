@@ -64,4 +64,17 @@ describe('BE-19 correction input', () => {
 			if (!r.ok) expect(r.ruleId).toBe('R-FMT-13');
 		}
 	});
+
+	it('H-1: 정수부가 커도 소수 4자리 이하는 허용, 5자리와 1.00005는 거부 (정정 경로)', () => {
+		const base = { qty: 10, currency: 'KRW', reason: '평단 정정', assetType: 'stock' as const };
+		for (const avg of [23090.01, 12517.62, 1350.063, 9481.2658, 9999999.1234]) {
+			const r = validateCorrectionInput({ ...base, avg_price: avg });
+			expect(r, String(avg)).toEqual(expect.objectContaining({ ok: true, avg_price: avg }));
+		}
+		for (const avg of [1.00005, 23090.01001, 9999999.12345]) {
+			const r = validateCorrectionInput({ ...base, avg_price: avg });
+			expect(r.ok, String(avg)).toBe(false);
+			if (!r.ok) expect(r.ruleId).toBe('R-FMT-13');
+		}
+	});
 });

@@ -176,10 +176,12 @@ export function isApprovedEdited(
 	return stableJson(appliedValues) !== stableJson(proposedValues);
 }
 
+/**
+ * 소수 n자리 이내인지. value*10**n 오차 비교는 정수부가 약 8,192를 넘으면
+ * 올바른 값(23090.01 등)을 거부한다(사전리뷰 H-1). toFixed로 반올림한 뒤 같은지 본다.
+ */
 export function hasAtMostNDecimals(value: number, n: number): boolean {
-	if (!Number.isFinite(value)) return false;
-	const scaled = value * 10 ** n;
-	return Math.abs(scaled - Math.round(scaled)) < 1e-9;
+	return Number.isFinite(value) && Number(value.toFixed(n)) === value;
 }
 
 /** Reject remaining-days style fields if a caller tries to invent them (BE-11). */
