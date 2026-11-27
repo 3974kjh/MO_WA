@@ -1115,6 +1115,17 @@
 		min-width: 170px;
 		text-align: left;
 	}
+	/* 카드형(<640): 값 열은 숫자처럼 오른쪽 맞춤 — '—'도 같은 끝선(DS §0-2-7 기존 문제 메모) */
+	@media (max-width: 639px) {
+		.memo-cell {
+			min-width: 0;
+			align-items: flex-end;
+			text-align: right;
+		}
+		.memo-trig {
+			justify-content: flex-end;
+		}
+	}
 	.memo-trig {
 		display: flex;
 		flex-wrap: wrap;

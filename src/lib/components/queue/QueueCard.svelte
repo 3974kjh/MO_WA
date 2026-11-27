@@ -361,4 +361,10 @@
 		min-width: 0;
 		padding: 0 8px;
 	}
+	/* 모바일 주요 액션 44 (DS §4-1): 반영(44)·고쳐서 반영·보류·거절(40)이 한 줄에서 높이가 다르지 않게 모두 44 */
+	@media (max-width: 639px) {
+		.acts .btn {
+			min-height: 2.75rem;
+		}
+	}
 </style>
