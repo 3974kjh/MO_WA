@@ -84,7 +84,7 @@
 			<label class="field" for="{uid}-name"
 				>종목<input
 					id="{uid}-name"
-					class="input"
+					class="mw-input"
 					value={target.name}
 					readonly
 					aria-readonly="true"
@@ -94,7 +94,7 @@
 				<label class="field" for="{uid}-qty"
 					>수량<input
 						id="{uid}-qty"
-						class="input num"
+						class="mw-input num"
 						type="text"
 						inputmode={integerQty ? 'numeric' : 'decimal'}
 						autocomplete="off"
@@ -106,7 +106,7 @@
 						>{/if}</label
 				>
 				<label class="field" for="{uid}-currency"
-					>통화<select id="{uid}-currency" class="select" bind:value={inputs.currency}>
+					>통화<select id="{uid}-currency" class="mw-select" bind:value={inputs.currency}>
 						<option value="KRW">원 (KRW)</option>
 						<option value="USD">달러 (USD)</option>
 					</select></label
@@ -115,7 +115,7 @@
 			<label class="field" for="{uid}-avg_price"
 				>평균 단가<input
 					id="{uid}-avg_price"
-					class="input num"
+					class="mw-input num"
 					type="text"
 					inputmode="decimal"
 					autocomplete="off"
@@ -125,7 +125,7 @@
 			<label class="field" for="{uid}-reason"
 				>수정 이유 (한 줄, 필수)<input
 					id="{uid}-reason"
-					class="input"
+					class="mw-input"
 					maxlength={OVERRIDE_REASON_MAX}
 					bind:value={inputs.reason}
 				/><span class="hint">최대 {OVERRIDE_REASON_MAX}자</span></label
@@ -144,10 +144,10 @@
 		<p class="form-reason" class:ok={check?.ok} id="{uid}-msg" role="status" aria-live="polite">
 			{check?.message ?? ''}
 		</p>
-		<button type="button" class="btn" onclick={onclose}>취소</button>
+		<button type="button" class="mw-btn" onclick={onclose}>취소</button>
 		<button
 			type="button"
-			class="btn primary"
+			class="mw-btn primary"
 			data-action="correction-next"
 			aria-disabled={check?.ok ? undefined : 'true'}
 			aria-describedby="{uid}-msg"
@@ -170,8 +170,8 @@
 		</div>
 	{/if}
 	{#snippet footer()}
-		<button type="button" class="btn" onclick={() => (step = 'edit')}>다시 고치기</button>
-		<button type="button" class="btn primary" data-action="correction-submit" onclick={submit}
+		<button type="button" class="mw-btn" onclick={() => (step = 'edit')}>다시 고치기</button>
+		<button type="button" class="mw-btn primary" data-action="correction-submit" onclick={submit}
 			>확인하고 반영</button
 		>
 	{/snippet}
@@ -214,8 +214,8 @@
 		.row2 {
 			grid-template-columns: minmax(0, 1fr);
 		}
-		.input,
-		.select {
+		.mw-input,
+		.mw-select {
 			font-size: 16px;
 			height: 44px;
 		}

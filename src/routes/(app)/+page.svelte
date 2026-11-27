@@ -127,7 +127,7 @@
 	<p class="asof">
 		{#if data.kospi}{formatBriefingDate(data.kospi.as_of)} 종가 기준{:else}아직 시장 지표가 없어요{/if}
 	</p>
-	<a class="btn sm" href={resolve('/briefings')}>전체 브리핑 보기</a>
+	<a class="mw-btn sm" href={resolve('/briefings')}>전체 브리핑 보기</a>
 </div>
 
 <div class="dash" data-testid="home-dashboard">
@@ -169,7 +169,7 @@
 				<p class="more-note">외 {data.queue.total - data.queue.items.length}건</p>
 			{/if}
 		{/if}
-		<a class="btn primary go" href="{resolve('/portfolio')}#queue">확인하러 가기</a>
+		<a class="mw-btn primary go" href="{resolve('/portfolio')}#queue">확인하러 가기</a>
 	</Card>
 
 	<!-- 오늘 요약(최근 일간 브리핑 + 지수·환율) -->

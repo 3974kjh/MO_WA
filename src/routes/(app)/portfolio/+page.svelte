@@ -552,7 +552,7 @@
 	{#if correctable.has(r.id)}
 		<button
 			type="button"
-			class="btn sm"
+			class="mw-btn sm"
 			data-action="correct"
 			aria-disabled={correctionLocked(r.id) ? 'true' : undefined}
 			onclick={() => {
@@ -641,7 +641,7 @@
 					/>
 				{/if}
 			{/snippet}
-			<div id="holdings" class="anchor"></div>
+			<div id="holdings" class="mw-anchor"></div>
 			{#if data.positionsError || data.portfolioError}
 				<div class="pad"><ErrorState desc="잠시 후 다시 시도해 주세요." /></div>
 			{:else if rows.length === 0}
@@ -671,7 +671,7 @@
 		</Card>
 
 		<Card class="c-5" title="자산 비중" sub="평가금액 기준">
-			<div id="weights" class="anchor"></div>
+			<div id="weights" class="mw-anchor"></div>
 			{#if data.positionsError || data.valuationError}
 				<ErrorState desc="잠시 후 다시 시도해 주세요." />
 			{:else if weights.length === 0}
@@ -834,10 +834,10 @@
 		</div>
 	{/if}
 	{#snippet footer()}
-		<button type="button" class="btn" onclick={() => (approveTarget = null)}>취소</button>
+		<button type="button" class="mw-btn" onclick={() => (approveTarget = null)}>취소</button>
 		<button
 			type="button"
-			class="btn primary"
+			class="mw-btn primary"
 			data-action="approve-confirm"
 			aria-disabled={approveTarget && isPreBlocked(approveTarget) ? 'true' : undefined}
 			onclick={confirmApprove}>반영하기</button
@@ -859,7 +859,7 @@
 			<label class="field" for="reject-note"
 				>거절 이유(선택)<input
 					id="reject-note"
-					class="input"
+					class="mw-input"
 					maxlength="200"
 					bind:value={rejectNote}
 				/></label
@@ -867,8 +867,8 @@
 		</div>
 	{/if}
 	{#snippet footer()}
-		<button type="button" class="btn" onclick={() => (rejectTarget = null)}>취소</button>
-		<button type="button" class="btn danger" data-action="reject-confirm" onclick={confirmReject}
+		<button type="button" class="mw-btn" onclick={() => (rejectTarget = null)}>취소</button>
+		<button type="button" class="mw-btn danger" data-action="reject-confirm" onclick={confirmReject}
 			>거절</button
 		>
 	{/snippet}
@@ -948,7 +948,7 @@
 			grid-column: span 5;
 		}
 	}
-	.anchor {
+	.mw-anchor {
 		scroll-margin-top: 72px;
 	}
 	.queue {

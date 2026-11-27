@@ -144,9 +144,9 @@
 					{#if e.href}
 						<!-- 외부 근거 URL(http·https만, view.ts에서 거름) — 앱 내부 경로가 아니라 resolve()를 쓰지 않는다 -->
 						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-						<a class="chip" href={e.href} target="_blank" rel="noopener noreferrer nofollow"
+						<a class="mw-chip" href={e.href} target="_blank" rel="noopener noreferrer nofollow"
 							>{e.label} ↗</a
-						>{:else}<span class="chip">{e.label}</span>{/if}
+						>{:else}<span class="mw-chip">{e.label}</span>{/if}
 				</li>
 			{/each}
 		</ul>
@@ -177,7 +177,7 @@
 		<div class="acts" class:c3={!overridable}>
 			<button
 				type="button"
-				class="btn primary"
+				class="mw-btn primary"
 				data-action="approve"
 				aria-disabled={blocked || busy ? 'true' : undefined}
 				aria-describedby={blocked ? noteId : undefined}
@@ -186,7 +186,7 @@
 			{#if overridable}
 				<button
 					type="button"
-					class="btn"
+					class="mw-btn"
 					data-action="override"
 					aria-disabled={blocked || busy ? 'true' : undefined}
 					aria-describedby={blocked ? noteId : undefined}
@@ -196,7 +196,7 @@
 			{#if item.status === 'on_hold'}
 				<button
 					type="button"
-					class="btn"
+					class="mw-btn"
 					data-action="unhold"
 					aria-disabled={busy ? 'true' : undefined}
 					onclick={() => !busy && onhold?.(item, false)}>대기로 되돌리기</button
@@ -204,7 +204,7 @@
 			{:else}
 				<button
 					type="button"
-					class="btn"
+					class="mw-btn"
 					data-action="hold"
 					aria-disabled={busy ? 'true' : undefined}
 					onclick={() => !busy && onhold?.(item, true)}>보류</button
@@ -212,7 +212,7 @@
 			{/if}
 			<button
 				type="button"
-				class="btn danger"
+				class="mw-btn danger"
 				data-action="reject"
 				aria-disabled={busy ? 'true' : undefined}
 				onclick={() => !busy && onreject?.(item)}>거절</button
@@ -227,7 +227,7 @@
 		<div class="acts one">
 			<button
 				type="button"
-				class="btn"
+				class="mw-btn"
 				data-action="ack"
 				aria-disabled={busy ? 'true' : undefined}
 				onclick={() => !busy && onack?.(item)}>확인했어요</button
@@ -323,7 +323,7 @@
 		padding: 0;
 		margin: 0;
 	}
-	.chip {
+	.mw-chip {
 		display: inline-flex;
 		align-items: center;
 		min-height: 28px;
@@ -357,7 +357,7 @@
 	.acts.one {
 		grid-template-columns: minmax(0, 1fr);
 	}
-	.acts .btn {
+	.acts .mw-btn {
 		min-width: 0;
 		padding: 0 8px;
 	}

@@ -101,7 +101,7 @@
 {#snippet restoreCell(row: ArchiveItem)}
 	<button
 		type="button"
-		class="btn sm"
+		class="mw-btn sm"
 		data-action="archive-restore"
 		aria-label="{row.title} 복원"
 		onclick={() => (target = row)}>복원</button
@@ -155,7 +155,7 @@
 		>
 			{#snippet action()}
 				{#if filtered}
-					<button type="button" class="btn" onclick={resetFilter}>필터 초기화</button>
+					<button type="button" class="mw-btn" onclick={resetFilter}>필터 초기화</button>
 				{/if}
 			{/snippet}
 		</EmptyState>
@@ -188,10 +188,10 @@
 		</p>
 	{/if}
 	{#snippet footer()}
-		<button type="button" class="btn" onclick={() => (target = null)}>취소</button>
+		<button type="button" class="mw-btn" onclick={() => (target = null)}>취소</button>
 		<button
 			type="button"
-			class="btn primary"
+			class="mw-btn primary"
 			data-action="archive-restore-confirm"
 			aria-disabled={restoring ? 'true' : undefined}
 			onclick={confirmRestore}>복원</button

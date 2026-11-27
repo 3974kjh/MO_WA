@@ -15,12 +15,12 @@
 	} = $props();
 </script>
 
-<button type="button" class="chip" aria-pressed={pressed} {onclick}
+<button type="button" class="mw-chip" aria-pressed={pressed} {onclick}
 	>{@render children()}{#if count != null}<span class="count num">{count}</span>{/if}</button
 >
 
 <style>
-	.chip {
+	.mw-chip {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
@@ -34,11 +34,11 @@
 		white-space: nowrap;
 		flex: none;
 	}
-	.chip:hover {
+	.mw-chip:hover {
 		border-color: var(--color-line-strong);
 		color: var(--color-text);
 	}
-	.chip[aria-pressed='true'] {
+	.mw-chip[aria-pressed='true'] {
 		background: var(--color-accent);
 		border-color: var(--color-accent);
 		color: var(--color-on-accent);
@@ -50,7 +50,7 @@
 	}
 	/* 터치 영역 ≥40px: 시각 높이 32px + 위아래 히트 영역 확장 */
 	@media (pointer: coarse) {
-		.chip {
+		.mw-chip {
 			min-height: var(--size-touch);
 		}
 	}

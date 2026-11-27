@@ -11,7 +11,7 @@
 	title="정확한 금액"
 >
 	<div class="stack">
-		<div class="label">{exactValue.label}</div>
+		<div class="mw-label">{exactValue.label}</div>
 		<div class="value num">{exactValue.exact}</div>
 		<p class="note">
 			화면에서는 큰 금액을 ‘만’ 단위로 줄여 보여 줘요. 주가·평균 단가·손익분기 가격과 반영 내용은
@@ -19,7 +19,7 @@
 		</p>
 	</div>
 	{#snippet footer()}
-		<button type="button" class="btn primary" onclick={() => exactValue.close()}>확인</button>
+		<button type="button" class="mw-btn primary" onclick={() => exactValue.close()}>확인</button>
 	{/snippet}
 </Sheet>
 
@@ -29,7 +29,7 @@
 		flex-direction: column;
 		gap: 12px;
 	}
-	.label,
+	.mw-label,
 	.note {
 		font-size: var(--text-sm);
 		color: var(--color-muted);

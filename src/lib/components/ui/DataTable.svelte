@@ -143,7 +143,7 @@
 		background: var(--color-surface);
 		-webkit-overflow-scrolling: touch;
 	}
-	:global(.card.flush) .tbl-wrap {
+	:global(.mw-card.flush) .tbl-wrap {
 		border: 0;
 		border-radius: 0;
 	}

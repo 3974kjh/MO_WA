@@ -175,7 +175,7 @@
 	<div class="row2">
 		<label class="field"
 			>날짜<input
-				class="input num"
+				class="mw-input num"
 				type="date"
 				name="entry_date"
 				required
@@ -186,7 +186,7 @@
 		>
 		<label class="field"
 			>구분<select
-				class="input"
+				class="mw-input"
 				name="kind"
 				bind:value={v.kind}
 				aria-invalid={issues.kind ? 'true' : undefined}
@@ -198,7 +198,7 @@
 	</div>
 	<label class="field"
 		>상태<select
-			class="input"
+			class="mw-input"
 			name="state"
 			bind:value={v.state}
 			aria-invalid={issues.state ? 'true' : undefined}
@@ -209,7 +209,7 @@
 	>
 	<label class="field"
 		>제목<input
-			class="input"
+			class="mw-input"
 			name="title"
 			maxlength={JOURNAL_TITLE_MAX}
 			required
@@ -220,7 +220,7 @@
 	>
 	<label class="field"
 		>종목{#if trade}<span class="req"> (필수)</span>{/if}<select
-			class="input"
+			class="mw-input"
 			name="instrument_id"
 			bind:value={v.instrument_id}
 			onchange={onInstrumentChange}
@@ -239,7 +239,7 @@
 				<ul class="chips" aria-labelledby="{uid}-tickers-label">
 					{#each v.tickers as t (t)}
 						<li>
-							<span class="chip">{t}</span><button
+							<span class="mw-chip">{t}</span><button
 								type="button"
 								class="x"
 								aria-label="{t} 연결 빼기"
@@ -251,7 +251,7 @@
 			{/if}
 			<div class="addrow">
 				<select
-					class="input"
+					class="mw-input"
 					name="tickers"
 					aria-labelledby="{uid}-tickers-label"
 					aria-invalid={issues.tickers ? 'true' : undefined}
@@ -262,7 +262,8 @@
 					{#each tickerChoices as i (i.id)}<option value={i.ticker}>{i.name} ({i.ticker})</option
 						>{/each}
 				</select>
-				<button type="button" class="btn" disabled={!addTicker} onclick={addTickerCode}>추가</button
+				<button type="button" class="mw-btn" disabled={!addTicker} onclick={addTickerCode}
+					>추가</button
 				>
 			</div>
 			{@render err('tickers')}
@@ -271,7 +272,7 @@
 	<div class="row3">
 		<label class="field"
 			>가격{#if trade}<span class="req"> (필수)</span>{/if}<input
-				class="input num"
+				class="mw-input num"
 				name="price"
 				inputmode="decimal"
 				bind:value={v.price}
@@ -282,7 +283,7 @@
 		>
 		<label class="field"
 			>수량{#if trade}<span class="req"> (필수)</span>{/if}<input
-				class="input num"
+				class="mw-input num"
 				name="qty"
 				type="number"
 				min="0"
@@ -296,7 +297,7 @@
 		>
 		<label class="field"
 			>통화{#if trade}<span class="req"> (필수)</span>{/if}<select
-				class="input"
+				class="mw-input"
 				name="currency"
 				bind:value={v.currency}
 				aria-required={trade ? 'true' : undefined}
@@ -312,7 +313,7 @@
 	</div>
 	<label class="field"
 		>메모<textarea
-			class="input"
+			class="mw-input"
 			name="memo_md"
 			rows="4"
 			bind:value={v.memo_md}
@@ -321,7 +322,7 @@
 	>
 	<label class="field"
 		>출처 주소<input
-			class="input"
+			class="mw-input"
 			name="source_url"
 			type="url"
 			inputmode="url"
@@ -333,7 +334,7 @@
 	>
 	<label class="field"
 		>리포트 연결<select
-			class="input"
+			class="mw-input"
 			name="report_id"
 			bind:value={v.report_id}
 			aria-invalid={issues.report_id ? 'true' : undefined}
@@ -354,8 +355,8 @@
 	{/if}
 	<p class="summary" id="{uid}-summary" role="status" aria-live="polite">{summary}</p>
 	<div class="foot">
-		<button type="button" class="btn" onclick={oncancel}>취소</button>
-		<button type="submit" class="btn primary" aria-disabled={busy ? 'true' : undefined}
+		<button type="button" class="mw-btn" onclick={oncancel}>취소</button>
+		<button type="submit" class="mw-btn primary" aria-disabled={busy ? 'true' : undefined}
 			>{item ? '수정 저장' : '저장'}</button
 		>
 	</div>
@@ -389,7 +390,7 @@
 			grid-template-columns: 1fr 1fr;
 		}
 	}
-	.input {
+	.mw-input {
 		min-height: var(--size-touch);
 		padding: 0 10px;
 		border: 1px solid var(--color-line-strong);
@@ -408,11 +409,11 @@
 		resize: vertical;
 	}
 	@media (min-width: 640px) {
-		.input {
+		.mw-input {
 			font-size: var(--text-md, 15px);
 		}
 	}
-	.input[aria-invalid='true'] {
+	.mw-input[aria-invalid='true'] {
 		border-color: var(--color-up);
 	}
 	.err {
@@ -447,7 +448,7 @@
 		border-radius: 999px;
 		padding-left: 10px;
 	}
-	.chip {
+	.mw-chip {
 		font-weight: 400;
 	}
 	.x {

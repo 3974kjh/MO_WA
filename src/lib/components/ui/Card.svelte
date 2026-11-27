@@ -23,7 +23,7 @@
 	} = $props();
 </script>
 
-<section class="card {className}" class:flush>
+<section class="mw-card {className}" class:flush>
 	{#if title || aside || sub}
 		<header class="card-head">
 			{#if title}
@@ -36,7 +36,7 @@
 </section>
 
 <style>
-	.card {
+	.mw-card {
 		background: var(--color-surface);
 		border: 1px solid var(--color-card-line); /* 라이트 transparent(그림자만), 다크 연한 1px */
 		border-radius: var(--radius-md);

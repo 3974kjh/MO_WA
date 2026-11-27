@@ -123,7 +123,7 @@
 	>
 		{#snippet action()}
 			{#if filtered}
-				<button type="button" class="btn" onclick={() => navigate({ q: '', tag: '', month: '' })}
+				<button type="button" class="mw-btn" onclick={() => navigate({ q: '', tag: '', month: '' })}
 					>필터 초기화</button
 				>
 			{/if}
@@ -164,14 +164,14 @@
 		<nav class="pager" aria-label="페이지">
 			<button
 				type="button"
-				class="btn"
+				class="mw-btn"
 				disabled={pageNo <= 1}
 				onclick={() => navigate({}, false, pageNo - 1)}>이전</button
 			>
 			<span class="num text-sm">{pageNo} / {totalPages}</span>
 			<button
 				type="button"
-				class="btn"
+				class="mw-btn"
 				disabled={pageNo >= totalPages}
 				onclick={() => navigate({}, false, pageNo + 1)}>다음</button
 			>
@@ -283,7 +283,7 @@
 		gap: 12px;
 		margin-top: 16px;
 	}
-	.btn {
+	.mw-btn {
 		min-height: var(--size-touch);
 		padding: 0 14px;
 		border: 1px solid var(--color-line-strong);
@@ -291,7 +291,7 @@
 		background: var(--color-surface);
 		color: var(--color-text);
 	}
-	.btn:disabled {
+	.mw-btn:disabled {
 		opacity: 0.5;
 	}
 </style>

@@ -13,7 +13,7 @@
 <!-- 3단 토글: 시스템 → 라이트 → 다크 (H §1-3) -->
 <button
 	type="button"
-	class="icon-btn"
+	class="mw-icon-btn"
 	aria-label={label}
 	title={label}
 	onclick={() => themeState.cycle()}

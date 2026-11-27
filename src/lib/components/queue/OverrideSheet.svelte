@@ -158,7 +158,7 @@
 							{#if k === 'currency'}
 								<select
 									id="{uid}-{k}"
-									class="select"
+									class="mw-select"
 									bind:value={inputs.currency}
 									disabled={locked}
 									aria-label="내가 고친 통화"
@@ -170,7 +170,7 @@
 							{:else}
 								<input
 									id="{uid}-{k}"
-									class="input num"
+									class="mw-input num"
 									type="text"
 									autocomplete="off"
 									inputmode={k === 'qty' ? 'numeric' : 'decimal'}
@@ -196,7 +196,7 @@
 				고친 이유 (한 줄, 필수)
 				<input
 					id="{uid}-why"
-					class="input"
+					class="mw-input"
 					maxlength={OVERRIDE_REASON_MAX}
 					bind:value={reason}
 					disabled={locked}
@@ -213,10 +213,10 @@
 		<p class="form-reason" class:ok={check.ok} id="{uid}-msg" role="status" aria-live="polite">
 			{check.message}
 		</p>
-		<button type="button" class="btn" onclick={onclose}>취소</button>
+		<button type="button" class="mw-btn" onclick={onclose}>취소</button>
 		<button
 			type="button"
-			class="btn primary"
+			class="mw-btn primary"
 			data-action="override-next"
 			aria-disabled={check.ok ? undefined : 'true'}
 			aria-describedby="{uid}-msg"
@@ -238,10 +238,10 @@
 		</div>
 	{/if}
 	{#snippet footer()}
-		<button type="button" class="btn" onclick={() => (step = 'edit')}>다시 고치기</button>
+		<button type="button" class="mw-btn" onclick={() => (step = 'edit')}>다시 고치기</button>
 		<button
 			type="button"
-			class="btn primary"
+			class="mw-btn primary"
 			data-action="override-submit"
 			aria-disabled={check.ok ? undefined : 'true'}
 			onclick={submit}>고쳐서 반영</button
@@ -309,8 +309,8 @@
 	.mine.changed {
 		background: var(--color-accent-soft);
 	}
-	.mine .input,
-	.mine .select {
+	.mine .mw-input,
+	.mine .mw-select {
 		width: 100%;
 	}
 	.lbl {
@@ -365,8 +365,8 @@
 			font-size: var(--text-xs);
 			font-weight: 600;
 		}
-		.mine .input,
-		.mine .select {
+		.mine .mw-input,
+		.mine .mw-select {
 			flex: 1 1 140px;
 			font-size: 16px;
 			height: 44px;

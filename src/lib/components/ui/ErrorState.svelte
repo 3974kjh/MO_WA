@@ -11,7 +11,7 @@
 	<div class="ico" aria-hidden="true">!</div>
 	<h4>{title}</h4>
 	{#if desc}<p class="desc">{desc}</p>{/if}
-	{#if onretry}<button type="button" class="btn primary" onclick={onretry}>{retryLabel}</button
+	{#if onretry}<button type="button" class="mw-btn primary" onclick={onretry}>{retryLabel}</button
 		>{/if}
 </div>
 
@@ -43,7 +43,7 @@
 	.desc {
 		font-size: var(--text-sm);
 	}
-	.btn {
+	.mw-btn {
 		margin-top: 4px;
 	}
 </style>

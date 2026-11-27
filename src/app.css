@@ -100,7 +100,7 @@ html {
 		white-space: nowrap;
 	}
 	/* 버튼(시안 .btn) — 터치 영역 40px 이상 */
-	.btn {
+	.mw-btn {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -116,53 +116,53 @@ html {
 		white-space: nowrap;
 		text-decoration: none;
 	}
-	.btn:hover {
+	.mw-btn:hover {
 		background: var(--color-surface-2);
 		text-decoration: none;
 	}
-	.btn:active {
+	.mw-btn:active {
 		background: var(--color-surface-3);
 	}
-	.btn.primary {
+	.mw-btn.primary {
 		background: var(--color-accent);
 		border-color: var(--color-accent);
 		color: var(--color-on-accent);
 	}
-	.btn.primary:hover {
+	.mw-btn.primary:hover {
 		background: var(--color-accent-hover);
 	}
 	/* 거절 등 되돌리기 어려운 행동만 up 색 외곽선(DS §2) */
-	.btn.danger {
+	.mw-btn.danger {
 		color: var(--color-up);
 		border-color: currentColor;
 		background: transparent;
 	}
-	.btn.danger:hover {
+	.mw-btn.danger:hover {
 		background: var(--color-up-soft);
 	}
-	.btn.ghost {
+	.mw-btn.ghost {
 		border-color: transparent;
 		background: transparent;
 		color: var(--color-muted);
 	}
 	/* 모바일 주요 액션·시트 버튼만 44px (전역 44 아님, 시안 v1.1) */
 	@media (max-width: 639px) {
-		.sheet .btn,
-		.btn.primary {
+		.sheet .mw-btn,
+		.mw-btn.primary {
 			min-height: 44px;
 		}
 	}
-	.btn.sm {
+	.mw-btn.sm {
 		min-height: 32px;
 		padding: 0 10px;
 		font-size: var(--text-sm);
 	}
-	.btn:disabled,
-	.btn[aria-disabled='true'] {
+	.mw-btn:disabled,
+	.mw-btn[aria-disabled='true'] {
 		opacity: 0.45;
 		cursor: not-allowed;
 	}
-	.icon-btn {
+	.mw-icon-btn {
 		width: var(--size-touch);
 		height: var(--size-touch);
 		flex: none;
@@ -173,12 +173,12 @@ html {
 		place-items: center;
 		color: var(--color-muted);
 	}
-	.icon-btn:hover {
+	.mw-icon-btn:hover {
 		background: var(--color-surface-2);
 		color: var(--color-text);
 	}
-	.input,
-	.select {
+	.mw-input,
+	.mw-select {
 		max-width: 100%;
 		height: var(--size-touch);
 		border-radius: var(--radius-sm);
@@ -188,12 +188,12 @@ html {
 		padding: 0 12px;
 		min-width: 0;
 	}
-	.input:focus,
-	.select:focus {
+	.mw-input:focus,
+	.mw-select:focus {
 		outline: 2px solid var(--color-focus);
 		outline-offset: 1px;
 	}
-	.input[aria-invalid='true'] {
+	.mw-input[aria-invalid='true'] {
 		border-color: var(--color-up);
 	}
 	.field {

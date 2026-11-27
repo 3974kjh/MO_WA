@@ -18,12 +18,12 @@
 	} = $props();
 </script>
 
-<span class="badge {tone} {className}" {title}
+<span class="mw-badge {tone} {className}" {title}
 	>{#if icon}<span aria-hidden="true">{icon}</span>{/if}{@render children()}</span
 >
 
 <style>
-	.badge {
+	.mw-badge {
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;

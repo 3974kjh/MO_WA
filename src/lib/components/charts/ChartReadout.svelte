@@ -26,7 +26,7 @@
 </script>
 
 {#if mode === 'card'}
-	<div class="readout card" role="status" aria-live="polite">
+	<div class="readout mw-card" role="status" aria-live="polite">
 		<div class="head">
 			<b>{title}</b>
 			{#if onclose}
@@ -61,7 +61,7 @@
 		font-size: var(--text-sm);
 		color: var(--color-text);
 	}
-	.card {
+	.mw-card {
 		margin-top: 8px;
 		padding: 10px 12px;
 		border-radius: var(--radius-sm);
