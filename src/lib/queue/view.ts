@@ -9,9 +9,13 @@ import {
 	type FieldValues,
 	type QueueItem
 } from './proposals';
+import type { PositionProposalRow } from '$lib/types/mowa.contract';
 
-/** 포지션 변경 요청 종류. 원칙 개정 요청('principle')은 toQueueItem에 넣을 수 없다(principleToQueueItem만). */
-export type PositionChangeType = 'open_holding' | 'set_qty_avg' | 'close';
+/**
+ * 포지션 변경 요청 종류(계약 타입에서 파생, 손복사 금지). 원칙 개정 요청('principle')은
+ * toQueueItem에 넣을 수 없다(principleToQueueItem만).
+ */
+export type PositionChangeType = PositionProposalRow['change_type'];
 
 export type CardLike = {
 	id: string;
