@@ -1,6 +1,7 @@
-import { mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { collectProdDevLeaks, hasDevLink, hasDevPath, isDevRouteId } from './check-prod-no-dev.mjs';
 import {
@@ -9,6 +10,7 @@ import {
 	shouldOmitDevRoutes
 } from './prod-omit-dev-routes.mjs';
 
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const temps: string[] = [];
 function fakeOutput() {
 	const dir = mkdtempSync(join(tmpdir(), 'prod-no-dev-'));
@@ -105,9 +107,7 @@ describe('collectProdDevLeaks', () => {
 		);
 		writeFileSync(join(root, 'client/.vite/manifest.json'), '{}');
 		writeFileSync(join(root, 'client/chunk.js'), 'export const href="/dev/shell";');
-		expect(
-			collectProdDevLeaks(root).some((l) => l.includes('link to /dev') || l.includes('/dev path'))
-		).toBe(true);
+		expect(collectProdDevLeaks(root).some((l) => l.includes('link to /dev'))).toBe(true);
 	});
 
 	it('does not treat pages.dev hosts as /dev routes', () => {
@@ -118,6 +118,20 @@ describe('collectProdDevLeaks', () => {
 		);
 		writeFileSync(join(root, 'client/.vite/manifest.json'), '{}');
 		writeFileSync(join(root, 'client/chunk.js'), 'fetch("https://mo-wa.pages.dev/api/mcp")');
+		expect(collectProdDevLeaks(root)).toEqual([]);
+	});
+
+	it('does not treat /dev/null (or similar dependency strings) in client chunks as a leak', () => {
+		const root = fakeOutput();
+		writeFileSync(
+			join(root, 'server/manifest.js'),
+			'export const manifest = { routes: [{ id: "/login" }] };'
+		);
+		writeFileSync(join(root, 'client/.vite/manifest.json'), '{}');
+		writeFileSync(
+			join(root, 'client/chunk.js'),
+			'fs.openSync("/dev/null", "w"); const z = ["/dev/stdin", "/dev/stdout"];'
+		);
 		expect(collectProdDevLeaks(root)).toEqual([]);
 	});
 });
@@ -147,5 +161,42 @@ describe('installDevRouteOmit', () => {
 		const uninstall = installDevRouteOmit(cwd, {});
 		expect(readdirSync(routes)).toContain('dev');
 		uninstall();
+	});
+
+	it('keeps nested folders like src/routes/x/dev visible (scope is only src/routes/dev)', async () => {
+		const cwd = fakeOutput();
+		const routes = join(cwd, 'src/routes');
+		mkdirSync(join(routes, 'dev'), { recursive: true });
+		mkdirSync(join(routes, 'x/dev'), { recursive: true });
+		mkdirSync(join(routes, '(g)/dev'), { recursive: true });
+		writeFileSync(join(routes, 'x/dev/+page.svelte'), '');
+		writeFileSync(join(routes, '(g)/dev/+page.svelte'), '');
+		const fs = (await import('node:fs')).default;
+		const uninstall = installDevRouteOmit(cwd, { CF_PAGES: '1' });
+		expect(fs.readdirSync(routes).sort()).not.toContain('dev');
+		expect(fs.readdirSync(join(routes, 'x')).sort()).toEqual(['dev']);
+		expect(fs.readdirSync(join(routes, '(g)')).sort()).toEqual(['dev']);
+		expect(fs.readdirSync(join(routes, 'x/dev'))).toContain('+page.svelte');
+		// recursive listing of src/routes still hides only top-level dev/...
+		const rec = fs.readdirSync(routes, { recursive: true }).map(String);
+		expect(rec.some((e) => e === 'dev' || e.startsWith('dev/') || e.startsWith('dev\\'))).toBe(
+			false
+		);
+		expect(rec.some((e) => e.includes('x/dev') || e.includes('x\\dev'))).toBe(true);
+		const dir = fs.opendirSync(routes);
+		const names = [];
+		for (let ent = dir.readSync(); ent; ent = dir.readSync()) names.push(ent.name);
+		dir.closeSync();
+		expect(names.sort()).not.toContain('dev');
+		uninstall();
+	});
+});
+
+describe('pnpm build wires the production /dev guard (L-1)', () => {
+	it('package.json build runs check-prod-no-dev after the CF_PAGES vite build', () => {
+		const pkg = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')) as {
+			scripts: { build: string };
+		};
+		expect(pkg.scripts.build).toBe('CF_PAGES=1 vite build && node scripts/check-prod-no-dev.mjs');
 	});
 });

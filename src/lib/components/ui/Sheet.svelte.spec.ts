@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { flushSync } from 'svelte';
 import Harness from '../../../../tests/ui/SheetFocusHarness.svelte';
+import { resetOpenSheets } from './sheetStack';
 
 const dlg = () => document.querySelector<HTMLElement>('[role="dialog"]');
 const opener = () => document.querySelector<HTMLElement>('[data-testid="sheet-opener"]')!;
@@ -31,6 +32,7 @@ function key(el: HTMLElement | Document, key: string, shift = false) {
 
 afterEach(() => {
 	document.body.style.overflow = '';
+	resetOpenSheets();
 });
 
 describe('Sheet 확인 시트 포커스 (L-1, 첫 대상이 .btn)', () => {
@@ -70,5 +72,40 @@ describe('Sheet 확인 시트 포커스 (L-1, 첫 대상이 .btn)', () => {
 		key(close, 'Tab', true);
 		expect(document.activeElement).toBe(confirm());
 		expect(inside()).toBe(true);
+	});
+});
+
+describe('겹친 시트 Esc (L-2)', () => {
+	it('전체 시트 위 확인 시트에서 Esc 한 번은 맨 위만 닫고, 두 번째는 아래 시트를 닫는다', async () => {
+		const Harness = (await import('../../../../tests/ui/StackedSheetHarness.svelte')).default;
+		render(Harness);
+		const opener = document.querySelector<HTMLElement>('[data-testid="stack-opener"]')!;
+		opener.focus();
+		opener.click();
+		flushSync();
+		const archive = document.querySelector<HTMLElement>('[data-testid="stack-archive"]')!;
+		await expect
+			.poll(() => !!document.querySelector('.sheet.full.open'), { timeout: 1000 })
+			.toBe(true);
+		archive.focus();
+		archive.click();
+		flushSync();
+		await expect
+			.poll(() => !!document.querySelector('[data-action="journal-archive-confirm"]'), {
+				timeout: 1000
+			})
+			.toBe(true);
+		const dialogs = () =>
+			[...document.querySelectorAll<HTMLElement>('[role="dialog"]')].filter(
+				(d) => !d.hasAttribute('inert')
+			);
+		expect(dialogs()).toHaveLength(2);
+		key(document, 'Escape');
+		await expect.poll(() => dialogs().length, { timeout: 1000 }).toBe(1);
+		expect(document.querySelector('.sheet.full.open')?.hasAttribute('inert')).toBe(false);
+		expect(document.activeElement).toBe(archive);
+		key(document, 'Escape');
+		await expect.poll(() => dialogs().length, { timeout: 1000 }).toBe(0);
+		expect(document.activeElement).toBe(opener);
 	});
 });

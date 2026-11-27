@@ -12,6 +12,7 @@
 	import { portal } from '$lib/actions/portal';
 	import { focusableIn, trapTab } from '$lib/actions/focusTrap';
 	import type { SheetVariant } from './types';
+	import { isTopEntry, registerOpenSheet, type OpenSheet } from './sheetStack';
 
 	let {
 		open,
@@ -35,6 +36,7 @@
 	const uid = $props.id();
 	let panel = $state<HTMLDivElement>();
 	let returnTo: HTMLElement | null = null;
+	let stackEntry: OpenSheet | undefined;
 
 	$effect(() => {
 		if (!open || !panel) return;
@@ -50,16 +52,12 @@
 			(items[1] ?? items[0] ?? el).focus();
 		};
 		tick().then(focusFirst);
-		// 포커스가 시트 밖에 남아 있어도 Esc로 닫히게(캡처). 패널 핸들러와 두 번 닫히지 않게 여기서 막는다.
-		const onDocKey = (e: KeyboardEvent) => {
-			if (e.key !== 'Escape') return;
-			e.preventDefault();
-			e.stopPropagation();
-			onclose();
-		};
-		document.addEventListener('keydown', onDocKey, true);
+		// 포커스가 시트 밖에 남아 있어도 Esc로 닫히게. 맨 위 시트만 처리(겹친 시트를 한 번에 닫지 않음).
+		const reg = registerOpenSheet(onclose);
+		stackEntry = reg.entry;
 		return () => {
-			document.removeEventListener('keydown', onDocKey, true);
+			reg.unregister();
+			stackEntry = undefined;
 			document.body.style.overflow = prevOverflow;
 			const target = returnTo;
 			returnTo = null;
@@ -70,7 +68,9 @@
 	function onkeydown(e: KeyboardEvent) {
 		if (!open || !panel) return;
 		if (e.key === 'Escape') {
+			if (!isTopEntry(stackEntry)) return;
 			e.stopPropagation();
+			e.stopImmediatePropagation();
 			onclose();
 			return;
 		}

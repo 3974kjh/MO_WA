@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 /**
  * Guard: a production SvelteKit output must not contain /dev routes
- * or links to /dev (not mo-wa.pages.dev, not /devices).
+ * or links to /dev (not mo-wa.pages.dev, not /devices, not /dev/null).
+ * Scoped to the server/client route manifests and real route/link patterns
+ * so dependency strings like '/dev/null' in client chunks are not false positives.
+ *
+ * Wired from `pnpm build` (`CF_PAGES=1 vite build && node scripts/check-prod-no-dev.mjs`).
+ * Cloudflare Pages Git builds use `pnpm install && pnpm build` (docs/cloudflare-deploy.md §4).
+ *
  * Usage: node scripts/check-prod-no-dev.mjs [outputRoot]
  * Default outputRoot: .svelte-kit/output
  */
@@ -56,7 +62,7 @@ export function collectProdDevLeaks(outputRoot) {
 		for (const m of text.matchAll(/id:\s*"([^"]+)"/g)) {
 			if (isDevRouteId(m[1])) leaks.push(`server manifest route ${m[1]}`);
 		}
-		if (/src\/routes\/dev\b/.test(text) || /routes\/dev\//.test(text)) {
+		if (/src\/routes\/dev\b/.test(text)) {
 			leaks.push('server manifest references src/routes/dev');
 		}
 	}
@@ -66,13 +72,15 @@ export function collectProdDevLeaks(outputRoot) {
 	if (existsSync(viteManifest)) {
 		const man = JSON.parse(readFileSync(viteManifest, 'utf8'));
 		for (const key of Object.keys(man)) {
-			if (/(^|[\\/])routes[\\/]dev[\\/]/.test(key) || /src\/routes\/dev\b/.test(key)) {
+			if (/(^|[\\/])src[\\/]routes[\\/]dev[\\/]/.test(key) || /src\/routes\/dev\b/.test(key)) {
 				leaks.push(`client vite manifest key ${key}`);
 			}
 		}
 	}
 
-	if (existsSync(clientDir)) scanFiles(clientDir, leaks, { linksOnly: false });
+	// Client assets: only real nav/link patterns, not a blanket /dev string scan
+	// (dependencies may contain '/dev/null').
+	if (existsSync(clientDir)) scanClientLinks(clientDir, leaks);
 
 	return leaks;
 }
@@ -80,25 +88,13 @@ export function collectProdDevLeaks(outputRoot) {
 /**
  * @param {string} dir
  * @param {string[]} leaks
- * @param {{ linksOnly?: boolean }} opts
  */
-function scanFiles(dir, leaks, opts) {
-	const skipExt = new Set([
-		'.map',
-		'.woff',
-		'.woff2',
-		'.png',
-		'.ico',
-		'.jpg',
-		'.jpeg',
-		'.webp',
-		'.gif'
-	]);
-	const textExt = new Set(['.js', '.css', '.html', '.json', '.txt', '.svg']);
+function scanClientLinks(dir, leaks) {
+	const textExt = new Set(['.js', '.css', '.html', '.json']);
 	/** @param {string} p */
 	function walk(p) {
 		for (const name of readdirSync(p)) {
-			if (name === '.map' || name.endsWith('.map')) continue;
+			if (name.endsWith('.map')) continue;
 			const fp = join(p, name);
 			const st = statSync(fp);
 			if (st.isDirectory()) {
@@ -107,26 +103,9 @@ function scanFiles(dir, leaks, opts) {
 			}
 			const dot = name.lastIndexOf('.');
 			const ext = dot >= 0 ? name.slice(dot) : '';
-			if (skipExt.has(ext)) continue;
-			if (!textExt.has(ext) && ext !== '') continue;
+			if (!textExt.has(ext)) continue;
 			const text = readFileSync(fp, 'utf8');
-			const rel = fp;
-			if (opts.linksOnly) {
-				if (hasDevLink(text)) leaks.push(`link to /dev in ${rel}`);
-			} else {
-				if (/src\/routes\/dev\b/.test(text) || /(?:^|[\\/])routes[\\/]dev[\\/]/.test(text)) {
-					leaks.push(`/dev route path in ${rel}`);
-				}
-				if (hasDevLink(text)) leaks.push(`link to /dev in ${rel}`);
-				// Bare /dev path strings that are not pages.dev / /devices
-				if (hasDevPath(text) && hasDevLink(text) === false) {
-					// Allow residual comments? Client assets should not mention /dev paths at all
-					// except if a minified helper survived. Flag pathname strings.
-					const hits = text.match(DEV_PATH_RE) ?? [];
-					const real = hits.filter((h) => !h.includes('pages.dev'));
-					if (real.length) leaks.push(`/dev path string in ${rel}`);
-				}
-			}
+			if (hasDevLink(text)) leaks.push(`link to /dev in ${fp}`);
 		}
 	}
 	walk(dir);
@@ -142,7 +121,5 @@ function main() {
 	console.log('OK: production output has no /dev routes or /dev links');
 }
 
-const isMain =
-	import.meta.url === `file://${process.argv[1]}` ||
-	process.argv[1]?.endsWith('check-prod-no-dev.mjs');
-if (isMain && process.argv[1] && process.argv[1].includes('check-prod-no-dev')) main();
+const isMain = process.argv[1] && process.argv[1].includes('check-prod-no-dev');
+if (isMain) main();

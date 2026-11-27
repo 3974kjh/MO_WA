@@ -35,6 +35,7 @@ vi.mock('svelte/reactivity', async (orig) => {
 import Page from './+page.svelte';
 import DetailPage from './[id]/+page.svelte';
 import { countKinds, toJournalItem, type InstrumentOption } from '$lib/journal/view';
+import { resetOpenSheets } from '$lib/components/ui/sheetStack';
 
 const I1 = '11111111-1111-4111-8111-111111111111';
 const I2 = '22222222-2222-4222-8222-222222222222';
@@ -121,6 +122,8 @@ beforeEach(() => {
 	pageMock.state = {};
 	mq.pc = false;
 	document.body.style.overflow = '';
+	resetOpenSheets();
+	document.querySelectorAll('.sheet-root').forEach((n) => n.remove());
 });
 
 describe('FE-06 매매일지 목록', () => {
@@ -414,5 +417,41 @@ describe('FE-06 작성 폼', () => {
 		expect(body.get('id')).toBe(I1);
 		expect(body.get('table')).toBe('journal_entries');
 		fetchSpy.mockRestore();
+	});
+
+	it('모바일 상세 위 보관 확인에서 Esc 한 번은 확인만 닫고, 두 번째는 상세를 닫는다 (L-2)', async () => {
+		const back = vi.spyOn(history, 'back').mockImplementation(() => {});
+		mq.pc = false;
+		pageMock.state = { journalId: I1, journalFromList: true };
+		render(Page, { data: makeData() });
+		flushSync();
+		const full = () => document.querySelector('.sheet.full.open');
+		expect(full()).toBeTruthy();
+		const archive = [...document.querySelectorAll('[data-testid="journal-detail"] button')].find(
+			(b) => text(b) === '보관'
+		) as HTMLButtonElement;
+		archive.focus();
+		archive.click();
+		flushSync();
+		const confirmOpen = () =>
+			document.querySelector('.sheet.open [data-action="journal-archive-confirm"]');
+		expect(confirmOpen()).toBeTruthy();
+		document.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+		);
+		flushSync();
+		expect(confirmOpen()).toBeFalsy();
+		expect(full()).toBeTruthy();
+		expect(back).not.toHaveBeenCalled();
+		expect(document.activeElement).toBe(archive);
+		document.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+		);
+		flushSync();
+		// history.back 을 목으로 막아 두었으므로 page.state 는 그대로고 시트는 열린 채로 남는다.
+		// 실제 닫힘은 기존 'Esc로 닫으면 history.back()' 테스트와 같이 back 호출로 확인한다.
+		expect(full()).toBeTruthy();
+		expect(back).toHaveBeenCalledTimes(1);
+		back.mockRestore();
 	});
 });
