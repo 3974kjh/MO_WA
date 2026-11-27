@@ -3,7 +3,7 @@
 	 * FE-09 설정: 화면 모드(3단) · 봇 키 · 활동 기록 진입. 키·활동 기록은 시안 없음(G-13) →
 	 * 공통 컴포넌트 + design.md §5-2·§5-6.
 	 * - 키 원문은 발급 성공 응답(form.apiKey)에서만 1회 표시. load·URL·저장소에는 두지 않는다.
-	 * - 폐기는 확인 시트(Sheet)를 거친다. importer는 만료일 필수. 제안 권한은 finance-manager만.
+	 * - 키 사용 중지는 확인 시트(Sheet)를 거친다. importer는 만료일 필수. 제안 권한은 finance-manager만.
 	 */
 	import { onMount } from 'svelte';
 	import { enhance } from '$app/forms';
@@ -95,7 +95,7 @@
 		applyKstOffset(formData);
 	};
 
-	// ——— 폐기 확인 ———
+	// ——— 사용 중지 확인 ———
 	type Bot = PageData['botClients'][number];
 	let revokeTarget = $state<Bot | null>(null);
 
@@ -254,7 +254,7 @@
 								<span class="muted">만료 {formatKstShort(bot.expires_at)}</span>
 							{/if}
 							{#if bot.revoked_at}
-								<span class="revoked">폐기됨 {formatKstShort(bot.revoked_at)}</span>
+								<span class="revoked">사용 중지됨 {formatKstShort(bot.revoked_at)}</span>
 							{/if}
 						</div>
 						{#if !bot.revoked_at}
@@ -293,7 +293,7 @@
 								<Button
 									variant="danger"
 									compact
-									label="폐기"
+									label="사용 중지"
 									onclick={() => (revokeTarget = bot)}
 								/>
 							</div>
@@ -311,16 +311,16 @@
 	</Card>
 </section>
 
-<!-- 폐기 확인(N-1): 폼은 시트 안에서 대상 키가 있을 때만 존재한다. 확인 버튼이 이 폼을 제출한다. -->
+<!-- 사용 중지 확인(N-1): 폼은 시트 안에서 대상 키가 있을 때만 존재한다. 확인 버튼이 이 폼을 제출한다. -->
 <Sheet
 	open={revokeTarget != null}
 	onclose={() => (revokeTarget = null)}
 	variant="center"
-	title="키를 폐기할까요?"
+	title="키를 사용 중지할까요?"
 >
 	{#if revokeTarget}
 		<p class="confirm" data-testid="revoke-confirm">
-			<b>{revokeTarget.name}</b> 키를 폐기하면 이 봇은 바로 접속할 수 없고, 되돌릴 수 없어요.
+			<b>{revokeTarget.name}</b> 키를 사용 중지하면 이 봇은 바로 접속할 수 없고, 되돌릴 수 없어요.
 		</p>
 		<form
 			id="revoke-form"
@@ -338,9 +338,9 @@
 		</form>
 	{/if}
 	{#snippet footer()}
-		<!-- 파괴적 확인 시트(DS §0-2-7): 안전한 '취소'가 기본(채움) 버튼, '폐기'는 danger 외곽선 -->
+		<!-- 파괴적 확인 시트(DS §0-2-7): 안전한 '취소'가 기본(채움) 버튼, '사용 중지'는 danger 외곽선 -->
 		<Button variant="primary" compact label="취소" onclick={() => (revokeTarget = null)} />
-		<Button type="submit" form="revoke-form" variant="danger" compact label="폐기" />
+		<Button type="submit" form="revoke-form" variant="danger" compact label="사용 중지" />
 	{/snippet}
 </Sheet>
 
@@ -355,7 +355,7 @@
 		<p class="confirm" data-testid="expiry-clear-confirm">
 			<b>{clearTarget.name}</b> 키의 만료({clearTarget.expires_at
 				? formatKstShort(clearTarget.expires_at)
-				: '—'})를 해제하면, 폐기하기 전까지 계속 쓸 수 있어요.
+				: '—'})를 해제하면, 사용 중지하기 전까지 계속 쓸 수 있어요.
 		</p>
 		<form
 			id="expiry-clear-form"

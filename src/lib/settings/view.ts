@@ -83,7 +83,7 @@ const MESSAGE_MAP: Array<[RegExp, string]> = [
 		'제안 권한(포지션·원칙)은 재무 관리 봇에만 줄 수 있어요.'
 	],
 	[/finance-manager must not receive/i, '재무 관리 봇에는 평가·원칙 쓰기 권한을 줄 수 없어요.'],
-	[/not found or already revoked/i, '이미 폐기됐거나 찾을 수 없는 키예요.'],
+	[/not found or already revoked/i, '이미 사용 중지됐거나 찾을 수 없는 키예요.'],
 	[/bot client not found/i, '키를 찾을 수 없어요.'],
 	[/id is required/i, '대상 키를 찾을 수 없어요.'],
 	[/server_misconfigured/i, '서버 설정 문제로 키를 발급하지 못했어요.'],
