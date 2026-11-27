@@ -125,6 +125,10 @@ html {
 		clip: rect(0 0 0 0);
 		white-space: nowrap;
 	}
+	/* 링크에 붙인 Skeleton 버튼: base 의 a:hover 밑줄을 끈다(옛 .btn:hover 와 같음) */
+	a:is(.btn, .btn-icon):hover {
+		text-decoration: none;
+	}
 	.field {
 		min-width: 0;
 		max-width: 100%;
