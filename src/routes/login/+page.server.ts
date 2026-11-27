@@ -13,7 +13,7 @@ export const actions: Actions = {
 		const password = String(form.get('password') ?? '');
 
 		if (!email || !password) {
-			return fail(400, { message: '아이디와 패스워드를 입력해 주세요.', email });
+			return fail(400, { message: '이메일과 비밀번호를 입력해 주세요.', email });
 		}
 
 		const { error } = await locals.supabase.auth.signInWithPassword({
@@ -23,7 +23,7 @@ export const actions: Actions = {
 
 		if (error) {
 			return fail(400, {
-				message: '아이디 또는 패스워드를 확인해 주세요.',
+				message: '이메일 또는 비밀번호가 맞지 않아요. 다시 입력해 주세요.',
 				email
 			});
 		}
