@@ -5,6 +5,12 @@
 	import Notebook from '@lucide/svelte/icons/notebook';
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import CalendarX from '@lucide/svelte/icons/calendar-x';
+	import ChartPie from '@lucide/svelte/icons/chart-pie';
+	import ChartColumn from '@lucide/svelte/icons/chart-column';
+	import ChartLine from '@lucide/svelte/icons/chart-line';
+	import Target from '@lucide/svelte/icons/target';
+	import Briefcase from '@lucide/svelte/icons/briefcase';
+	import KeyRound from '@lucide/svelte/icons/key-round';
 	import Icon from './Icon.svelte';
 
 	let {
@@ -21,15 +27,22 @@
 		action?: Snippet;
 	} = $props();
 
-	// icons.md §2 #23·#36~39: 빈 상태 기호 → Lucide 24. 대응표에 없는 기호는 글자 그대로(READY.md 열린 질문)
+	// icons.md §2 #23·#36~39·#48~53: 빈 상태 기호 → Lucide 24(장식). 대응표에 없는 기호는 글자 그대로
 	const LUCIDE = {
 		'✓': CircleCheck,
 		'🔍': SearchX,
 		'📒': Notebook,
 		'🗂': FolderOpen,
-		'🗓': CalendarX
+		'🗓': CalendarX,
+		'◔': ChartPie,
+		'📊': ChartColumn,
+		'📈': ChartLine,
+		'🎯': Target,
+		'💼': Briefcase,
+		'🔑': KeyRound
 	} as const;
-	const glyph = $derived(LUCIDE[icon as keyof typeof LUCIDE]);
+	// 이모지 표시 선택자(U+FE0F)가 붙은 '🗂️'도 같은 기호로 본다
+	const glyph = $derived(LUCIDE[icon.replace(/\uFE0F/g, '') as keyof typeof LUCIDE]);
 </script>
 
 <div class="state">
