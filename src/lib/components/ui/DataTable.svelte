@@ -8,7 +8,7 @@
 	import type { Snippet } from 'svelte';
 	import type { Col } from './types';
 	import { resolveMobileMode, type MobileMode } from './dataTableMode';
-	import Skeleton from './Skeleton.svelte';
+	import LoadingShimmer from './LoadingShimmer.svelte';
 
 	let {
 		columns,
@@ -77,7 +77,7 @@
 			</thead>
 			<tbody>
 				{#if loading}
-					<tr class="state-row"><td colspan={columns.length}><Skeleton lines={3} /></td></tr>
+					<tr class="state-row"><td colspan={columns.length}><LoadingShimmer lines={3} /></td></tr>
 				{:else if rows.length === 0}
 					<tr class="state-row"
 						><td colspan={columns.length}

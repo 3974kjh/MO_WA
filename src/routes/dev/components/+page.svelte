@@ -24,7 +24,7 @@
 	import SearchBox from '$lib/components/ui/SearchBox.svelte';
 	import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
 	import Sheet from '$lib/components/ui/Sheet.svelte';
-	import Skeleton from '$lib/components/ui/Skeleton.svelte';
+	import LoadingShimmer from '$lib/components/ui/LoadingShimmer.svelte';
 	import Tag from '$lib/components/ui/Tag.svelte';
 	import { toast } from '$lib/components/ui/toast.svelte';
 	import type { Col, SheetVariant } from '$lib/components/ui/types';
@@ -509,9 +509,9 @@
 			</Card>
 			<Card>
 				<div class="stack">
-					<Skeleton lines={1} />
-					<Skeleton lines={3} />
-					<Skeleton height="72px" />
+					<LoadingShimmer lines={1} />
+					<LoadingShimmer lines={3} />
+					<LoadingShimmer height="72px" />
 					<p class="tx subtle">
 						로딩: 실제 레이아웃과 같은 모양의 스켈레톤(reduced-motion에서는 정지)
 					</p>
