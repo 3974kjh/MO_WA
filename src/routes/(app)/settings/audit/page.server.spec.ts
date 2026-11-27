@@ -32,6 +32,21 @@ beforeEach(() => {
 });
 
 describe('settings/audit load', () => {
+	it('규칙별 건수가 상한에서 잘렸으면(truncated) 센 상한을 싣고, 아니면 null', async () => {
+		countAuditRuleIds.mockResolvedValueOnce({
+			data: { 'R-VAL-T05': 2 },
+			error: null,
+			truncated: true
+		});
+		expect((await call()).ruleIdCountsLimit).toBe(20000);
+		countAuditRuleIds.mockResolvedValueOnce({
+			data: { 'R-VAL-T05': 2 },
+			error: null,
+			truncated: false
+		});
+		expect((await call()).ruleIdCountsLimit).toBeNull();
+	});
+
 	it('URL 필터를 검증해 repo에 넘기고 규칙별 건수·봇 이름만 싣는다', async () => {
 		const out = await call(`?bot=${BOT}&tool=a.b&result=denied&warn=1&rule=R-VAL-T05`);
 		expect(listAuditLog).toHaveBeenCalledWith(

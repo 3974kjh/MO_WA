@@ -64,6 +64,16 @@ describe('FE-09 활동 기록 화면', () => {
 		expect(a.getAttribute('href')).toContain('rule=R-VAL-T05');
 	});
 
+	it('규칙별 건수가 상한에서 잘렸으면 센 범위를 알리고, 아니면 안내가 없다', () => {
+		const a = render(Page, { data: makeData({ ruleIdCountsLimit: 20000 }) });
+		expect(
+			text(a.container.querySelector('[data-testid="audit-rule-counts-cut"]')).replace(/\s+/g, ' ')
+		).toContain('20,000건까지만 센 값');
+		a.unmount();
+		const b = render(Page, { data: makeData({ ruleIdCountsLimit: null }) });
+		expect(b.container.querySelector('[data-testid="audit-rule-counts-cut"]')).toBeNull();
+	});
+
 	it('잘림이면 안내 배너', () => {
 		const { container } = render(Page, { data: makeData({ truncated: true }) });
 		expect(text(container)).toContain('최근 기록 일부만');

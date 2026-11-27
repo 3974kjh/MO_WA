@@ -143,6 +143,12 @@
 					</li>
 				{/each}
 			</ul>
+			{#if data.ruleIdCountsLimit}
+				<p class="muted" data-testid="audit-rule-counts-cut">
+					경고 기록이 많아 오래된 {data.ruleIdCountsLimit.toLocaleString('ko-KR')}건까지만 센
+					값이에요.
+				</p>
+			{/if}
 		{/if}
 	</Card>
 
