@@ -177,7 +177,7 @@
 		<div class="acts" class:c3={!overridable}>
 			<button
 				type="button"
-				class="mw-btn primary"
+				class="btn-primary-m btn preset-filled-brand"
 				data-action="approve"
 				aria-disabled={blocked || busy ? 'true' : undefined}
 				aria-describedby={blocked ? noteId : undefined}
@@ -186,7 +186,7 @@
 			{#if overridable}
 				<button
 					type="button"
-					class="mw-btn"
+					class="btn preset-outlined-surface-500"
 					data-action="override"
 					aria-disabled={blocked || busy ? 'true' : undefined}
 					aria-describedby={blocked ? noteId : undefined}
@@ -196,7 +196,7 @@
 			{#if item.status === 'on_hold'}
 				<button
 					type="button"
-					class="mw-btn"
+					class="btn preset-outlined-surface-500"
 					data-action="unhold"
 					aria-disabled={busy ? 'true' : undefined}
 					onclick={() => !busy && onhold?.(item, false)}>대기로 되돌리기</button
@@ -204,7 +204,7 @@
 			{:else}
 				<button
 					type="button"
-					class="mw-btn"
+					class="btn preset-outlined-surface-500"
 					data-action="hold"
 					aria-disabled={busy ? 'true' : undefined}
 					onclick={() => !busy && onhold?.(item, true)}>보류</button
@@ -212,7 +212,7 @@
 			{/if}
 			<button
 				type="button"
-				class="mw-btn danger"
+				class="btn preset-outlined-error-700-300"
 				data-action="reject"
 				aria-disabled={busy ? 'true' : undefined}
 				onclick={() => !busy && onreject?.(item)}>거절</button
@@ -227,7 +227,7 @@
 		<div class="acts one">
 			<button
 				type="button"
-				class="mw-btn"
+				class="btn preset-outlined-surface-500"
 				data-action="ack"
 				aria-disabled={busy ? 'true' : undefined}
 				onclick={() => !busy && onack?.(item)}>확인했어요</button
@@ -357,7 +357,7 @@
 	.acts.one {
 		grid-template-columns: minmax(0, 1fr);
 	}
-	.acts .mw-btn {
+	.acts .btn {
 		min-width: 0;
 		padding: 0 8px;
 	}

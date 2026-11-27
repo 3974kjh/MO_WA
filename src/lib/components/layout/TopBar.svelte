@@ -19,7 +19,7 @@
 <header class="topbar">
 	{#if backHref}
 		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-		<a class="mw-icon-btn back" href={backHref} aria-label="뒤로">
+		<a class="back btn-icon text-muted" href={backHref} aria-label="뒤로">
 			<ChevronLeft size={20} strokeWidth={1.8} aria-hidden="true" />
 		</a>
 	{/if}

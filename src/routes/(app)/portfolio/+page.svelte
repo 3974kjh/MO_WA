@@ -552,7 +552,7 @@
 	{#if correctable.has(r.id)}
 		<button
 			type="button"
-			class="mw-btn sm"
+			class="btn preset-outlined-surface-500 btn-sm"
 			data-action="correct"
 			aria-disabled={correctionLocked(r.id) ? 'true' : undefined}
 			onclick={() => {
@@ -834,10 +834,14 @@
 		</div>
 	{/if}
 	{#snippet footer()}
-		<button type="button" class="mw-btn" onclick={() => (approveTarget = null)}>취소</button>
 		<button
 			type="button"
-			class="mw-btn primary"
+			class="btn preset-outlined-surface-500"
+			onclick={() => (approveTarget = null)}>취소</button
+		>
+		<button
+			type="button"
+			class="btn-primary-m btn preset-filled-brand"
 			data-action="approve-confirm"
 			aria-disabled={approveTarget && isPreBlocked(approveTarget) ? 'true' : undefined}
 			onclick={confirmApprove}>반영하기</button
@@ -859,7 +863,7 @@
 			<label class="field" for="reject-note"
 				>거절 이유(선택)<input
 					id="reject-note"
-					class="mw-input"
+					class="input"
 					maxlength="200"
 					bind:value={rejectNote}
 				/></label
@@ -867,9 +871,16 @@
 		</div>
 	{/if}
 	{#snippet footer()}
-		<button type="button" class="mw-btn" onclick={() => (rejectTarget = null)}>취소</button>
-		<button type="button" class="mw-btn danger" data-action="reject-confirm" onclick={confirmReject}
-			>거절</button
+		<button
+			type="button"
+			class="btn preset-outlined-surface-500"
+			onclick={() => (rejectTarget = null)}>취소</button
+		>
+		<button
+			type="button"
+			class="btn preset-outlined-error-700-300"
+			data-action="reject-confirm"
+			onclick={confirmReject}>거절</button
 		>
 	{/snippet}
 </Sheet>

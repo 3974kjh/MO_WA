@@ -82,12 +82,21 @@
 		{#if variant === 'bottom'}<div class="grab" aria-hidden="true"></div>{/if}
 		<div class="head">
 			{#if variant === 'full'}
-				<button type="button" class="back mw-btn ghost sm" onclick={onclose}>
+				<button
+					type="button"
+					class="back btn text-muted btn-sm hover:preset-tonal"
+					onclick={onclose}
+				>
 					<ChevronLeft size={18} strokeWidth={1.8} aria-hidden="true" />{backLabel}
 				</button>
 			{/if}
 			<h2 id="{uid}-title" class="title">{title}</h2>
-			<button type="button" class="mw-icon-btn close" aria-label="닫기" onclick={onclose}>
+			<button
+				type="button"
+				class="close btn-icon preset-outlined-surface-500"
+				aria-label="닫기"
+				onclick={onclose}
+			>
 				<X size={20} strokeWidth={1.8} aria-hidden="true" />
 			</button>
 		</div>
@@ -174,7 +183,7 @@
 		padding-top: 16px;
 		flex-wrap: wrap;
 	}
-	.foot :global(.mw-btn) {
+	.foot :global(.btn) {
 		flex: 1 1 0;
 	}
 	/* 중앙 모달: center는 모든 폭, bottom·full은 640 이상 */

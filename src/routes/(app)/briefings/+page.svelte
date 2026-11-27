@@ -95,6 +95,7 @@
 		<label class="month">
 			<span class="sr-only">월</span>
 			<input
+				class="input"
 				type="month"
 				value={data.query.month}
 				onchange={(e) => navigate({ month: e.currentTarget.value })}
@@ -123,8 +124,10 @@
 	>
 		{#snippet action()}
 			{#if filtered}
-				<button type="button" class="mw-btn" onclick={() => navigate({ q: '', tag: '', month: '' })}
-					>필터 초기화</button
+				<button
+					type="button"
+					class="btn preset-outlined-surface-500"
+					onclick={() => navigate({ q: '', tag: '', month: '' })}>필터 초기화</button
 				>
 			{/if}
 		{/snippet}
@@ -164,14 +167,14 @@
 		<nav class="pager" aria-label="페이지">
 			<button
 				type="button"
-				class="mw-btn"
+				class="btn preset-outlined-surface-500"
 				disabled={pageNo <= 1}
 				onclick={() => navigate({}, false, pageNo - 1)}>이전</button
 			>
 			<span class="num text-sm">{pageNo} / {totalPages}</span>
 			<button
 				type="button"
-				class="mw-btn"
+				class="btn preset-outlined-surface-500"
 				disabled={pageNo >= totalPages}
 				onclick={() => navigate({}, false, pageNo + 1)}>다음</button
 			>
@@ -195,14 +198,6 @@
 	.grow {
 		flex: 1 1 220px;
 		min-width: 0;
-	}
-	.month input {
-		height: var(--size-touch);
-		padding: 0 10px;
-		border: 1px solid var(--color-line-strong);
-		border-radius: var(--radius-sm);
-		background: var(--color-surface);
-		color: var(--color-text);
 	}
 	.chips {
 		display: flex;
@@ -282,16 +277,5 @@
 		align-items: center;
 		gap: 12px;
 		margin-top: 16px;
-	}
-	.mw-btn {
-		min-height: var(--size-touch);
-		padding: 0 14px;
-		border: 1px solid var(--color-line-strong);
-		border-radius: var(--radius-sm);
-		background: var(--color-surface);
-		color: var(--color-text);
-	}
-	.mw-btn:disabled {
-		opacity: 0.5;
 	}
 </style>

@@ -175,7 +175,7 @@
 	<div class="row2">
 		<label class="field"
 			>날짜<input
-				class="mw-input num"
+				class="num input"
 				type="date"
 				name="entry_date"
 				required
@@ -186,7 +186,7 @@
 		>
 		<label class="field"
 			>구분<select
-				class="mw-input"
+				class="input"
 				name="kind"
 				bind:value={v.kind}
 				aria-invalid={issues.kind ? 'true' : undefined}
@@ -198,7 +198,7 @@
 	</div>
 	<label class="field"
 		>상태<select
-			class="mw-input"
+			class="input"
 			name="state"
 			bind:value={v.state}
 			aria-invalid={issues.state ? 'true' : undefined}
@@ -209,7 +209,7 @@
 	>
 	<label class="field"
 		>제목<input
-			class="mw-input"
+			class="input"
 			name="title"
 			maxlength={JOURNAL_TITLE_MAX}
 			required
@@ -220,7 +220,7 @@
 	>
 	<label class="field"
 		>종목{#if trade}<span class="req"> (필수)</span>{/if}<select
-			class="mw-input"
+			class="input"
 			name="instrument_id"
 			bind:value={v.instrument_id}
 			onchange={onInstrumentChange}
@@ -251,7 +251,7 @@
 			{/if}
 			<div class="addrow">
 				<select
-					class="mw-input"
+					class="input"
 					name="tickers"
 					aria-labelledby="{uid}-tickers-label"
 					aria-invalid={issues.tickers ? 'true' : undefined}
@@ -262,8 +262,11 @@
 					{#each tickerChoices as i (i.id)}<option value={i.ticker}>{i.name} ({i.ticker})</option
 						>{/each}
 				</select>
-				<button type="button" class="mw-btn" disabled={!addTicker} onclick={addTickerCode}
-					>추가</button
+				<button
+					type="button"
+					class="btn preset-outlined-surface-500"
+					disabled={!addTicker}
+					onclick={addTickerCode}>추가</button
 				>
 			</div>
 			{@render err('tickers')}
@@ -272,7 +275,7 @@
 	<div class="row3">
 		<label class="field"
 			>가격{#if trade}<span class="req"> (필수)</span>{/if}<input
-				class="mw-input num"
+				class="num input"
 				name="price"
 				inputmode="decimal"
 				bind:value={v.price}
@@ -283,7 +286,7 @@
 		>
 		<label class="field"
 			>수량{#if trade}<span class="req"> (필수)</span>{/if}<input
-				class="mw-input num"
+				class="num input"
 				name="qty"
 				type="number"
 				min="0"
@@ -297,7 +300,7 @@
 		>
 		<label class="field"
 			>통화{#if trade}<span class="req"> (필수)</span>{/if}<select
-				class="mw-input"
+				class="input"
 				name="currency"
 				bind:value={v.currency}
 				aria-required={trade ? 'true' : undefined}
@@ -313,7 +316,7 @@
 	</div>
 	<label class="field"
 		>메모<textarea
-			class="mw-input"
+			class="textarea"
 			name="memo_md"
 			rows="4"
 			bind:value={v.memo_md}
@@ -322,7 +325,7 @@
 	>
 	<label class="field"
 		>출처 주소<input
-			class="mw-input"
+			class="input"
 			name="source_url"
 			type="url"
 			inputmode="url"
@@ -334,7 +337,7 @@
 	>
 	<label class="field"
 		>리포트 연결<select
-			class="mw-input"
+			class="input"
 			name="report_id"
 			bind:value={v.report_id}
 			aria-invalid={issues.report_id ? 'true' : undefined}
@@ -355,9 +358,11 @@
 	{/if}
 	<p class="summary" id="{uid}-summary" role="status" aria-live="polite">{summary}</p>
 	<div class="foot">
-		<button type="button" class="mw-btn" onclick={oncancel}>취소</button>
-		<button type="submit" class="mw-btn primary" aria-disabled={busy ? 'true' : undefined}
-			>{item ? '수정 저장' : '저장'}</button
+		<button type="button" class="btn preset-outlined-surface-500" onclick={oncancel}>취소</button>
+		<button
+			type="submit"
+			class="btn-primary-m btn preset-filled-brand"
+			aria-disabled={busy ? 'true' : undefined}>{item ? '수정 저장' : '저장'}</button
 		>
 	</div>
 </form>
@@ -390,31 +395,15 @@
 			grid-template-columns: 1fr 1fr;
 		}
 	}
-	.mw-input {
-		min-height: var(--size-touch);
-		padding: 0 10px;
-		border: 1px solid var(--color-line-strong);
-		border-radius: var(--radius-sm);
-		background: var(--color-surface);
-		color: var(--color-text);
-		font: inherit;
-		font-weight: 400;
-		font-size: 16px;
+	/* 높이·테두리(링)·포커스·오류·모바일 16px는 Skeleton input + skeleton-overrides.css */
+	.input,
+	.textarea {
 		width: 100%;
-		box-sizing: border-box;
+		font-weight: 400;
 	}
-	textarea.mw-input {
-		padding: 8px 10px;
+	.textarea {
 		min-height: 96px;
 		resize: vertical;
-	}
-	@media (min-width: 640px) {
-		.mw-input {
-			font-size: var(--text-md, 15px);
-		}
-	}
-	.mw-input[aria-invalid='true'] {
-		border-color: var(--color-up);
 	}
 	.err {
 		color: var(--color-text);

@@ -55,7 +55,7 @@
 	<div class="nav">
 		<button
 			type="button"
-			class="mw-btn ghost sm"
+			class="btn text-muted btn-sm hover:preset-tonal"
 			disabled={!prev}
 			aria-label="이전 일지"
 			onclick={onprev}>‹ 이전</button
@@ -63,7 +63,7 @@
 		{#if position}<span class="pos num" data-testid="journal-position">{position}</span>{/if}
 		<button
 			type="button"
-			class="mw-btn ghost sm"
+			class="btn text-muted btn-sm hover:preset-tonal"
 			disabled={!next}
 			aria-label="다음 일지"
 			onclick={onnext}>다음 ›</button
@@ -127,8 +127,9 @@
 		{#if !item.source_url && !item.report_id}<span class="muted">없음</span>{/if}
 	</div>
 	<div class="actions">
-		<button type="button" class="mw-btn" onclick={onedit}>수정</button>
-		<button type="button" class="mw-btn ghost" onclick={onarchive}>보관</button>
+		<button type="button" class="btn preset-outlined-surface-500" onclick={onedit}>수정</button>
+		<button type="button" class="btn text-muted hover:preset-tonal" onclick={onarchive}>보관</button
+		>
 	</div>
 </article>
 

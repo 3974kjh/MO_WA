@@ -86,7 +86,7 @@
 	<form method="GET" action={base} class="filters" data-testid="audit-filters">
 		<label>
 			봇
-			<select name="bot" value={data.filter.bot}>
+			<select class="select" name="bot" value={data.filter.bot}>
 				<option value="">전체</option>
 				{#each data.bots as b (b.id)}
 					<option value={b.id}>{b.name}</option>
@@ -95,11 +95,17 @@
 		</label>
 		<label>
 			툴
-			<input name="tool" value={data.filter.tool} placeholder="툴 이름 그대로" maxlength="80" />
+			<input
+				class="input"
+				name="tool"
+				value={data.filter.tool}
+				placeholder="툴 이름 그대로"
+				maxlength="80"
+			/>
 		</label>
 		<label>
 			결과
-			<select name="result" value={data.filter.result}>
+			<select class="select" name="result" value={data.filter.result}>
 				<option value="">전체</option>
 				{#each AUDIT_RESULTS as r (r)}
 					<option value={r}>{auditResultLabel(r)}</option>
@@ -107,7 +113,7 @@
 			</select>
 		</label>
 		<label class="check">
-			<input type="checkbox" name="warn" value="1" checked={data.filter.warn} />
+			<input class="checkbox" type="checkbox" name="warn" value="1" checked={data.filter.warn} />
 			경고 있는 것만
 		</label>
 		<input type="hidden" name="rule" value={data.filter.rule} />
@@ -240,16 +246,7 @@
 		gap: 8px;
 		min-height: 40px;
 	}
-	input:not([type='checkbox']):not([type='hidden']),
-	select {
-		min-height: 40px;
-		padding: 8px 12px;
-		border: 1px solid var(--color-hairline);
-		border-radius: var(--radius-md);
-		background: var(--color-canvas);
-		color: var(--color-ink);
-		font-size: 15px;
-	}
+	/* 입력·선택 상자는 Skeleton input·select + skeleton-overrides.css (DS §7-0) */
 	.btns {
 		display: flex;
 		align-items: center;

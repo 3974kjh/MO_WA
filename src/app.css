@@ -332,5 +332,18 @@ input[type='datetime-local'].field-control--plain::-webkit-calendar-picker-indic
 	opacity: 0.55;
 }
 
+/* 모바일 시트 안 버튼은 44 (DS §7-0 '모바일 주 행동 44', 기존 .sheet .btn 규칙). 레이어 밖 + 특이도 0,2,0 → overrides 의 .btn 보다 우선 */
+@media (max-width: 639px) {
+	.sheet .btn:not(.btn-sm) {
+		min-height: 2.75rem;
+	}
+}
+
+/* select 화살표 자리: overrides 의 .select{padding-inline:.75rem} 가 forms 화살표 여백(2.5rem)을 지워 글자가 화살표 밑으로 들어간다
+ * (Skeleton 경고 'select에 padding-inline 금지'). 특이도 0,1,1 로 오른쪽만 되돌린다 — READY.md 열린 질문 */
+select.select {
+	padding-inline-end: 2.5rem;
+}
+
 /* Skeleton 규칙 덮어쓰기(크기·포커스·비활성·폼 리셋 색) — 레이어 밖, 맨 마지막 (handoff §19-2) */
 @import './lib/styles/skeleton-overrides.css';

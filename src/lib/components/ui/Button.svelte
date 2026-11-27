@@ -30,31 +30,18 @@
 		children?: Snippet;
 	} = $props();
 
+	// v1.7.0 (DS §7-0): 내부만 Skeleton 버튼. 높이 40(모바일 주 행동은 btn-primary-m 44)·포커스·비활성은 skeleton-overrides.css
 	const variantClass = $derived(
-		compact
-			? {
-					primary: 'bg-primary text-on-primary px-sm py-[5px] text-[13px] leading-[1.29]',
-					'secondary-pill':
-						'border border-primary bg-canvas px-sm py-[5px] text-[13px] leading-[1.29] text-primary',
-					'dark-utility':
-						'rounded-sm bg-ink px-sm py-[5px] text-[13px] leading-[1.29] tracking-[-0.13px] text-on-dark',
-					'pearl-capsule':
-						'rounded-md border border-divider-soft bg-surface-pearl px-sm py-[5px] text-[13px] leading-[1.29] tracking-[-0.13px] text-ink-muted-80',
-					ghost: 'bg-transparent px-sm py-[5px] text-[13px] leading-[1.29] text-primary'
-				}[variant]
-			: {
-					primary: 'bg-primary text-on-primary px-[22px] py-[11px] text-[17px] leading-[1.47]',
-					'secondary-pill':
-						'border border-primary bg-canvas px-[22px] py-[11px] text-[17px] leading-[1.47] text-primary',
-					'dark-utility':
-						'rounded-sm bg-ink px-[15px] py-[8px] text-[14px] leading-[1.29] tracking-[-0.224px] text-on-dark',
-					'pearl-capsule':
-						'rounded-md border-[3px] border-divider-soft bg-surface-pearl px-[14px] py-[8px] text-[14px] leading-[1.43] tracking-[-0.224px] text-ink-muted-80',
-					ghost: 'bg-transparent px-sm py-xs text-[17px] leading-[1.47] text-primary'
-				}[variant]
+		{
+			primary: compact ? 'preset-filled-brand' : 'preset-filled-brand btn-primary-m',
+			'secondary-pill': 'preset-outlined-surface-500',
+			'dark-utility': 'preset-filled-surface-950-50',
+			'pearl-capsule': 'preset-tonal',
+			ghost: 'hover:preset-tonal text-muted'
+		}[variant]
 	);
 
-	const sizeClass = $derived(compact ? 'min-h-8' : 'min-h-11');
+	const sizeClass = $derived(compact ? 'btn-sm' : '');
 </script>
 
 <button
@@ -64,7 +51,7 @@
 	{value}
 	{disabled}
 	aria-pressed={pressed}
-	class="inline-flex {sizeClass} items-center justify-center gap-xs rounded-pill font-text font-normal transition-transform active:scale-95 disabled:opacity-50 {variantClass}"
+	class="btn {sizeClass} {variantClass}"
 	{onclick}
 >
 	{#if children}

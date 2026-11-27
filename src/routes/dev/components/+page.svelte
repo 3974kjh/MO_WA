@@ -301,25 +301,24 @@
 		<Card>
 			<div class="stack">
 				<div class="demo">
-					<button type="button" class="mw-btn primary">반영</button>
-					<button type="button" class="mw-btn">보류</button>
-					<button type="button" class="mw-btn danger">거절</button>
-					<button type="button" class="mw-btn ghost">더 보기</button>
-					<button type="button" class="mw-btn" disabled>비활성</button>
-					<button type="button" class="mw-btn sm">작은 버튼</button>
+					<button type="button" class="btn-primary-m btn preset-filled-brand">반영</button>
+					<button type="button" class="btn preset-outlined-surface-500">보류</button>
+					<button type="button" class="btn preset-outlined-error-700-300">거절</button>
+					<button type="button" class="btn text-muted hover:preset-tonal">더 보기</button>
+					<button type="button" class="btn preset-outlined-surface-500" disabled>비활성</button>
+					<button type="button" class="btn preset-outlined-surface-500 btn-sm">작은 버튼</button>
 				</div>
 				<div class="demo">
-					<label class="field">텍스트<input class="mw-input" placeholder="검색어" /></label>
+					<label class="field">텍스트<input class="input" placeholder="검색어" /></label>
 					<label class="field"
 						>오류 상태<input
-							class="mw-input"
+							class="input"
 							value="abc"
 							aria-invalid="true"
 							aria-describedby="err-demo"
 						/><span id="err-demo" class="tx err-msg">⚠ 숫자만 입력하세요</span></label
 					>
-					<label class="field"
-						>선택<select class="mw-select"><option>모든 종목</option></select></label
+					<label class="field">선택<select class="select"><option>모든 종목</option></select></label
 					>
 					<div class="field">
 						검색(디바운스 200ms)
@@ -504,7 +503,9 @@
 					title="조건에 맞는 브리핑이 없어요"
 					desc="검색어를 줄이거나 필터를 해제해 보세요."
 				>
-					{#snippet action()}<button type="button" class="mw-btn">필터 초기화</button>{/snippet}
+					{#snippet action()}<button type="button" class="btn preset-outlined-surface-500"
+							>필터 초기화</button
+						>{/snippet}
 				</EmptyState>
 			</Card>
 			<Card>
@@ -530,12 +531,12 @@
 				<div class="demo">
 					<button
 						type="button"
-						class="mw-btn sm"
+						class="btn preset-outlined-surface-500 btn-sm"
 						onclick={() => toast.show('반영했습니다', { tone: 'ok' })}>토스트(성공)</button
 					>
 					<button
 						type="button"
-						class="mw-btn sm"
+						class="btn preset-outlined-surface-500 btn-sm"
 						onclick={() =>
 							toast.show('반영했습니다', {
 								duration: 5000,
@@ -554,13 +555,20 @@
 			스크림 클릭, 닫힐 때 트리거로 포커스 복귀.
 		</p>
 		<div class="demo">
-			<button type="button" class="mw-btn" onclick={() => (sheetVariant = 'bottom')}
-				>bottom 시트</button
+			<button
+				type="button"
+				class="btn preset-outlined-surface-500"
+				onclick={() => (sheetVariant = 'bottom')}>bottom 시트</button
 			>
-			<button type="button" class="mw-btn" onclick={() => (sheetVariant = 'full')}>full 시트</button
+			<button
+				type="button"
+				class="btn preset-outlined-surface-500"
+				onclick={() => (sheetVariant = 'full')}>full 시트</button
 			>
-			<button type="button" class="mw-btn" onclick={() => (sheetVariant = 'center')}
-				>center 모달</button
+			<button
+				type="button"
+				class="btn preset-outlined-surface-500"
+				onclick={() => (sheetVariant = 'center')}>center 모달</button
 			>
 		</div>
 	</section>
@@ -597,11 +605,19 @@
 		{sheetVariant} 시트입니다. Tab 키로 포커스가 시트 밖으로 나가지 않는지, Esc로 닫히는지 확인하세요.
 	</p>
 	<div class="demo" style:margin-top="16px">
-		<label class="field">메모<input class="mw-input" placeholder="입력" /></label>
+		<label class="field">메모<input class="input" placeholder="입력" /></label>
 	</div>
 	{#snippet footer()}
-		<button type="button" class="mw-btn" onclick={() => (sheetVariant = null)}>취소</button>
-		<button type="button" class="mw-btn primary" onclick={() => (sheetVariant = null)}>확인</button>
+		<button
+			type="button"
+			class="btn preset-outlined-surface-500"
+			onclick={() => (sheetVariant = null)}>취소</button
+		>
+		<button
+			type="button"
+			class="btn-primary-m btn preset-filled-brand"
+			onclick={() => (sheetVariant = null)}>확인</button
+		>
 	{/snippet}
 </Sheet>
 

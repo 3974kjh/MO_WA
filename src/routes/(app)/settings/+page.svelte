@@ -175,11 +175,17 @@
 		>
 			<label>
 				이름
-				<input name="name" required maxlength="120" placeholder="예: 재무 봇" />
+				<input class="input" name="name" required maxlength="120" placeholder="예: 재무 봇" />
 			</label>
 			<label>
 				프로필
-				<select name="profile" required bind:value={profile} data-testid="issue-profile">
+				<select
+					class="select"
+					name="profile"
+					required
+					bind:value={profile}
+					data-testid="issue-profile"
+				>
 					{#each Object.keys(data.profileScopes) as p (p)}
 						<option value={p}>{profileLabel(p)}</option>
 					{/each}
@@ -187,11 +193,12 @@
 			</label>
 			<label>
 				설명
-				<input name="description" maxlength="200" />
+				<input class="input" name="description" maxlength="200" />
 			</label>
 			<label>
 				만료 {expiryRequired(profile) ? '(필수)' : '(선택)'}
 				<input
+					class="input"
 					name="expires_at"
 					type="datetime-local"
 					required={expiryRequired(profile)}
@@ -200,13 +207,14 @@
 			</label>
 			<label>
 				분당 한도
-				<input name="rate_limit_per_min" type="number" min="1" max="600" value="60" />
+				<input class="input" name="rate_limit_per_min" type="number" min="1" max="600" value="60" />
 			</label>
 			<fieldset class="scopes" data-testid="issue-scopes">
 				<legend>권한 범위</legend>
 				{#each scopeChoices as s (s)}
 					<label class="check">
 						<input
+							class="checkbox"
 							type="checkbox"
 							value={s}
 							checked={picked.includes(s)}
@@ -261,6 +269,7 @@
 								>
 									<input type="hidden" name="id" value={bot.id} />
 									<input
+										class="input"
 										name="expires_at"
 										type="datetime-local"
 										aria-label="만료 시각"
@@ -271,6 +280,7 @@
 								<form method="POST" action="?/setRateLimit" class="inline" use:enhance>
 									<input type="hidden" name="id" value={bot.id} />
 									<input
+										class="input"
 										name="rate_limit_per_min"
 										type="number"
 										min="1"
@@ -424,16 +434,7 @@
 		font-weight: 600;
 		padding: 0 4px;
 	}
-	input:not([type='checkbox']):not([type='hidden']),
-	select {
-		min-height: 40px;
-		padding: 8px 12px;
-		border: 1px solid var(--color-hairline);
-		border-radius: var(--radius-md);
-		background: var(--color-canvas);
-		color: var(--color-ink);
-		font-size: 15px;
-	}
+	/* 입력·선택 상자는 Skeleton input·select + skeleton-overrides.css (DS §7-0) */
 	.list {
 		list-style: none;
 		margin: 0;

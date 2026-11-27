@@ -19,7 +19,11 @@
 		</p>
 	</div>
 	{#snippet footer()}
-		<button type="button" class="mw-btn primary" onclick={() => exactValue.close()}>확인</button>
+		<button
+			type="button"
+			class="btn-primary-m btn preset-filled-brand"
+			onclick={() => exactValue.close()}>확인</button
+		>
 	{/snippet}
 </Sheet>
 

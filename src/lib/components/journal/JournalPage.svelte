@@ -242,7 +242,7 @@
 		<label>
 			<span class="sr-only">종목</span>
 			<select
-				class="mw-select"
+				class="select"
 				value={data.query.ticker}
 				onchange={(e) => navigate({ ticker: e.currentTarget.value })}
 			>
@@ -256,7 +256,11 @@
 			value={data.query.view}
 			onchange={(v) => navigate({ view: v })}
 		/>
-		<button type="button" class="mw-btn primary" onclick={() => openForm(null)}>일지 쓰기</button>
+		<button
+			type="button"
+			class="btn-primary-m btn preset-filled-brand"
+			onclick={() => openForm(null)}>일지 쓰기</button
+		>
 	</div>
 	<div class="chips" role="group" aria-label="구분 필터" data-testid="journal-chips">
 		<FilterChip
@@ -294,7 +298,7 @@
 					{#if filtered}
 						<button
 							type="button"
-							class="mw-btn"
+							class="btn preset-outlined-surface-500"
 							onclick={() => navigate({ q: '', type: '', ticker: '' })}>필터 초기화</button
 						>
 					{/if}
@@ -310,12 +314,16 @@
 			<nav class="pager" aria-label="쪽 이동">
 				{#if data.journal.page > 1}
 					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve('/journal') + 쿼리 -->
-					<a class="mw-btn" href={pageHref(data.journal.page - 1)}>‹ 이전 쪽</a>
+					<a class="btn preset-outlined-surface-500" href={pageHref(data.journal.page - 1)}
+						>‹ 이전 쪽</a
+					>
 				{/if}
 				<span class="num">{data.journal.page} / {data.journal.totalPages}</span>
 				{#if data.journal.page < data.journal.totalPages}
 					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve('/journal') + 쿼리 -->
-					<a class="mw-btn" href={pageHref(data.journal.page + 1)}>다음 쪽 ›</a>
+					<a class="btn preset-outlined-surface-500" href={pageHref(data.journal.page + 1)}
+						>다음 쪽 ›</a
+					>
 				{/if}
 			</nav>
 		{/if}
@@ -335,7 +343,9 @@
 					onedit={() => openForm(selected)}
 					onarchive={() => (archiveTarget = selected)}
 				/>
-				<button type="button" class="mw-btn ghost sm close" onclick={close}>닫기</button>
+				<button type="button" class="close btn text-muted btn-sm hover:preset-tonal" onclick={close}
+					>닫기</button
+				>
 			{:else}
 				<p class="muted">일지를 고르면 여기에 자세히 보여요.</p>
 			{/if}
@@ -398,10 +408,14 @@
 		있어요.
 	</p>
 	{#snippet footer()}
-		<button type="button" class="mw-btn" onclick={() => (archiveTarget = null)}>취소</button>
 		<button
 			type="button"
-			class="mw-btn primary"
+			class="btn preset-outlined-surface-500"
+			onclick={() => (archiveTarget = null)}>취소</button
+		>
+		<button
+			type="button"
+			class="btn-primary-m btn preset-filled-brand"
 			data-action="journal-archive-confirm"
 			aria-disabled={archiving ? 'true' : undefined}
 			onclick={confirmArchive}>보관하기</button
@@ -425,20 +439,6 @@
 	.grow {
 		flex: 1 1 200px;
 		min-width: 0;
-	}
-	.mw-select {
-		height: var(--size-touch);
-		padding: 0 10px;
-		border: 1px solid var(--color-line-strong);
-		border-radius: var(--radius-sm);
-		background: var(--color-surface);
-		color: var(--color-text);
-		font-size: 16px;
-	}
-	@media (min-width: 640px) {
-		.mw-select {
-			font-size: inherit;
-		}
 	}
 	.chips {
 		display: flex;
