@@ -23,6 +23,7 @@ import {
 	type RepoClient
 } from '$lib/server/repo';
 import { ruleM03, ruleP09 } from '$lib/server/domain/validation';
+import { hasAtMostNDecimals } from '$lib/server/domain/proposals/overrides';
 import type { InstrumentRow, PositionRow } from '$lib/types/mowa.contract';
 import { McpToolError } from '../errors';
 import { filterToolsByScopes } from '../scopes';
@@ -513,6 +514,15 @@ function validateProposedValues(
 		if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) {
 			issues.push(
 				issue('R-VAL-M02', 'avg_price must be a positive number', 'proposed_values.avg_price')
+			);
+		} else if (!hasAtMostNDecimals(v, 4)) {
+			// D-4 / R-FMT-13: same 4-decimal cap as the approve/correct web paths.
+			issues.push(
+				issue(
+					'R-FMT-13',
+					'[R-FMT-13] USD/KRW unit prices keep at most 4 decimals on write',
+					'proposed_values.avg_price'
+				)
 			);
 		}
 	}

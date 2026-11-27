@@ -636,6 +636,73 @@ describe('propose_position_change', () => {
 		expect(h.tools.has('propose_position_change')).toBe(false);
 		expect(h.tools.has('cancel_proposal')).toBe(false);
 	});
+
+	it('R-FMT-13: avg_price keeps at most 4 decimals on open_holding (D-4)', async () => {
+		const h = await harness();
+		const open = {
+			change_type: 'open_holding',
+			ticker: '005930',
+			evidence: EVIDENCE,
+			calc_note: 'decimals'
+		};
+		const accepted = [23090.01, 1350.063, 8192.0001, 123456789.1234];
+		for (const avg of accepted) {
+			const res = dataOf(
+				await h.call('propose_position_change', {
+					...open,
+					proposed_values: { qty: 1, avg_price: avg, currency: 'USD' }
+				})
+			);
+			expect(res.status, String(avg)).toBe('pending');
+			expect(db.createdProposalInputs.at(-1)).toMatchObject({
+				proposed_values: expect.objectContaining({ avg_price: avg })
+			});
+		}
+		const storedBeforeReject = db.createdProposalInputs.length;
+		for (const avg of [1.00005, 0.00001]) {
+			const err = errorOf(
+				await h.call('propose_position_change', {
+					...open,
+					proposed_values: { qty: 1, avg_price: avg, currency: 'USD' }
+				})
+			);
+			expect(err.code, String(avg)).toBe('VALIDATION');
+			expect(
+				err.errors.map((e) => e.rule),
+				String(avg)
+			).toContain('R-FMT-13');
+			const fmt = err.errors.find((e) => e.rule === 'R-FMT-13');
+			expect(fmt?.field).toBe('proposed_values.avg_price');
+			expect(fmt?.message).toBe('[R-FMT-13] USD/KRW unit prices keep at most 4 decimals on write');
+		}
+		expect(db.createdProposalInputs).toHaveLength(storedBeforeReject);
+	});
+
+	it('R-FMT-13: avg_price keeps at most 4 decimals on set_qty_avg', async () => {
+		const h = await harness();
+		const base = {
+			change_type: 'set_qty_avg',
+			position_id: 'pos-holding',
+			evidence: EVIDENCE,
+			calc_note: 'decimals'
+		};
+		dataOf(
+			await h.call('propose_position_change', {
+				...base,
+				proposed_values: { avg_price: 8192.0001 }
+			})
+		);
+		const stored = db.createdProposalInputs.length;
+		const err = errorOf(
+			await h.call('propose_position_change', {
+				...base,
+				proposed_values: { avg_price: 1.00005 }
+			})
+		);
+		expect(err.code).toBe('VALIDATION');
+		expect(err.errors.map((e) => e.rule)).toContain('R-FMT-13');
+		expect(db.createdProposalInputs).toHaveLength(stored);
+	});
 });
 
 describe('cancel_proposal', () => {

@@ -418,7 +418,7 @@ Registered tools: **31** (must match `ALL_MCP_TOOL_NAMES`).
 
 #### Notable rule IDs (from description + implementing module)
 
-`R-PERM-05`, `R-PERM-13`, `R-PERM-17`
+`R-FMT-13`, `R-PERM-05`, `R-PERM-13`, `R-PERM-17`
 
 ### `create_planned_position`
 
@@ -502,7 +502,7 @@ Registered tools: **31** (must match `ALL_MCP_TOOL_NAMES`).
 
 #### Notable rule IDs (from description + implementing module)
 
-`R-PERM-05`, `R-PERM-13`, `R-PERM-17`
+`R-FMT-13`, `R-PERM-05`, `R-PERM-13`, `R-PERM-17`
 
 ### `get_dashboard_context`
 
@@ -1126,7 +1126,7 @@ id로 리포트 1건을 조회한다. include_body=false면 본문을 제외한�
 
 #### Notable rule IDs (from description + implementing module)
 
-`R-PERM-05`, `R-PERM-13`, `R-PERM-17`
+`R-FMT-13`, `R-PERM-05`, `R-PERM-13`, `R-PERM-17`
 
 ### `propose_principle_change`
 
@@ -1611,7 +1611,7 @@ id로 리포트 1건을 조회한다. include_body=false면 본문을 제외한�
 
 #### Notable rule IDs (from description + implementing module)
 
-`R-PERM-05`, `R-PERM-13`, `R-PERM-17`
+`R-FMT-13`, `R-PERM-05`, `R-PERM-13`, `R-PERM-17`
 
 ### `upsert_decision`
 
