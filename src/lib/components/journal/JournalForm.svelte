@@ -403,7 +403,7 @@
 		width: 100%;
 		box-sizing: border-box;
 	}
-	textarea.input {
+	textarea.mw-input {
 		padding: 8px 10px;
 		min-height: 96px;
 		resize: vertical;
