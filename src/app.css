@@ -6,6 +6,11 @@
  */
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
+@plugin '@tailwindcss/forms';
+/* Skeleton v5 (handoff §19-2, D-1): 프리셋 테마 import 없음 · <html data-theme>는 우리 light|dark 전용 */
+@import '@skeletonlabs/skeleton';
+@import '@skeletonlabs/skeleton-svelte';
+@import './lib/styles/skeleton-mowa.css';
 @import './tokens.css' theme(static); /* 컴포넌트 <style>의 var(--color-*)도 쓰므로 모든 토큰 변수를 항상 출력 */
 
 /* iOS safe-area (viewport-fit=cover와 함께 사용) */
@@ -54,12 +59,22 @@ html {
 	p {
 		margin: 0;
 	}
-	button,
-	input,
-	select,
-	textarea {
+	/* :is(*, [type])로 특이도를 0,1,1로 올려 @tailwindcss/forms 리셋([type='text'] 등 0,1,0)보다 우선 → 기존처럼 글꼴 상속 */
+	:is(button, input, select, textarea):is(*, [type]) {
 		font: inherit;
 		color: inherit;
+	}
+	/* Skeleton base 의 *:disabled{opacity:.5}·<code> 칩 스타일을 끈다(기존 화면 유지, 비활성 표현은 overrides·컴포넌트가 담당) */
+	*:disabled {
+		opacity: 1;
+	}
+	code {
+		background-color: transparent;
+		color: inherit;
+		border-radius: 0;
+		font-size: 1em;
+		white-space: inherit;
+		padding: 0;
 	}
 	button {
 		cursor: pointer;
@@ -76,9 +91,7 @@ html {
 	}
 	/* 모바일 입력 font-size 16px: iOS 확대 방지 (H §5, 시안 15px → 구현 16px) */
 	@media (max-width: 639px) {
-		input,
-		select,
-		textarea {
+		:is(input, select, textarea):is(*, [type]) {
 			font-size: max(16px, 1em);
 		}
 	}
@@ -196,6 +209,19 @@ html {
 	.mw-input[aria-invalid='true'] {
 		border-color: var(--color-up);
 	}
+	/* stage-1 호환: @tailwindcss/forms 리셋(appearance:none·padding·line-height) 전에 보이던 모습 유지. stage 3에서 mw-input·mw-select와 함께 삭제 */
+	.mw-input,
+	.mw-select,
+	.search-box > input {
+		appearance: auto;
+	}
+	.mw-select {
+		line-height: normal;
+	}
+	.search-box > input {
+		padding: 0;
+		line-height: inherit;
+	}
 	.field {
 		min-width: 0;
 		max-width: 100%;
@@ -292,3 +318,6 @@ input[type='datetime-local'].field-control--plain::-webkit-calendar-picker-indic
 	cursor: pointer;
 	opacity: 0.55;
 }
+
+/* Skeleton 규칙 덮어쓰기(크기·포커스·비활성·폼 리셋 색) — 레이어 밖, 맨 마지막 (handoff §19-2) */
+@import './lib/styles/skeleton-overrides.css';
