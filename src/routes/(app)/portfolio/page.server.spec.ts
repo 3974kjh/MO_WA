@@ -616,6 +616,7 @@ describe('FE-07 확인 필요: 실제 건수·전체 최신 상위 50건', () =>
 	const at = (i: number) => new Date(Date.UTC(2026, 10, 21) - i * 60000).toISOString();
 	type Out = {
 		attentionNeeded: Array<{ id: string; attention_started_at: string }>;
+		attentionLimit: number;
 		attentionShown: number;
 		attentionTotal: number;
 	};
@@ -631,6 +632,8 @@ describe('FE-07 확인 필요: 실제 건수·전체 최신 상위 50건', () =>
 		const out = (await call()) as unknown as Out;
 		expect(out.attentionTotal).toBe(83);
 		expect(out.attentionShown).toBe(50);
+		// 화면 잘림 안내의 상한 숫자는 서버 상수 하나에서 온다(7c1c2b7 Nit-2).
+		expect(out.attentionLimit).toBe(50);
 		expect(out.attentionNeeded).toHaveLength(50);
 		const ts = out.attentionNeeded.map((i) => Date.parse(i.attention_started_at));
 		expect(ts).toEqual([...ts].sort((a, b) => b - a));

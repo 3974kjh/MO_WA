@@ -170,7 +170,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 		holdings,
 		positionsError: publicListError('portfolio.positions', positions.error),
 		attentionNeeded: attentionItems,
-		// 화면에는 아직 쓰지 않는다(잘림 안내 문구 확정 전): 목록 길이 / 실제 건수.
+		// 잘림 안내('최근 N건만 보여드려요')에 쓴다: 목록 상한 / 목록 길이 / 실제 건수.
+		attentionLimit: ATTENTION_NEEDED_LIMIT,
 		attentionShown: attentionItems.length,
 		attentionTotal,
 		attentionError: publicListError('portfolio.attention', attention.error)

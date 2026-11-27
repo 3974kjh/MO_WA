@@ -31,6 +31,7 @@ const base = {
 	portfolioError: null,
 	valuationError: null,
 	attentionNeeded: [],
+	attentionLimit: 50,
 	attentionError: null
 };
 
