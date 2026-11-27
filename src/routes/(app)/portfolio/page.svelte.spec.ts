@@ -5,8 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { flushSync } from 'svelte';
 
+// beforeNavigate 콜백을 받아 두어 화면 이동(다른 경로·닫기·같은 화면 #이동)을 테스트에서 직접 일으킨다.
+const navCbs = vi.hoisted(() => [] as Array<(n: unknown) => void>);
 vi.mock('$app/navigation', () => ({
-	beforeNavigate: () => {},
+	beforeNavigate: (cb: (n: unknown) => void) => {
+		navCbs.push(cb);
+	},
 	invalidateAll: vi.fn(async () => {})
 }));
 vi.mock('$app/forms', () => ({ deserialize: (t: string) => JSON.parse(t) }));
@@ -55,6 +59,7 @@ const cardOf = (c: Element, id: string) =>
 
 let fetchSpy: ReturnType<typeof vi.fn>;
 beforeEach(() => {
+	navCbs.length = 0;
 	// 토스트는 앱 전역 싱글턴이라 앞 테스트의 토스트가 남으면 다음 단언이 공허하게 통과한다.
 	toast.items = [];
 	vi.mocked(invalidateAll).mockReset();
@@ -980,6 +985,86 @@ describe('FE-07 변경 요청 렌더', () => {
 			]);
 			confirmApproveOf(container, 'P-0801');
 			expect(locked(container, 'P-0802')).toBe(true);
+		});
+
+		// F1 후속 Nit-3: 화면 이동·닫기·unmount 때 대기 전송을 버리고 되돌리기 토스트도 내린다.
+		describe('유예 중 화면 이동(beforeNavigate)', () => {
+			const undoCount = () => toast.items.filter((t) => t.action?.label === '되돌리기').length;
+			const nav = (from: string, to: string | null) =>
+				navCbs[navCbs.length - 1]({
+					from: { url: new URL(`http://localhost${from}`) },
+					to: to === null ? null : { url: new URL(`http://localhost${to}`) }
+				});
+			const dualData = () =>
+				({ ...correctionData, queue: { items: [linked()], total: 1 } }) as never;
+			// 반영(P-0801)과 기록 수정(pos-9)을 동시에 유예 상태로 둔다.
+			const startBoth = (c: Element) => {
+				confirmApproveOf(c, 'P-0801');
+				submitCorrection(c, '8', '증권사 앱 확인');
+			};
+
+			it('다른 화면으로 이동하면 되돌리기 토스트 2개가 사라지고 아무것도 보내지 않으며 잠금도 풀린다', async () => {
+				vi.useFakeTimers();
+				const { container } = render(Page, { data: dualData() });
+				startBoth(container);
+				expect(undoCount()).toBe(2);
+				nav('/portfolio', '/journal');
+				flushSync();
+				expect(undoCount()).toBe(0);
+				await vi.advanceTimersByTimeAsync(6000);
+				expect(fetchSpy).not.toHaveBeenCalled();
+				expect(correctBtn(container).getAttribute('aria-disabled')).toBeNull();
+			});
+
+			it('탭을 닫는 이동(to=null)도 같은 방식으로 버린다', async () => {
+				vi.useFakeTimers();
+				const { container } = render(Page, { data: dualData() });
+				startBoth(container);
+				nav('/portfolio', null);
+				flushSync();
+				expect(undoCount()).toBe(0);
+				await vi.advanceTimersByTimeAsync(6000);
+				expect(fetchSpy).not.toHaveBeenCalled();
+			});
+
+			it('같은 화면 안 #이동은 그대로 두고 5초 뒤 각각 한 번만 보낸다', async () => {
+				vi.useFakeTimers();
+				const { container } = render(Page, { data: dualData() });
+				startBoth(container);
+				nav('/portfolio', '/portfolio#queue');
+				flushSync();
+				expect(undoCount()).toBe(2);
+				await vi.advanceTimersByTimeAsync(11100);
+				expect(fetchSpy).toHaveBeenCalledTimes(2);
+				// 이미 전송이 시작된 뒤의 pagehide는 추가 전송을 만들지 않는다.
+				window.dispatchEvent(new Event('pagehide'));
+				await vi.advanceTimersByTimeAsync(6000);
+				expect(fetchSpy).toHaveBeenCalledTimes(2);
+			});
+
+			it('화면이 사라지면(unmount) 토스트를 내리고 보내지 않으며, 그 뒤 pagehide도 무해하다', async () => {
+				vi.useFakeTimers();
+				const r = render(Page, { data: dualData() });
+				startBoth(r.container);
+				r.unmount();
+				expect(undoCount()).toBe(0);
+				window.dispatchEvent(new Event('pagehide'));
+				await vi.advanceTimersByTimeAsync(6000);
+				expect(fetchSpy).not.toHaveBeenCalled();
+			});
+
+			it('되돌리기를 누른 뒤 pagehide가 와도 되돌렸다는 안내는 남고 전송은 없다', async () => {
+				vi.useFakeTimers();
+				const { container } = render(Page, { data: dualData() });
+				confirmApproveOf(container, 'P-0801');
+				toast.items.find((t) => t.action?.label === '되돌리기')!.action!.onclick();
+				flushSync();
+				window.dispatchEvent(new Event('pagehide'));
+				flushSync();
+				expect(toast.items.some((t) => t.message.startsWith('되돌렸어요'))).toBe(true);
+				await vi.advanceTimersByTimeAsync(6000);
+				expect(fetchSpy).not.toHaveBeenCalled();
+			});
 		});
 	});
 
