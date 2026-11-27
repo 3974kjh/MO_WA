@@ -1,7 +1,7 @@
 ---
 name: 티켓
 about: MO_WA 작업 티켓 (BE/FE/HF 등)
-title: "[티켓ID] "
+title: '[티켓ID] '
 labels: []
 ---
 
