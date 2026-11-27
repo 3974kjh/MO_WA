@@ -152,13 +152,28 @@ export function mergeAppliedValues(
 	return { ...proposedValues, ...overrides };
 }
 
-/** FE "approved (edited)" compares applied_values with proposed_values. */
+/** 키 순서와 무관한 JSON 문자열(jsonb는 키 순서를 보존하지 않는다). */
+function stableJson(value: unknown): string {
+	if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+	if (value && typeof value === 'object') {
+		const entries = Object.entries(value as Record<string, unknown>)
+			.filter(([, v]) => v !== undefined)
+			.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+		return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableJson(v)}`).join(',')}}`;
+	}
+	return JSON.stringify(value) ?? 'null';
+}
+
+/**
+ * FE "approved (edited)" compares applied_values with proposed_values.
+ * 키 순서만 다른 같은 값은 수정으로 보지 않는다(B1 L-4).
+ */
 export function isApprovedEdited(
 	proposedValues: Record<string, unknown> | null | undefined,
 	appliedValues: Record<string, unknown> | null | undefined
 ): boolean {
 	if (!appliedValues || !proposedValues) return false;
-	return JSON.stringify(appliedValues) !== JSON.stringify(proposedValues);
+	return stableJson(appliedValues) !== stableJson(proposedValues);
 }
 
 function hasAtMostNDecimals(value: number, n: number): boolean {

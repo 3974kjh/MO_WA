@@ -84,6 +84,22 @@ describe('BE-11 override allowlist', () => {
 		expect(isApprovedEdited({ qty: 10 }, { qty: 10 })).toBe(false);
 	});
 
+	it('isApprovedEdited: 키 순서만 다르면 수정 아님, 값·키가 다르면 수정 (B1 L-4)', () => {
+		expect(isApprovedEdited({ qty: 10, avg_price: 100.5 }, { avg_price: 100.5, qty: 10 })).toBe(
+			false
+		);
+		expect(
+			isApprovedEdited(
+				{ qty: 10, meta: { a: 1, b: [1, { y: 2, x: 1 }] } },
+				{ meta: { b: [1, { x: 1, y: 2 }], a: 1 }, qty: 10 }
+			)
+		).toBe(false);
+		expect(isApprovedEdited({ qty: 10, avg_price: 100 }, { avg_price: 101, qty: 10 })).toBe(true);
+		expect(isApprovedEdited({ qty: 10 }, { qty: 10, currency: 'USD' })).toBe(true);
+		expect(isApprovedEdited({ b: [1, 2] }, { b: [2, 1] })).toBe(true);
+		expect(isApprovedEdited(null, { qty: 1 })).toBe(false);
+	});
+
 	it('refuses remaining-days style fields on payloads', () => {
 		expect(() => assertNoRemainingDaysField({ remaining_days: 3 })).toThrow(/remaining/);
 		expect(() => assertNoRemainingDaysField({ display_id: 'P-0001' })).not.toThrow();
