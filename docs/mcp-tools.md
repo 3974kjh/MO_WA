@@ -91,7 +91,7 @@
 | 코드 | 쓰임 (main 코드 기준) |
 |---|---|
 | `VALIDATION` | 도메인·입력 검증 실패 |
-| `FORBIDDEN_SCOPE` | 스코프 부족 또는 미등록 툴 (R-PERM-04) |
+| `FORBIDDEN_SCOPE` | 스코프 부족 또는 미등록 툴 (R-PERM-04). 툴 실행 직전 2차 게이트(`assertToolScope`)에서만 나온다 — 키 스코프 밖 툴은 그 키에 등록되지 않으므로 일반 클라이언트는 SDK의 JSON-RPC 오류 `-32602 Tool <이름> not found`(`structuredContent` 없음)를 받는다 |
 | `NOT_FOUND` | 대상 없음 |
 | `CONFLICT` | 충돌 |
 | `RATE_LIMITED` | 툴 레벨 한도 (감사 결과는 `rate_limited`) |
@@ -132,7 +132,7 @@ ID 형식: `R-<영역>-<번호>` (예: `R-VAL-R12`, `R-PERM-04`, `R-SYS-05`).
 |---|---|---|---|---|
 | `whoami` | `read` | 인증된 봇 이름·스코프·서버 시각 | 없음 | `TOOL_REQUIRED_SCOPE`에 포함 |
 
-`TOOL_REQUIRED_SCOPE`에 없는 툴 이름은 `assertToolScope` 기준 `FORBIDDEN_SCOPE`(미등록, required=`(unregistered)`)가 된다.
+`TOOL_REQUIRED_SCOPE`에 없는 툴 이름은 `assertToolScope` 기준 `FORBIDDEN_SCOPE`(미등록, required=`(unregistered)`)가 된다. 다만 HTTP로 호출할 때 키 스코프 밖·없는 툴 이름은 등록 단계에서 이미 빠지므로 SDK가 `-32602 Tool <이름> not found`로 먼저 거절한다(§3 표 참고).
 
 ### 5.2 툴–스코프 표 (스키마 TBD)
 
