@@ -76,7 +76,10 @@ describe('countAuditRuleIds', () => {
 	});
 
 	it('최대 페이지까지 꽉 차면 거기서 멈추고 truncated=true', async () => {
-		const pages = Array.from({ length: AUDIT_RULE_COUNT_MAX_PAGES + 3 }, () => AUDIT_RULE_COUNT_PAGE);
+		const pages = Array.from(
+			{ length: AUDIT_RULE_COUNT_MAX_PAGES + 3 },
+			() => AUDIT_RULE_COUNT_PAGE
+		);
 		const { repo, requests } = stub(pages);
 		const out = await countAuditRuleIds(repo);
 		expect(requests).toHaveLength(AUDIT_RULE_COUNT_MAX_PAGES);
