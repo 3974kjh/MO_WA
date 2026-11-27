@@ -57,10 +57,26 @@
 	$effect(() => {
 		if (toast.items.length > 0) load();
 	});
+
+	/** 대체 토스트가 보일 때만 lift 모듈을 불러 같은 --mw-toast-bottom-lift 를 쓴다(첫 페인트 청크에 안 넣음). */
+	function lift(node: HTMLElement) {
+		let stop: (() => void) | undefined;
+		let cancelled = false;
+		import('./toastLiftDom').then((m) => {
+			if (cancelled || !node.isConnected) return;
+			stop = m.watchToastLift();
+		});
+		return {
+			destroy() {
+				cancelled = true;
+				stop?.();
+			}
+		};
+	}
 </script>
 
 {#if Group}<Group />{:else if failed && toast.items.length > 0}
-	<div class="fallback" role="status" aria-live="polite" data-testid="toast-fallback">
+	<div use:lift class="fallback" role="status" aria-live="polite" data-testid="toast-fallback">
 		{#each toast.items as item (item.id)}
 			<div class="item" data-tone={item.tone}>
 				<span class="msg">{item.message}</span>

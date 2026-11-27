@@ -1,8 +1,8 @@
 <script lang="ts">
 	/** ToastGroup.svelte.spec.ts 전용 하니스: 토스트 묶음 + 아래에서 올라오는 시트를 한 화면에 둔다. */
-	import Sheet from './Sheet.svelte';
-	import ToastGroup from './ToastGroup.svelte';
-	import type { SheetVariant } from './types';
+	import Sheet from '$lib/components/ui/Sheet.svelte';
+	import ToastGroup from '$lib/components/ui/ToastGroup.svelte';
+	import type { SheetVariant } from '$lib/components/ui/types';
 
 	let { variant = 'bottom', lines = 4 }: { variant?: SheetVariant; lines?: number } = $props();
 	let open = $state(false);

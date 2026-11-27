@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { page } from 'vitest/browser';
 import { flushSync } from 'svelte';
-import Harness from './ToastSheetHarness.svelte';
+import Harness from '../../../../tests/ui/ToastSheetHarness.svelte';
 import { toast } from './toast.svelte';
 
 const toastEl = () => document.querySelector<HTMLElement>('[data-scope="toast"][data-part="root"]');

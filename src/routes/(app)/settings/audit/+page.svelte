@@ -137,7 +137,8 @@
 						<a
 							class="rule"
 							aria-current={data.filter.rule === ruleId ? 'true' : undefined}
-							href={ruleHref(ruleId)}><code>{ruleId}</code> <span class="num">{count}</span></a
+							href={ruleHref(ruleId)}
+							><code>{ruleId}</code> <span class="num">{count.toLocaleString('ko-KR')}</span></a
 						>
 						<!-- eslint-enable svelte/no-navigation-without-resolve -->
 					</li>

@@ -81,3 +81,26 @@ describe('ToastHost 청크 실패 복구', () => {
 		await expect.poll(fallback).toBeNull();
 	});
 });
+
+describe('ToastHost 대체 토스트 시트 리프트 (Nit-1)', () => {
+	it('375: 청크가 실패해도 대체 토스트가 열린 시트 윗선 12px 위에 있다', async () => {
+		const { page } = await import('vitest/browser');
+		const Harness = (await import('../../../../tests/ui/ToastFallbackHarness.svelte')).default;
+		await page.viewport(375, 720);
+		const loader = vi.fn().mockRejectedValue(new Error('chunk'));
+		render(Harness, { loader });
+		toast.show('반영했어요', { duration: 0 });
+		flushSync();
+		await expect.poll(fallback, { timeout: 3000 }).not.toBeNull();
+		await page.getByRole('button', { name: '시트 열기' }).click();
+		const gap = () => {
+			const t = fallback();
+			const d = document.querySelector<HTMLElement>('[role="dialog"]');
+			return t && d
+				? Math.round(d.getBoundingClientRect().top - t.getBoundingClientRect().bottom)
+				: NaN;
+		};
+		await expect.poll(gap, { timeout: 3000 }).toBe(12);
+		expect(document.documentElement.style.getPropertyValue('--mw-toast-bottom-lift')).not.toBe('');
+	});
+});

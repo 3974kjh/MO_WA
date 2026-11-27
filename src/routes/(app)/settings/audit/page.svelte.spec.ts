@@ -64,6 +64,15 @@ describe('FE-09 활동 기록 화면', () => {
 		expect(a.getAttribute('href')).toContain('rule=R-VAL-T05');
 	});
 
+	it('규칙 칩 숫자는 안내 문구와 같이 ko-KR 천 단위로 찍힌다(20000 → 20,000)', () => {
+		const { container } = render(Page, {
+			data: makeData({ ruleIdCounts: { 'R-VAL-T05': 20000 }, ruleIdCountsLimit: 20000 })
+		});
+		const num = container.querySelector('[data-testid="audit-rule-counts"] .num');
+		expect(text(num)).toBe('20,000');
+		expect(text(num)).not.toBe('20000');
+	});
+
 	it('규칙별 건수가 상한에서 잘렸으면 센 범위를 알리고, 아니면 안내가 없다', () => {
 		const a = render(Page, { data: makeData({ ruleIdCountsLimit: 20000 }) });
 		expect(

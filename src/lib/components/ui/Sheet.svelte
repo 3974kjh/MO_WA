@@ -42,12 +42,24 @@
 		const prevOverflow = document.body.style.overflow;
 		document.body.style.overflow = 'hidden';
 		const el = panel;
-		tick().then(() => {
+		const focusFirst = () => {
+			if (!el.isConnected) return;
+			if (el.contains(document.activeElement)) return;
 			const items = focusableIn(el);
 			// 닫기 버튼 다음의 첫 요소가 있으면 그쪽으로, 없으면 닫기 버튼
 			(items[1] ?? items[0] ?? el).focus();
-		});
+		};
+		tick().then(focusFirst);
+		// 포커스가 시트 밖에 남아 있어도 Esc로 닫히게(캡처). 패널 핸들러와 두 번 닫히지 않게 여기서 막는다.
+		const onDocKey = (e: KeyboardEvent) => {
+			if (e.key !== 'Escape') return;
+			e.preventDefault();
+			e.stopPropagation();
+			onclose();
+		};
+		document.addEventListener('keydown', onDocKey, true);
 		return () => {
+			document.removeEventListener('keydown', onDocKey, true);
 			document.body.style.overflow = prevOverflow;
 			const target = returnTo;
 			returnTo = null;
@@ -144,6 +156,12 @@
 		transform: none;
 		visibility: visible;
 		transition-delay: 0s;
+	}
+	/* L-1: Skeleton `.btn { transition: all .15s }` 가 visibility 까지 물려 받아,
+	   열린 직후 focus() 시점에 버튼이 아직 hidden 이라 포커스가 무시된다. visibility 는 전환하지 않는다. */
+	.sheet :global(.btn),
+	.sheet :global(.btn-icon) {
+		transition-property: color, background-color, border-color, box-shadow, filter;
 	}
 	.sheet.full {
 		top: 0;
