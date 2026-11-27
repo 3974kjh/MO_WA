@@ -280,6 +280,10 @@
 		font-size: var(--text-lg);
 		letter-spacing: -0.02em;
 	}
+	/* 숨은(hidden) 알림·도움말이 display 규칙에 지지 않게(시안 v1.7.1) */
+	.mw-login :global([hidden]) {
+		display: none !important;
+	}
 	.lg-intro {
 		display: none;
 	}
@@ -290,12 +294,14 @@
 		justify-self: center;
 	}
 	.lg-panel h1 {
+		text-wrap: balance;
 		font-size: var(--text-2xl);
 		line-height: 2.2rem;
 		letter-spacing: -0.02em;
 		font-weight: 700;
 	}
 	.lg-panel .lead {
+		text-wrap: pretty;
 		margin-top: 6px;
 		color: var(--color-muted);
 		font-size: var(--text-base);
@@ -356,7 +362,7 @@
 	@media (min-width: 640px) {
 		.mw-login {
 			grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
-			grid-template-rows: auto auto;
+			grid-template-rows: auto 0fr;
 			column-gap: 28px;
 			row-gap: 28px;
 			align-content: center;
@@ -365,10 +371,11 @@
 			margin: 0 auto;
 			padding: 32px 24px;
 		}
+		/* v1.7.1: 로고 윗선 = 폼 카드 윗선. 둘 다 start, 가운데 맞춤은 묶음 전체(align-content)만 */
 		.lg-head {
 			grid-column: 1;
 			grid-row: 1;
-			align-self: end;
+			align-self: start;
 		}
 		.lg-intro {
 			display: block;
@@ -379,7 +386,7 @@
 		.lg-panel {
 			grid-column: 2;
 			grid-row: 1 / 3;
-			align-self: center;
+			align-self: start;
 			margin: 0;
 			max-width: none;
 			background: var(--color-surface);
@@ -404,12 +411,14 @@
 		}
 	}
 	.lg-intro h2 {
+		text-wrap: balance;
 		font-size: var(--text-2xl);
 		line-height: 2.2rem;
 		letter-spacing: -0.02em;
 		font-weight: 700;
 	}
 	.lg-intro .lead {
+		text-wrap: pretty;
 		margin-top: 10px;
 		color: var(--color-muted);
 		font-size: var(--text-md);
