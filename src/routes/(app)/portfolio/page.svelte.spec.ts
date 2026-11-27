@@ -297,6 +297,82 @@ describe('FE-07 변경 요청 렌더', () => {
 		expect(text(edge.container)).not.toContain('보여드려요');
 	});
 
+	it('확인 필요 잘림 안내: 상한 숫자는 서버가 준 attentionLimit을 따른다(30이면 30건)', async () => {
+		const at31 = render(Page, {
+			data: {
+				...base,
+				attentionLimit: 30,
+				attentionNeeded: attnItems(30),
+				attentionShown: 30,
+				attentionTotal: 31
+			} as never
+		});
+		const note = at31.container.querySelector('[data-testid="attention-truncated"]')!;
+		expect(text(note).trim()).toBe('최근 30건만 보여드려요. 처리하면 나머지가 보여요.');
+		at31.unmount();
+		// 총건수가 상한(30)과 같으면 안내 없음. 50이 하드코딩돼 있으면 이 경우를 구별하지 못한다.
+		const at30 = render(Page, {
+			data: {
+				...base,
+				attentionLimit: 30,
+				attentionNeeded: attnItems(30),
+				attentionShown: 30,
+				attentionTotal: 30
+			} as never
+		});
+		expect(at30.container.querySelector('[data-testid="attention-truncated"]')).toBeNull();
+		at30.unmount();
+		// 상한 30에서 총건수 45 → 안내(50 하드코딩이면 안내가 사라진다)
+		const at45 = render(Page, {
+			data: {
+				...base,
+				attentionLimit: 30,
+				attentionNeeded: attnItems(30),
+				attentionShown: 30,
+				attentionTotal: 45
+			} as never
+		});
+		expect(occurrences(text(at45.container), '보여드려요')).toBe(1);
+		expect(text(at45.container.querySelector('.attn .count')!)).toBe('45건');
+	});
+
+	it('확인 필요 잘림 안내: 서버가 정확히 상한(50/50)만 보냈고 화면에서 409 카드가 하나 더해져도 안내는 없다', async () => {
+		vi.useFakeTimers();
+		fetchSpy.mockImplementation(
+			async () =>
+				new Response(
+					JSON.stringify({
+						type: 'failure',
+						status: 409,
+						data: { ok: false, code: 'CONFLICT', status: 'conflict', message: 'x' }
+					})
+				)
+		);
+		const { container } = render(Page, {
+			data: {
+				...base,
+				queue: { items: [makeItem({ id: 'pc', display_id: 'P-0699' })], total: 1 },
+				attentionNeeded: attnItems(50),
+				attentionShown: 50,
+				attentionTotal: 50
+			} as never
+		});
+		expect(container.querySelector('[data-testid="attention-truncated"]')).toBeNull();
+		(cardOf(container, 'P-0699').querySelector('[data-action="approve"]') as HTMLElement).click();
+		flushSync();
+		(document.querySelector('[data-action="approve-confirm"]') as HTMLElement).click();
+		flushSync();
+		await vi.advanceTimersByTimeAsync(5100);
+		await vi.waitFor(() => {
+			const attn = container.querySelector('[data-testid="attention"]')!;
+			expect(text(attn)).toContain('P-0699');
+			// 50(서버) + 1(화면에서 옮겨진 카드): 총건수는 50이라 잘린 게 아니다.
+			expect(text(attn.querySelector('.count')!)).toBe('51건');
+		});
+		expect(container.querySelector('[data-testid="attention-truncated"]')).toBeNull();
+		expect(text(container)).not.toContain('보여드려요');
+	});
+
 	it('G-2: 반영은 확인 뒤 5초가 지나야 보내고, 되돌리기면 보내지 않는다', async () => {
 		vi.useFakeTimers();
 		const { container } = render(Page, {
