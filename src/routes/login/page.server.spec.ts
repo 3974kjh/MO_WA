@@ -123,6 +123,32 @@ describe('login action — auth-unavailable 신호', () => {
 		}
 	});
 
+	it('요청에 섞어 보낸 checkedAt 은 무시하고 서버 시계만 쓴다', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(FIXED);
+		try {
+			const { run } = call(
+				{
+					email: 'a@b.co',
+					password: 'pw',
+					checkedAt: '1999-01-01T00:00:00.000Z'
+				},
+				null,
+				async () => ({ error: new AuthRetryableFetchError('fetch failed', 0) })
+			);
+			const res = (await run()) as Fail;
+			expect(res.status).toBe(503);
+			expect(res.data).toEqual({
+				unavailable: true,
+				checkedAt: '2026-11-27T04:04:30.000Z',
+				email: 'a@b.co'
+			});
+			expect(JSON.stringify(res)).not.toContain('1999-01-01');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it('빈 칸은 불가 판정 전에 막혀 Auth 를 부르지 않는다', async () => {
 		const { run, signInWithPassword } = call({ email: '', password: '' });
 		const res = (await run()) as Fail;
