@@ -197,6 +197,38 @@ describe('BE-11 approve action', () => {
 		log.mockRestore();
 	});
 
+	it('B1 L-5: 승인 note는 한 줄·120자까지(R-VAL-P11), 비면 생략, 어기면 RPC 전에 400', async () => {
+		vi.mocked(approveProposalRpc).mockResolvedValue({
+			data: { id: 'p1', status: 'approved' },
+			error: null
+		} as never);
+		const call = async (note: string | null) => {
+			const form = new FormData();
+			form.set('id', 'p1');
+			if (note !== null) form.set('note', note);
+			return (await handleApprove(fakeSupabase({}), 'owner', form)) as {
+				ok?: boolean;
+				status?: number;
+				data?: { ruleIds: string[] };
+			};
+		};
+		expect((await call('가'.repeat(120))).ok).toBe(true);
+		expect((await call('  ')).ok).toBe(true);
+		expect((await call(null)).ok).toBe(true);
+		expect(vi.mocked(approveProposalRpc).mock.calls.map((c) => c[1].note)).toEqual([
+			'가'.repeat(120),
+			null,
+			null
+		]);
+		vi.mocked(approveProposalRpc).mockClear();
+		for (const bad of ['가'.repeat(121), '첫 줄\n둘째 줄', '이유\r']) {
+			const r = await call(bad);
+			expect(r.status).toBe(400);
+			expect(r.data?.ruleIds).toEqual(['R-VAL-P11']);
+		}
+		expect(approveProposalRpc).not.toHaveBeenCalled();
+	});
+
 	it('blocks disallowed override keys before RPC', async () => {
 		const form = new FormData();
 		form.set('id', 'p1');

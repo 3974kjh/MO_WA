@@ -6,6 +6,7 @@ import { fail } from '@sveltejs/kit';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
 	validateCorrectionInput,
+	validateCorrectionReason,
 	validateOverrides,
 	type ProposalChangeType
 } from '$lib/server/domain/proposals';
@@ -141,6 +142,11 @@ export async function handleApprove(
 
 	const noteRaw = form.get('note');
 	const note = typeof noteRaw === 'string' && noteRaw.trim() ? noteRaw.trim() : null;
+	// B1 L-5: 승인 note(=고친 이유)는 화면과 같이 한 줄·120자(R-VAL-P11). 비어 있으면 그대로 생략 가능.
+	if (note !== null) {
+		const checked = validateCorrectionReason(noteRaw as string);
+		if (!checked.ok) return failValidation(400, checked.ruleId, checked.message);
+	}
 	const parsedOverrides = parseOverrides(form.get('overrides'));
 	if (!parsedOverrides.ok) {
 		return failValidation(400, parsedOverrides.ruleId, parsedOverrides.message);
