@@ -142,7 +142,7 @@ describe('superseded(다른 세션에서 새 요청으로 바뀜)는 중립 안�
 			status: 'superseded',
 			message: ACTION_SUPERSEDED_MESSAGE
 		});
-		expect(ACTION_SUPERSEDED_MESSAGE).toBe('이미 새 요청으로 바뀌었어요 · 새 요청을 확인해 주세요');
+		expect(ACTION_SUPERSEDED_MESSAGE).toBe('이미 새 요청으로 바뀌었어요. 새 요청을 확인해 주세요');
 	});
 	it.each([
 		['다른 종결 상태', { code: 'P0001', message: 'proposal is already approved' }],

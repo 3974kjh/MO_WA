@@ -233,7 +233,7 @@ describe('폼 액션 결과 분류', () => {
 		expect(
 			classifyActionResult({ type: 'failure', status: 400, data: { status: 'superseded' } }).kind
 		).toBe('error');
-		expect(SUPERSEDED_TEXT).toBe('이미 새 요청으로 바뀌었어요 · 새 요청을 확인해 주세요');
+		expect(SUPERSEDED_TEXT).toBe('이미 새 요청으로 바뀌었어요. 새 요청을 확인해 주세요');
 	});
 	it('409·CONFLICT는 conflict(일반 오류 아님)', () => {
 		expect(

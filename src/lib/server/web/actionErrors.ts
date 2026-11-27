@@ -8,7 +8,7 @@ export const ACTION_FAILED_MESSAGE = '요청을 처리하지 못했어요.';
 export const ACTION_CONFLICT_MESSAGE = '반영 안 됨(보유가 달라짐)';
 
 /** 다른 세션에서 새 요청으로 바뀐(superseded) 요청을 처리하려 한 경우. 오류가 아니라 중립 안내. */
-export const ACTION_SUPERSEDED_MESSAGE = '이미 새 요청으로 바뀌었어요 · 새 요청을 확인해 주세요';
+export const ACTION_SUPERSEDED_MESSAGE = '이미 새 요청으로 바뀌었어요. 새 요청을 확인해 주세요';
 
 export type ActionErrorBody = {
 	ok: false;

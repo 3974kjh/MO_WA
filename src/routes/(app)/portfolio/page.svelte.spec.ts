@@ -370,7 +370,7 @@ describe('FE-07 변경 요청 렌더', () => {
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
 		const msgs = toast.items.map((t) => [t.message, t.tone ?? null]);
 		expect(
-			msgs.filter(([m]) => m === '이미 새 요청으로 바뀌었어요 · 새 요청을 확인해 주세요')
+			msgs.filter(([m]) => m === '이미 새 요청으로 바뀌었어요. 새 요청을 확인해 주세요')
 		).toHaveLength(1);
 		expect(toast.items.some((t) => t.tone === 'err')).toBe(false);
 		expect(text(container)).not.toContain('반영 안 됨(보유가 달라짐)');
@@ -406,7 +406,7 @@ describe('FE-07 변경 요청 렌더', () => {
 		(cardOf(container, 'P-0697').querySelector('[data-action="hold"]') as HTMLElement).click();
 		await vi.waitFor(() => expect(invalidateAll).toHaveBeenCalledTimes(1));
 		expect(toast.items.map((t) => t.message)).toContain(
-			'이미 새 요청으로 바뀌었어요 · 새 요청을 확인해 주세요'
+			'이미 새 요청으로 바뀌었어요. 새 요청을 확인해 주세요'
 		);
 		expect(toast.items.some((t) => t.tone === 'err')).toBe(false);
 	});
