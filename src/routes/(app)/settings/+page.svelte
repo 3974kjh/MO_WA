@@ -340,8 +340,8 @@
 		</form>
 	{/if}
 	{#snippet footer()}
-		<!-- 파괴적 확인 시트(DS §0-2-7): 안전한 '취소'가 기본(채움) 버튼, '사용 중지'는 danger 외곽선 -->
-		<Button variant="primary" compact label="취소" onclick={() => (revokeTarget = null)} />
+		<!-- 파괴적 확인 시트(DS §7 설정 시안): 안전한 '취소'는 외곽선 기본 버튼, '사용 중지'는 danger 외곽선 -->
+		<Button variant="secondary-pill" compact label="취소" onclick={() => (revokeTarget = null)} />
 		<Button type="submit" form="revoke-form" variant="danger" compact label="사용 중지" />
 	{/snippet}
 </Sheet>

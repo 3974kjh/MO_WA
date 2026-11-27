@@ -147,7 +147,7 @@ describe('FE-09 설정 화면', () => {
 		expect(document.cookie).not.toContain(KEY);
 	});
 
-	it('사용 중지 버튼은 danger 외곽선이고, 확인 시트에서는 취소가 채움(기본) 버튼 · 사용 중지는 danger 외곽선이다 (DS §0-2-7)', () => {
+	it('사용 중지 버튼은 danger 외곽선이고, 확인 시트에서는 취소가 외곽선 기본 버튼 · 사용 중지는 danger 외곽선이다 (DS §7 설정 시안)', () => {
 		render(Page, { data: makeData() });
 		const listBtn = btn('사용 중지')!;
 		expect(listBtn.className).toContain('preset-outlined-error-700-300');
@@ -161,7 +161,8 @@ describe('FE-09 설정 화면', () => {
 		const cancel = [...document.querySelectorAll('[role="dialog"] button')].find(
 			(b) => b.textContent?.trim() === '취소'
 		) as HTMLElement;
-		expect(cancel.className).toContain('preset-filled-brand');
+		expect(cancel.className).toContain('preset-outlined-surface-500');
+		expect(cancel.className).not.toContain('preset-filled');
 	});
 
 	it('확인 시트 설명은 시안 문구(즉시 연결 불가·되돌릴 수 없음)이고, 중지된 키 행은 흐리게 · 버튼 없음 (DS §7 설정)', () => {
