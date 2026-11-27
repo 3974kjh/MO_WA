@@ -23,16 +23,13 @@
 	--inset-b: max(var(--app-inset-b, 0px), env(safe-area-inset-bottom, 0px), 8px);
 }
 
-/* 토스트 바닥 거리 (DS §7-0 '하단 탭 위'). 모바일에서 바닥 시트가 열려 있으면 시트 최대 높이(86dvh) 위로 올려 입력칸을 가리지 않는다(B 사후리뷰 Nit-1) */
+/* 토스트 바닥 거리 (DS §7-0 '하단 탭 위'). 시트 안에서 생긴 안내는 시트 안 mw-callout 이고, 토스트는 시트가 닫힌 뒤 결과 알림 전용이라 시트 위로 올리지 않는다(v1.7.1) */
 :root {
 	--mw-toast-bottom: 24px;
 }
 @media (max-width: 639px) {
 	:root {
 		--mw-toast-bottom: calc(var(--size-tabbar) + var(--inset-b) + 20px);
-	}
-	:root:has(.sheet.bottom.open) {
-		--mw-toast-bottom: calc(var(--sheet-max-h) + 12px);
 	}
 }
 

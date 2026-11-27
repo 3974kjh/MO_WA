@@ -1160,7 +1160,7 @@ describe('FE-07 변경 요청 렌더', () => {
 		});
 
 		// F2: 거절 확인도 반영과 같은 형제 가드(이미 열린 거절 시트를 형제 유예 중에 확인한 경우).
-		it('형제가 유예 중일 때 이미 열린 거절 시트를 확인하면 보내지 않고 같은 안내만 띄운다', async () => {
+		it('형제가 유예 중일 때 이미 열린 거절 시트를 확인하면 보내지 않고 시트 안에 같은 안내를 보인다', async () => {
 			vi.useFakeTimers();
 			const { container } = setup([linked(), loose()]);
 			(cardOf(container, 'P-0802').querySelector('[data-action="reject"]') as HTMLElement).click();
@@ -1169,12 +1169,17 @@ describe('FE-07 변경 요청 렌더', () => {
 			expect(locked(container, 'P-0802')).toBe(true);
 			(document.querySelector('[data-action="reject-confirm"]') as HTMLElement).click();
 			flushSync();
+			// v1.7.1: 시트가 열려 있으니 안내는 토스트가 아니라 시트 안 callout(role=status)이다.
+			const lock = document.querySelector('[data-testid="reject-lock-callout"]');
+			expect(lock?.getAttribute('role')).toBe('status');
+			expect(lock?.classList.contains('mw-callout')).toBe(true);
+			expect(lock?.textContent?.trim()).toBe(
+				'같은 종목의 다른 요청을 처리하는 중이에요 · 끝난 뒤 다시 확인해 주세요'
+			);
 			expect(
-				toast.items.filter(
-					(t) =>
-						t.message === '같은 종목의 다른 요청을 처리하는 중이에요 · 끝난 뒤 다시 확인해 주세요'
-				)
-			).toHaveLength(1);
+				lock?.closest('.sheet')?.querySelector('[data-action="reject-confirm"]')
+			).not.toBeNull();
+			expect(toast.items.some((t) => t.message.startsWith('같은 종목의 다른 요청'))).toBe(false);
 			await vi.advanceTimersByTimeAsync(6000);
 			expect(fetchSpy).toHaveBeenCalledTimes(1);
 			expect((fetchSpy.mock.calls[0] as [string])[0]).toBe('?/approve');
@@ -1194,12 +1199,17 @@ describe('FE-07 변경 요청 렌더', () => {
 			expect(locked(container, 'P-0802')).toBe(true);
 			(document.querySelector('[data-action="reject-confirm"]') as HTMLElement).click();
 			flushSync();
+			// v1.7.1: 시트가 열려 있으니 안내는 토스트가 아니라 시트 안 callout(role=status)이다.
+			const lock = document.querySelector('[data-testid="reject-lock-callout"]');
+			expect(lock?.getAttribute('role')).toBe('status');
+			expect(lock?.classList.contains('mw-callout')).toBe(true);
+			expect(lock?.textContent?.trim()).toBe(
+				'같은 종목의 다른 요청을 처리하는 중이에요 · 끝난 뒤 다시 확인해 주세요'
+			);
 			expect(
-				toast.items.filter(
-					(t) =>
-						t.message === '같은 종목의 다른 요청을 처리하는 중이에요 · 끝난 뒤 다시 확인해 주세요'
-				)
-			).toHaveLength(1);
+				lock?.closest('.sheet')?.querySelector('[data-action="reject-confirm"]')
+			).not.toBeNull();
+			expect(toast.items.some((t) => t.message.startsWith('같은 종목의 다른 요청'))).toBe(false);
 			// 시트가 열려 있고 사유가 그대로다.
 			expect(document.querySelector('[data-action="reject-confirm"]')).not.toBeNull();
 			expect((document.querySelector('#reject-note') as HTMLInputElement | null)?.value).toBe(
@@ -1213,6 +1223,8 @@ describe('FE-07 변경 요청 렌더', () => {
 				flushSync();
 				expect(locked(container, 'P-0802')).toBe(false);
 			});
+			// 잠금이 풀리면 낡은 안내는 사라진다.
+			expect(document.querySelector('[data-testid="reject-lock-callout"]')).toBeNull();
 			expect((document.querySelector('#reject-note') as HTMLInputElement | null)?.value).toBe(
 				'  시세 확인 뒤 다시  '
 			);

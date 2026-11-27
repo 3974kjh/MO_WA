@@ -2,7 +2,7 @@
 	/**
 	 * Skeleton 토스트 묶음 (DS §7-0: `createToaster()` + 루트 `<Toast.Group>` 하나). ToastHost가 지연 로드한다.
 	 * toast.svelte.ts의 `toast.items`를 그대로 비춘다: 새 항목은 create, 빠진 항목은 dismiss. Zag 자체 타이머는 끈다(duration ∞).
-	 * 위치: app.css `--mw-toast-bottom` (기본 24px · 모바일 하단 탭 위 · 모바일 바닥 시트가 열려 있으면 시트 최대 높이 위, Nit-1).
+	 * 위치: app.css `--mw-toast-bottom` (기본 24px · 모바일 하단 탭 위). 시트 안 안내는 시트 안 mw-callout 이라 시트 위로 올리지 않는다(DS §0-2-7).
 	 */
 	import { Toast, createToaster } from '@skeletonlabs/skeleton-svelte';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';

@@ -52,6 +52,8 @@
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
 	import Sheet from '$lib/components/ui/Sheet.svelte';
+	import Icon from '$lib/components/ui/Icon.svelte';
+	import Info from '@lucide/svelte/icons/info';
 	import { toast } from '$lib/components/ui/toast.svelte';
 	import QueueCard from '$lib/components/queue/QueueCard.svelte';
 	import DiffTable from '$lib/components/queue/DiffTable.svelte';
@@ -93,6 +95,8 @@
 	let approveTarget = $state<QueueItem | null>(null);
 	let rejectTarget = $state<QueueItem | null>(null);
 	let rejectNote = $state('');
+	/** 거절 시트가 열린 채 막힌 안내(형제 잠금). 시트 안 mw-callout로 보인다(DS §0-2-7) — 토스트가 아니다. */
+	let rejectNotice = $state<string | null>(null);
 	let overrideTarget = $state<QueueItem | null>(null);
 	let overrideConflict = $state(false);
 	let correctionTarget = $state<CorrectionTarget | null>(null);
@@ -338,11 +342,13 @@
 		// 반영 경로와 같은 가드: 같은 종목의 형제가 유예·전송 중이면 보내지 않는다(이미 열린 시트를 확인한 경우).
 		// 막히면 시트를 열어 둔 채 입력한 사유를 그대로 두고 기존 안내만 띄운다(PM이 전한 사용자 결정 11/27 13:31).
 		if (siblingLocked(item)) {
-			toast.show(SIBLING_LOCK_TEXT);
+			// 시트가 열려 있으므로 안내도 시트 안에 둔다(DS §0-2-7: 토스트는 시트가 닫힌 뒤 결과 알림 전용).
+			rejectNotice = SIBLING_LOCK_TEXT;
 			return;
 		}
 		const note = rejectNote.trim();
 		rejectTarget = null;
+		rejectNotice = null;
 		rejectNote = '';
 		setBusy(item.id, true);
 		const base: Record<string, string> =
@@ -771,6 +777,7 @@
 									onhold={doHold}
 									onreject={(i) => {
 										rejectNote = '';
+										rejectNotice = null;
 										rejectTarget = i;
 									}}
 								/>
@@ -849,7 +856,14 @@
 	{/snippet}
 </Sheet>
 
-<Sheet open={!!rejectTarget} onclose={() => (rejectTarget = null)} title="이 요청을 거절할까요?">
+<Sheet
+	open={!!rejectTarget}
+	onclose={() => {
+		rejectTarget = null;
+		rejectNotice = null;
+	}}
+	title="이 요청을 거절할까요?"
+>
 	{#if rejectTarget}
 		<div class="sheet-body" data-testid="reject-confirm">
 			{#if rejectTarget.kind === 'principle'}
@@ -868,13 +882,22 @@
 					bind:value={rejectNote}
 				/></label
 			>
+			{#if rejectNotice && siblingLocked(rejectTarget)}
+				<div class="mw-callout info" role="status" data-testid="reject-lock-callout">
+					<Icon icon={Info} size={18} />
+					<div>{rejectNotice}</div>
+				</div>
+			{/if}
 		</div>
 	{/if}
 	{#snippet footer()}
 		<button
 			type="button"
 			class="btn preset-outlined-surface-500"
-			onclick={() => (rejectTarget = null)}>취소</button
+			onclick={() => {
+				rejectTarget = null;
+				rejectNotice = null;
+			}}>취소</button
 		>
 		<button
 			type="button"
