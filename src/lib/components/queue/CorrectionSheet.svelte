@@ -131,11 +131,11 @@
 				/><span class="hint">최대 {OVERRIDE_REASON_MAX}자</span></label
 			>
 			<div>
-				<p class="sub">바뀌는 내용 미리보기</p>
+				<p class="mw-sub">바뀌는 내용 미리보기</p>
 				{#if check && check.rows.length > 0}
 					<DiffTable rows={check.rows} />
 				{:else}
-					<p class="sub">바뀐 값이 없어요. 수량·평균 단가·통화 중 하나를 바꿔 주세요.</p>
+					<p class="mw-sub">바뀐 값이 없어요. 수량·평균 단가·통화 중 하나를 바꿔 주세요.</p>
 				{/if}
 			</div>
 		</div>
@@ -159,7 +159,7 @@
 <Sheet open={!!target && step === 'confirm'} {onclose} title="이대로 바로 반영할까요?">
 	{#if target && check}
 		<div class="form" data-testid="correction-confirm">
-			<p class="sub">{target.name} · 직접 수정 <b>나</b></p>
+			<p class="mw-sub">{target.name} · 직접 수정 <b>나</b></p>
 			<DiffTable rows={check.rows} />
 			<p class="reason"><b>수정 이유</b> {inputs.reason.trim()}</p>
 			<Banner tone="info"
@@ -189,11 +189,11 @@
 		gap: 12px;
 	}
 	.hint,
-	.sub {
+	.mw-sub {
 		font-size: var(--text-xs);
 		color: var(--color-subtle);
 	}
-	.sub {
+	.mw-sub {
 		margin-bottom: 6px;
 	}
 	.reason {

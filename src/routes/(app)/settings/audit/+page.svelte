@@ -76,7 +76,7 @@
 	<header class="head">
 		<p class="back"><a href={settingsHref}>← 설정</a></p>
 		<h1>활동 기록</h1>
-		<p class="sub">봇이 한 일을 최근순으로 보여 줘요. 읽기 전용이에요.</p>
+		<p class="mw-sub">봇이 한 일을 최근순으로 보여 줘요. 읽기 전용이에요.</p>
 	</header>
 
 	{#if data.error}
@@ -120,7 +120,7 @@
 	</form>
 
 	<Card>
-		<h2 class="h2">경고 규칙별 건수</h2>
+		<h2 class="mw-h2">경고 규칙별 건수</h2>
 		{#if ruleEntries.length === 0}
 			<p class="muted">경고가 남은 기록이 없어요.</p>
 		{:else}
@@ -215,7 +215,7 @@
 		margin: 0 0 4px;
 		font-size: var(--text-sm);
 	}
-	.sub,
+	.mw-sub,
 	.muted {
 		margin: 6px 0 0;
 		color: var(--color-muted);
@@ -265,7 +265,7 @@
 		cursor: pointer;
 		padding: 4px;
 	}
-	.h2 {
+	.mw-h2 {
 		margin: 0 0 8px;
 		font-size: 16px;
 		color: var(--color-ink);

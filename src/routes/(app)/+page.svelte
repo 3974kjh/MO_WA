@@ -152,9 +152,9 @@
 							<a class="q-item" href="{resolve('/portfolio')}#queue">
 								<span class="grow">
 									<b>{q.kind === 'principle' ? principleLabel(q) : positionLabel(q)}</b>
-									<span class="sub">{changeTypeLabel(q.change_type)}</span>
+									<span class="mw-sub">{changeTypeLabel(q.change_type)}</span>
 									{#if q.changes.length}
-										<span class="sub num"
+										<span class="mw-sub num"
 											>{q.changes.map((c) => changeText(c, q.currency)).join(' · ')}</span
 										>
 									{/if}
@@ -334,7 +334,7 @@
 									title={d.title}>{d.label}</Badge
 								>
 							{/if}
-							<span class="sub">
+							<span class="mw-sub">
 								{#if t.state === 'watch'}감시 가격 없음{:else}감시 가격 <span class="num"
 										>{unitPrice(p.trigger_price!, p.currency)}</span
 									>{/if}
@@ -538,7 +538,7 @@
 	.grow b {
 		font-weight: 700;
 	}
-	.sub {
+	.mw-sub {
 		font-size: var(--text-sm);
 		color: var(--color-muted);
 		overflow-wrap: anywhere;
@@ -680,7 +680,7 @@
 		align-items: center;
 		gap: 4px 6px;
 	}
-	.trig .grow .sub {
+	.trig .grow .mw-sub {
 		flex-basis: 100%;
 		font-size: var(--text-xs);
 		color: var(--color-subtle);

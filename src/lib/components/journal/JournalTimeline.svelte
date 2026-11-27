@@ -33,7 +33,7 @@
 							<JournalKindBadges item={it} />
 							<span class="title">{it.title}</span>
 							{#if it.price != null && it.currency}
-								<span class="sub num"
+								<span class="mw-sub num"
 									><Money value={it.price} currency={it.currency} kind="unit" />{#if it.qty != null}
 										· {qtyText(it.qty, it.instrument_asset_type)}{/if}</span
 								>
@@ -118,7 +118,7 @@
 		font-weight: 600;
 		line-height: 1.4rem;
 	}
-	.sub {
+	.mw-sub {
 		font-size: var(--text-sm);
 		color: var(--color-muted);
 	}

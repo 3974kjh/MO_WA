@@ -203,7 +203,7 @@
 				</div>
 			{/each}
 		</div>
-		<h3 class="h3">대비비 (WCAG AA 일반 텍스트 4.5:1, 현재 테마로 자동 계산)</h3>
+		<h3 class="mw-h3">대비비 (WCAG AA 일반 텍스트 4.5:1, 현재 테마로 자동 계산)</h3>
 		<div class="tbl-plain">
 			<table>
 				<thead>
@@ -423,9 +423,9 @@
 				onrowclick={(r) => toast.show(`${r.name} 행 선택`)}
 			/>
 		</Card>
-		<h3 class="h3">가로 스크롤 + 첫 열 고정 (모바일에서도 표 유지)</h3>
+		<h3 class="mw-h3">가로 스크롤 + 첫 열 고정 (모바일에서도 표 유지)</h3>
 		<DataTable columns={themeCols} rows={themeRows} caption="테마 표" />
-		<h3 class="h3">빈 표 · 로딩</h3>
+		<h3 class="mw-h3">빈 표 · 로딩</h3>
 		<div class="cards2">
 			<DataTable columns={themeCols} rows={[]} caption="빈 표" />
 			<DataTable columns={themeCols} rows={[]} loading caption="로딩 표" />
@@ -665,7 +665,7 @@
 		margin-bottom: 16px;
 		font-size: var(--text-sm);
 	}
-	.h3 {
+	.mw-h3 {
 		margin: 24px 0 8px;
 		font-size: var(--text-lg);
 	}

@@ -117,7 +117,7 @@
 	{:else if modified && item.applied_values}
 		<Diff3 rows={diff3Rows(item, item.applied_values)} />
 		{#if item.decision_note}<p class="hist-mod"><b>고친 이유</b> {item.decision_note}</p>{/if}
-		<p class="sub">
+		<p class="mw-sub">
 			{kst(item.decided_at)} · 나 · 봇 요청 값과 다른 값으로 반영
 		</p>
 	{:else}
@@ -153,7 +153,7 @@
 	{/if}
 
 	{#if item.status === 'on_hold' && item.held_at}
-		<p class="sub"><span aria-hidden="true">⏸</span> {kst(item.held_at)} 보류</p>
+		<p class="mw-sub"><span aria-hidden="true">⏸</span> {kst(item.held_at)} 보류</p>
 	{/if}
 	{#if statusNote}
 		<p class="status-note" class:alert={item.status === 'conflict' || item.status === 'expired'}>
@@ -234,7 +234,7 @@
 			>
 		</div>
 	{:else if !modified && (item.decided_at || item.acknowledged_at)}
-		<p class="sub">
+		<p class="mw-sub">
 			{#if item.decided_at}{kst(item.decided_at)}{/if}{#if item.acknowledged_at}
 				· 내가 확인함 {kst(item.acknowledged_at)}{/if}
 		</p>
@@ -294,7 +294,7 @@
 		overflow-wrap: anywhere;
 	}
 	.by,
-	.sub,
+	.mw-sub,
 	.hint {
 		font-size: var(--text-xs);
 		color: var(--color-subtle);

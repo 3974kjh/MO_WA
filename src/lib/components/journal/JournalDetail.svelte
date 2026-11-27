@@ -99,13 +99,13 @@
 		<dt>상태</dt>
 		<dd>{item.kind === 'review' ? '—' : JOURNAL_STATE_LABEL[item.state]}</dd>
 	</dl>
-	<h3 class="sub">메모</h3>
+	<h3 class="mw-sub">메모</h3>
 	{#if item.memo_md && item.memo_md.trim()}
 		<p class="memo">{item.memo_md}</p>
 	{:else}
 		<p class="memo muted">메모 없음</p>
 	{/if}
-	<h3 class="sub">근거·출처</h3>
+	<h3 class="mw-sub">근거·출처</h3>
 	<div class="links">
 		{#if item.source_url}
 			<!-- 외부 주소는 사용자가 입력한 http(s) 주소만(DB CHECK R-VAL-S04). -->
@@ -169,7 +169,7 @@
 		text-align: right;
 		font-weight: 600;
 	}
-	.sub {
+	.mw-sub {
 		font-size: var(--text-sm);
 		color: var(--color-muted);
 		font-weight: 600;

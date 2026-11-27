@@ -125,7 +125,7 @@
 	{/if}
 
 	<Card>
-		<h2 class="h2">화면 모드</h2>
+		<h2 class="mw-h2">화면 모드</h2>
 		<p class="muted">상단바 버튼과 같은 설정이에요.</p>
 		<div data-testid="theme-setting">
 			<SegmentedControl
@@ -163,7 +163,7 @@
 	{/if}
 
 	<Card>
-		<h2 class="h2" id="bots-heading">봇 키</h2>
+		<h2 class="mw-h2" id="bots-heading">봇 키</h2>
 
 		<form
 			method="POST"
@@ -295,7 +295,7 @@
 	</Card>
 
 	<Card>
-		<h2 class="h2">활동 기록</h2>
+		<h2 class="mw-h2">활동 기록</h2>
 		<p class="muted">봇이 한 일과 경고를 확인해요.</p>
 		<a class="more" href={auditHref} data-testid="audit-link">활동 기록 보기</a>
 	</Card>
@@ -382,7 +382,7 @@
 		letter-spacing: -0.02em;
 		color: var(--color-ink);
 	}
-	.h2 {
+	.mw-h2 {
 		margin: 0 0 8px;
 		font-size: 18px;
 		color: var(--color-ink);

@@ -21,7 +21,7 @@
 <div class="gauge" role="img" aria-label="감시 가격까지 {label}{hit ? ' (도달)' : ''}">
 	<div class="track" class:hit>
 		<i class="warn" style:width="{(TRIGGER_WARN_PCT / TRIGGER_SCALE_PCT) * 100}%"></i>
-		{#if !hit}<b class="mark" style:left="{pos}%"></b>{/if}
+		{#if !hit}<b class="mw-mark" style:left="{pos}%"></b>{/if}
 	</div>
 	<div class="scale" aria-hidden="true">
 		<span>감시 가격</span><span>{TRIGGER_WARN_PCT}%</span><span>{TRIGGER_SCALE_PCT}%</span>
@@ -52,7 +52,7 @@
 	.track.hit .warn {
 		display: none;
 	}
-	.mark {
+	.mw-mark {
 		position: absolute;
 		top: -4px;
 		width: 4px;
