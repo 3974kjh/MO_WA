@@ -336,6 +336,81 @@ describe('FE-07 변경 요청 렌더', () => {
 		expect(text(at45.container.querySelector('.attn .count')!)).toBe('45건');
 	});
 
+	// B: 다른 세션에서 새 요청으로 바뀐(superseded) 요청은 오류 톤이 아니라 중립 안내.
+	it('반영 전송이 SUPERSEDED로 돌아오면 중립 안내만 띄우고 오류 토스트·충돌 이동은 없다', async () => {
+		vi.useFakeTimers();
+		fetchSpy.mockImplementation(
+			async () =>
+				new Response(
+					JSON.stringify({
+						type: 'failure',
+						status: 400,
+						data: {
+							ok: false,
+							code: 'SUPERSEDED',
+							status: 'superseded',
+							message: 'x',
+							ruleIds: ['UNMAPPED']
+						}
+					})
+				)
+		);
+		const { container } = render(Page, {
+			data: {
+				...base,
+				queue: { items: [makeItem({ id: 'ps', display_id: 'P-0698' })], total: 1 }
+			} as never
+		});
+		(cardOf(container, 'P-0698').querySelector('[data-action="approve"]') as HTMLElement).click();
+		flushSync();
+		(document.querySelector('[data-action="approve-confirm"]') as HTMLElement).click();
+		flushSync();
+		await vi.advanceTimersByTimeAsync(5100);
+		await vi.waitFor(() => expect(invalidateAll).toHaveBeenCalled());
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		const msgs = toast.items.map((t) => [t.message, t.tone ?? null]);
+		expect(
+			msgs.filter(([m]) => m === '이미 새 요청으로 바뀌었어요 · 새 요청을 확인해 주세요')
+		).toHaveLength(1);
+		expect(toast.items.some((t) => t.tone === 'err')).toBe(false);
+		expect(text(container)).not.toContain('반영 안 됨(보유가 달라짐)');
+		// 낙관 상태가 풀려 카드가 대기 목록에 그대로 보인다(재조회가 실제 상태로 바꾼다).
+		flushSync();
+		expect(cardOf(container, 'P-0698')).toBeTruthy();
+		expect(toast.items.find((t) => t.message.startsWith('이미 새 요청'))?.tone).toBe('default');
+	});
+
+	it('보류가 SUPERSEDED로 돌아와도 중립 안내(오류 톤 아님)', async () => {
+		fetchSpy.mockImplementation(
+			async () =>
+				new Response(
+					JSON.stringify({
+						type: 'failure',
+						status: 400,
+						data: {
+							ok: false,
+							code: 'SUPERSEDED',
+							status: 'superseded',
+							message: 'x',
+							ruleIds: ['UNMAPPED']
+						}
+					})
+				)
+		);
+		const { container } = render(Page, {
+			data: {
+				...base,
+				queue: { items: [makeItem({ id: 'ph', display_id: 'P-0697' })], total: 1 }
+			} as never
+		});
+		(cardOf(container, 'P-0697').querySelector('[data-action="hold"]') as HTMLElement).click();
+		await vi.waitFor(() => expect(invalidateAll).toHaveBeenCalledTimes(1));
+		expect(toast.items.map((t) => t.message)).toContain(
+			'이미 새 요청으로 바뀌었어요 · 새 요청을 확인해 주세요'
+		);
+		expect(toast.items.some((t) => t.tone === 'err')).toBe(false);
+	});
+
 	it('확인 필요 잘림 안내: 서버가 정확히 상한(50/50)만 보냈고 화면에서 409 카드가 하나 더해져도 안내는 없다', async () => {
 		vi.useFakeTimers();
 		fetchSpy.mockImplementation(

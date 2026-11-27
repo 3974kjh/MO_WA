@@ -65,6 +65,7 @@
 		diffRows,
 		isPreBlocked,
 		sortHistory,
+		SUPERSEDED_TEXT,
 		type ActionOutcome,
 		type Ccy,
 		type CorrectionTarget,
@@ -212,6 +213,12 @@
 		}
 	}
 
+	// 즉시 전송 동작의 실패 안내. 다른 세션에서 새 요청으로 바뀐 경우는 오류가 아니라 중립 안내.
+	function showFailure(out: ActionOutcome) {
+		if (out.kind === 'superseded') toast.show(SUPERSEDED_TEXT);
+		else toast.show(out.kind === 'error' ? out.message : ACTION_ERROR_TEXT, { tone: 'err' });
+	}
+
 	// 즉시 전송하는 동작(거절·보류·확인했어요) 뒤 재조회. 실패해도 처리 안 된 거부로 남기지 않고,
 	// 다음 이동·새로고침 때 다시 읽는다. busy는 재조회 전에 이미 풀려 있어 잠금이 남지 않는다.
 	async function refresh() {
@@ -268,6 +275,9 @@
 					} else {
 						toast.show('반영 안 됨(보유가 달라짐) · ‘확인 필요’로 옮겼어요');
 					}
+				} else if (out.kind === 'superseded') {
+					delete optimistic[item.id];
+					toast.show(SUPERSEDED_TEXT);
 				} else if (out.kind === 'error') {
 					delete optimistic[item.id];
 					toast.show(out.message, { tone: 'err' });
@@ -341,7 +351,7 @@
 		const out = await postAction(item.kind === 'principle' ? 'decidePrinciple' : 'reject', base);
 		setBusy(item.id, false);
 		if (out.kind === 'ok') toast.show('요청을 거절했어요', { tone: 'ok' });
-		else toast.show(out.kind === 'error' ? out.message : ACTION_ERROR_TEXT, { tone: 'err' });
+		else showFailure(out);
 		await refresh();
 	}
 
@@ -354,7 +364,7 @@
 		setBusy(item.id, false);
 		if (out.kind === 'ok') {
 			toast.show(hold ? '요청을 보류했어요' : '확인 대기로 되돌렸어요', { tone: 'ok' });
-		} else toast.show(out.kind === 'error' ? out.message : ACTION_ERROR_TEXT, { tone: 'err' });
+		} else showFailure(out);
 		await refresh();
 	}
 
@@ -365,7 +375,7 @@
 		if (out.kind === 'ok') {
 			delete conflicted[item.id];
 			toast.show('확인했어요 · ‘확인 필요’에서 내렸고 기록은 지난 내역에 남아요', { tone: 'ok' });
-		} else toast.show(out.kind === 'error' ? out.message : ACTION_ERROR_TEXT, { tone: 'err' });
+		} else showFailure(out);
 		await refresh();
 	}
 

@@ -8,8 +8,10 @@ vi.mock('@sveltejs/kit', async () => {
 import {
 	ACTION_CONFLICT_MESSAGE,
 	ACTION_FAILED_MESSAGE,
+	ACTION_SUPERSEDED_MESSAGE,
 	failFromDbError,
-	isConflictDbError
+	isConflictDbError,
+	isSupersededDbError
 } from './actionErrors';
 
 describe('failFromDbError는 원문·code를 payload에 싣지 않는다', () => {
@@ -115,5 +117,42 @@ describe('CONFLICT 판별은 code·매핑 기준 (Low-1/Nit-1)', () => {
 		expect(run({ code: '23505', constraint: 'positions_one_active_per_status' }).ruleIds).toEqual([
 			'R-VAL-P03'
 		]);
+	});
+});
+
+describe('superseded(다른 세션에서 새 요청으로 바뀜)는 중립 안내', () => {
+	const call = (err: { code?: string; message?: string }) => {
+		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const r = failFromDbError(400, err) as unknown as {
+			status: number;
+			data: Record<string, unknown>;
+		};
+		log.mockRestore();
+		return r;
+	};
+	it('P0001 proposal is already superseded → code SUPERSEDED, 중립 문구, status 유지', () => {
+		const r = call({ code: 'P0001', message: 'proposal is already superseded' });
+		expect(isSupersededDbError({ code: 'P0001', message: 'proposal is already superseded' })).toBe(
+			true
+		);
+		expect(r.status).toBe(400);
+		expect(r.data).toMatchObject({
+			ok: false,
+			code: 'SUPERSEDED',
+			status: 'superseded',
+			message: ACTION_SUPERSEDED_MESSAGE
+		});
+		expect(ACTION_SUPERSEDED_MESSAGE).toBe('이미 새 요청으로 바뀌었어요 · 새 요청을 확인해 주세요');
+	});
+	it.each([
+		['다른 종결 상태', { code: 'P0001', message: 'proposal is already approved' }],
+		['다른 code', { code: 'P0002', message: 'proposal is already superseded' }],
+		['접두만 같음', { code: 'P0001', message: 'proposal is already superseded!' }],
+		['code 없음', { message: 'proposal is already superseded' }]
+	])('아님: %s', (_n, err) => {
+		expect(isSupersededDbError(err)).toBe(false);
+		const r = call(err);
+		expect(r.data.code).toBeUndefined();
+		expect(r.data.message).toBe(ACTION_FAILED_MESSAGE);
 	});
 });

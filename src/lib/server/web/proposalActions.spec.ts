@@ -123,6 +123,24 @@ describe('BE-11 approve action', () => {
 		expect(result.data.ruleIds).toContain('R-PERM-13');
 	});
 
+	it('다른 세션에서 superseded된 요청 승인 → 400 code SUPERSEDED(중립 문구, 원문 없음)', async () => {
+		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+		vi.mocked(approveProposalRpc).mockResolvedValue({
+			data: null,
+			error: { code: 'P0001', message: 'proposal is already superseded' }
+		} as never);
+		const form = new FormData();
+		form.set('id', 'p1');
+		const result = (await handleApprove(fakeSupabase({}), 'owner', form)) as {
+			status: number;
+			data: Record<string, unknown>;
+		};
+		log.mockRestore();
+		expect(result.status).toBe(400);
+		expect(result.data).toMatchObject({ code: 'SUPERSEDED', status: 'superseded' });
+		expect(String(result.data.message)).not.toContain('proposal is already');
+	});
+
 	it('blocks disallowed override keys before RPC', async () => {
 		const form = new FormData();
 		form.set('id', 'p1');

@@ -578,9 +578,13 @@ export function checkCorrection(p: CorrectionTarget, inp: CorrectionInputs): Cor
 export type ActionOutcome =
 	| { kind: 'ok'; status: string | null }
 	| { kind: 'conflict' }
+	| { kind: 'superseded' }
 	| { kind: 'error'; message: string };
 
 export const ACTION_ERROR_TEXT = '처리하지 못했어요. 잠시 후 다시 시도해 주세요.';
+
+/** 다른 세션에서 새 요청으로 바뀐 요청(중립 안내, 오류 톤 아님). 서버 ACTION_SUPERSEDED_MESSAGE와 같은 문구. */
+export const SUPERSEDED_TEXT = '이미 새 요청으로 바뀌었어요 · 새 요청을 확인해 주세요';
 
 const RULE_TEXT: Record<string, string> = {
 	'R-VAL-M03': '주식·ETF 수량은 1주 단위로만 입력할 수 있어요.',
@@ -609,6 +613,7 @@ export function classifyActionResult(result: {
 		return { kind: 'ok', status: typeof s === 'string' ? s : null };
 	}
 	if (result.type === 'failure') {
+		if (data.code === 'SUPERSEDED') return { kind: 'superseded' };
 		if (result.status === 409 || data.code === 'CONFLICT' || data.status === 'conflict') {
 			return { kind: 'conflict' };
 		}
