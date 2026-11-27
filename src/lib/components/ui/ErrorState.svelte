@@ -7,7 +7,7 @@
 		title = '데이터를 불러오지 못했어요',
 		desc,
 		onretry,
-		retryLabel = '다시 시도'
+		retryLabel = '다시 시도하기'
 	}: { title?: string; desc?: string; onretry?: () => void; retryLabel?: string } = $props();
 </script>
 
