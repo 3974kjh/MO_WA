@@ -2445,9 +2445,50 @@ console.log('\n[BE-20 expire_stale_proposals cron]');
 		false
 	);
 
+	// BE-20 Low-2: service_role EXECUTE 유지, SECURITY DEFINER·search_path 고정, cron 스키마 권한 누출 없음.
+	eq(
+		'BE-20 has_function_privilege service_role EXECUTE = true',
+		(
+			await db.query(
+				`select has_function_privilege('service_role', 'public.expire_stale_proposals()', 'EXECUTE') as ok`
+			)
+		).rows[0].ok,
+		true
+	);
+	eq(
+		'BE-20 expire_stale_proposals prosecdef + proconfig search_path',
+		(
+			await db.query(
+				`select p.prosecdef, p.proconfig
+           from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public' and p.proname = 'expire_stale_proposals' and p.pronargs = 0`
+			)
+		).rows[0],
+		{ prosecdef: true, proconfig: ['search_path=public, pg_temp'] }
+	);
+	const cronSchema = (
+		await db.query(`select exists(select 1 from pg_namespace where nspname = 'cron') as ok`)
+	).rows[0].ok;
+	if (cronSchema) {
+		eq(
+			'BE-20 anon/authenticated have no USAGE on schema cron',
+			(
+				await db.query(
+					`select has_schema_privilege('anon', 'cron', 'USAGE') as anon,
+                  has_schema_privilege('authenticated', 'cron', 'USAGE') as authed`
+				)
+			).rows[0],
+			{ anon: false, authed: false }
+		);
+	}
+
 	const cronExt = (
 		await db.query(`select exists(select 1 from pg_extension where extname = 'pg_cron') as ok`)
 	).rows[0].ok;
+	// MOWA_EXPECT_PG_CRON=1이면 pg_cron이 없거나 job이 없을 때 건너뛰지 않고 실패한다.
+	if (process.env.MOWA_EXPECT_PG_CRON === '1') {
+		eq('BE-20 pg_cron extension present (MOWA_EXPECT_PG_CRON=1)', cronExt, true);
+	}
 	if (cronExt) {
 		eq(
 			'BE-20 cron.job expire-stale-proposals @ 0 * * * *',
