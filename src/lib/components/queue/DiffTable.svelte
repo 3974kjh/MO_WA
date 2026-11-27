@@ -26,10 +26,14 @@
 		border-radius: var(--radius-sm);
 		overflow: hidden;
 		font-size: var(--text-sm);
+		/* 열 너비를 표 전체에서 한 번만 정하고 행은 subgrid로 따른다(행마다 첫 열 너비가 달라 열이 어긋나던 문제). */
+		display: grid;
+		grid-template-columns: minmax(64px, auto) minmax(0, 1fr) minmax(0, 1fr);
 	}
 	.r {
 		display: grid;
-		grid-template-columns: minmax(64px, auto) minmax(0, 1fr) minmax(0, 1fr);
+		grid-template-columns: subgrid;
+		grid-column: 1 / -1;
 		border-top: 1px solid var(--color-line);
 	}
 	.r:first-child {
