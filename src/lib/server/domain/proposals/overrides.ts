@@ -4,9 +4,11 @@
  * D-4: USD unit prices keep up to 4 decimals — never round on write.
  */
 import { parseQty, type AssetType } from '$lib/schemas/qty';
+import type { PositionProposalRow } from '$lib/types/mowa.contract';
 
-export type ProposalChangeType = 'open_holding' | 'set_qty_avg' | 'close';
-export type ProposedByType = 'bot' | 'user';
+/** 계약 타입에서 파생(손복사 금지) — view.ts PositionChangeType과 같은 출처. */
+export type ProposalChangeType = PositionProposalRow['change_type'];
+export type ProposedByType = PositionProposalRow['proposed_by_type'];
 
 /** Fields bots/users may never override (direct-write via update_position_reference). */
 export const DIRECT_WRITE_OVERRIDE_KEYS = [
