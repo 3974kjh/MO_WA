@@ -595,6 +595,25 @@ const RULE_TEXT: Record<string, string> = {
 };
 
 /**
+ * 승인 시점 재검증(서버 `source: 'proposed'`): 문제가 사용자가 입력한 값이 아니라 봇이 보낸 값에 있다.
+ * 사용자 입력 안내(RULE_TEXT)와 문구가 다르다 — 어떻게 풀지(고쳐서 반영 / 거절)를 알려 준다.
+ */
+const PROPOSED_RULE_TEXT: Record<string, string> = {
+	'R-FMT-13':
+		'봇이 보낸 평균 단가가 소수 넷째 자리를 넘어서 그대로는 반영할 수 없어요. ‘고쳐서 반영’으로 값을 맞추거나 거절해 주세요.',
+	'R-VAL-M02':
+		'봇이 보낸 평균 단가가 올바르지 않아 그대로는 반영할 수 없어요. ‘고쳐서 반영’으로 값을 맞추거나 거절해 주세요.',
+	'R-VAL-M01':
+		'봇이 보낸 통화가 원화·달러가 아니라서 그대로는 반영할 수 없어요. ‘고쳐서 반영’으로 값을 맞추거나 거절해 주세요.',
+	'R-VAL-M03':
+		'봇이 보낸 수량이 규칙에 맞지 않아 그대로는 반영할 수 없어요. ‘고쳐서 반영’으로 값을 맞추거나 거절해 주세요.',
+	'R-VAL-P04':
+		'봇이 보낸 요청에 수량이나 평균 단가가 빠졌거나 0 이하예요. ‘고쳐서 반영’으로 값을 채우거나 거절해 주세요.',
+	'R-VAL-P07': '봇이 보낸 값에 고칠 수 없는 항목이 있어요. 이 요청은 거절해 주세요.',
+	'R-PERM-13': '봇이 보낸 값에 고칠 수 없는 항목이 있어요. 이 요청은 거절해 주세요.'
+};
+
+/**
  * SvelteKit ActionResult → 화면 결과. 서버 conflict(409 · CONFLICT)는 일반 오류가 아니다.
  * 서버 message(영문·규칙 코드)는 화면에 쓰지 않는다.
  */
@@ -607,6 +626,7 @@ export function classifyActionResult(result: {
 		code?: unknown;
 		status?: unknown;
 		ruleIds?: unknown;
+		source?: unknown;
 		proposal?: { status?: unknown } | null;
 	};
 	if (result.type === 'success') {
@@ -619,8 +639,9 @@ export function classifyActionResult(result: {
 			return { kind: 'conflict' };
 		}
 		const ids = Array.isArray(data.ruleIds) ? (data.ruleIds as unknown[]) : [];
+		const texts = data.source === 'proposed' ? PROPOSED_RULE_TEXT : RULE_TEXT;
 		for (const id of ids) {
-			if (typeof id === 'string' && RULE_TEXT[id]) return { kind: 'error', message: RULE_TEXT[id] };
+			if (typeof id === 'string' && texts[id]) return { kind: 'error', message: texts[id] };
 		}
 	}
 	return { kind: 'error', message: ACTION_ERROR_TEXT };

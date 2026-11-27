@@ -5,6 +5,7 @@
 import { fail } from '@sveltejs/kit';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+	revalidateMergedForApprove,
 	validateCorrectionInput,
 	validateCorrectionReason,
 	validateOverrides,
@@ -94,10 +95,11 @@ async function loadProposalMeta(
 	change_type: ProposalChangeType;
 	proposed_by_type: 'bot' | 'user';
 	asset_type: string | null;
+	proposed_values: unknown;
 } | null> {
 	const { data } = await supabase
 		.from('position_proposals')
-		.select('change_type, proposed_by_type, instrument_id')
+		.select('change_type, proposed_by_type, instrument_id, proposed_values')
 		.eq('id', id)
 		.eq('owner_id', ownerId)
 		.maybeSingle();
@@ -115,7 +117,8 @@ async function loadProposalMeta(
 	return {
 		change_type: data.change_type as ProposalChangeType,
 		proposed_by_type: data.proposed_by_type as 'bot' | 'user',
-		asset_type
+		asset_type,
+		proposed_values: data.proposed_values
 	};
 }
 
@@ -163,6 +166,21 @@ export async function handleApprove(
 	});
 	if (!validated.ok) {
 		return failValidation(400, validated.ruleId, validated.message, { key: validated.key });
+	}
+
+	// 승인 시점 재검증: 고치지 않은 proposed_values 까지 합친 값을 propose 때와 같은 규칙으로 다시 본다(R-FMT-13 등).
+	const merged = revalidateMergedForApprove({
+		changeType: meta.change_type,
+		proposedByType: meta.proposed_by_type,
+		proposedValues: meta.proposed_values,
+		overrides: validated.overrides,
+		assetType: meta.asset_type as 'stock' | 'etf' | 'bond' | 'cash' | null
+	});
+	if (!merged.ok) {
+		return failValidation(400, merged.ruleId, merged.message, {
+			key: merged.key,
+			source: merged.source
+		});
 	}
 
 	const repo = forUser(supabase, ownerId);

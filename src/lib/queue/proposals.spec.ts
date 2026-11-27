@@ -218,6 +218,34 @@ describe('폼 액션 결과 분류', () => {
 			classifyActionResult({ type: 'failure', status: 400, data: { ruleIds: ['R-FMT-13'] } })
 		).toEqual({ kind: 'error', message: '평균 단가는 소수 넷째 자리까지 입력할 수 있어요.' });
 	});
+	it('승인 시점 재검증(source=proposed)은 봇이 보낸 값 문제라고 알리고 푸는 방법(고쳐서 반영·거절)을 안내한다', () => {
+		const r = classifyActionResult({
+			type: 'failure',
+			status: 400,
+			data: { ruleIds: ['R-FMT-13'], source: 'proposed', key: 'avg_price' }
+		});
+		expect(r).toMatchObject({ kind: 'error' });
+		expect((r as { message: string }).message).toContain(
+			'봇이 보낸 평균 단가가 소수 넷째 자리를 넘어서'
+		);
+		expect((r as { message: string }).message).toContain('고쳐서 반영');
+		expect((r as { message: string }).message).not.toMatch(/R-[A-Z]+-\d+/);
+		// 사용자 입력 문제(source 없음/override)는 기존 문구
+		for (const data of [{ ruleIds: ['R-FMT-13'] }, { ruleIds: ['R-FMT-13'], source: 'override' }]) {
+			expect(classifyActionResult({ type: 'failure', status: 400, data })).toEqual({
+				kind: 'error',
+				message: '평균 단가는 소수 넷째 자리까지 입력할 수 있어요.'
+			});
+		}
+		// 매핑 없는 규칙은 일반 안내
+		expect(
+			classifyActionResult({
+				type: 'failure',
+				status: 400,
+				data: { ruleIds: ['R-XX-99'], source: 'proposed' }
+			})
+		).toEqual({ kind: 'error', message: '처리하지 못했어요. 잠시 후 다시 시도해 주세요.' });
+	});
 	it('code SUPERSEDED는 superseded(409·conflict보다 먼저, 일반 오류 아님)', () => {
 		expect(
 			classifyActionResult({

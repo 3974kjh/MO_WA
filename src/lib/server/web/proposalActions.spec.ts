@@ -46,6 +46,7 @@ function fakeSupabase(meta: {
 	change_type?: string;
 	proposed_by_type?: string;
 	asset_type?: string;
+	proposed_values?: unknown;
 	position?: { id: string; instrument_id: string; approval_version: number } | null;
 }) {
 	return {
@@ -59,6 +60,7 @@ function fakeSupabase(meta: {
 									data: {
 										change_type: meta.change_type ?? 'set_qty_avg',
 										proposed_by_type: meta.proposed_by_type ?? 'bot',
+										proposed_values: 'proposed_values' in meta ? meta.proposed_values : { qty: 2 },
 										instrument_id: 'inst-1'
 									}
 								})
@@ -312,6 +314,90 @@ describe('BE-11 approve action', () => {
 			expect.anything(),
 			expect.objectContaining({ overrides: {} })
 		);
+	});
+});
+
+describe('승인 시점 재검증 (proposed_values 를 합친 값으로 다시 검사)', () => {
+	const okRpc = { data: { id: 'p1', status: 'approved' }, error: null } as never;
+	const form = (overrides?: Record<string, unknown>) => {
+		const f = new FormData();
+		f.set('id', 'p1');
+		if (overrides) f.set('overrides', JSON.stringify(overrides));
+		return f;
+	};
+	type Fail = { status: number; data: { ruleIds: string[]; source?: string; key?: string } };
+
+	it('고치지 않고 승인할 때 proposed avg_price 소수 5자리 → 400 R-FMT-13(source=proposed), RPC 호출 없음', async () => {
+		const r = (await handleApprove(
+			fakeSupabase({ proposed_values: { qty: 2, avg_price: 1.00005 } }),
+			'owner',
+			form()
+		)) as Fail;
+		expect(r.status).toBe(400);
+		expect(r.data).toMatchObject({ ruleIds: ['R-FMT-13'], source: 'proposed', key: 'avg_price' });
+		expect(approveProposalRpc).not.toHaveBeenCalled();
+	});
+
+	it('같은 proposed 라도 사용자가 avg_price 를 고쳐 보내면 통과해 RPC 로 간다(overrides 그대로 전달)', async () => {
+		vi.mocked(approveProposalRpc).mockResolvedValue(okRpc);
+		const r = await handleApprove(
+			fakeSupabase({ proposed_values: { qty: 2, avg_price: 1.00005 } }),
+			'owner',
+			form({ avg_price: 1.0001 })
+		);
+		expect(r).toMatchObject({ ok: true });
+		expect(approveProposalRpc).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ overrides: { avg_price: 1.0001 } })
+		);
+	});
+
+	it('정상 proposed 값은 그대로 RPC 로 간다', async () => {
+		vi.mocked(approveProposalRpc).mockResolvedValue(okRpc);
+		const r = await handleApprove(
+			fakeSupabase({ proposed_values: { qty: 2, avg_price: 23090.0123 } }),
+			'owner',
+			form()
+		);
+		expect(r).toMatchObject({ ok: true });
+		expect(approveProposalRpc).toHaveBeenCalledTimes(1);
+	});
+
+	it('proposed 의 직접 쓰기 필드·허용 밖 키·잘못된 값은 RPC 전에 막는다', async () => {
+		const cases: Array<[Record<string, unknown>, string]> = [
+			[{ qty: 2, breakeven: 5 }, 'R-VAL-P07'],
+			[{ qty: 2, status: 'closed' }, 'R-PERM-13'],
+			[{ qty: 2, avg_price: -3 }, 'R-VAL-M02'],
+			[{ qty: 1.5 }, 'R-VAL-M03']
+		];
+		for (const [proposed_values, ruleId] of cases) {
+			const r = (await handleApprove(fakeSupabase({ proposed_values }), 'owner', form())) as Fail;
+			expect(r.status).toBe(400);
+			expect(r.data.ruleIds).toEqual([ruleId]);
+			expect(r.data.source).toBe('proposed');
+		}
+		expect(approveProposalRpc).not.toHaveBeenCalled();
+	});
+
+	it('open_holding 은 proposed 에 수량·평균 단가가 없으면 막고, 고쳐서 채우면 통과한다', async () => {
+		vi.mocked(approveProposalRpc).mockResolvedValue(okRpc);
+		const sb = () =>
+			fakeSupabase({ change_type: 'open_holding', proposed_values: { qty: 3, currency: 'KRW' } });
+		const bad = (await handleApprove(sb(), 'owner', form())) as Fail;
+		expect(bad.data.ruleIds).toEqual(['R-VAL-P04']);
+		expect(approveProposalRpc).not.toHaveBeenCalled();
+		const good = await handleApprove(sb(), 'owner', form({ avg_price: 1000 }));
+		expect(good).toMatchObject({ ok: true });
+	});
+
+	it('close 승인은 proposed {} 라 재검증을 그대로 통과한다', async () => {
+		vi.mocked(approveProposalRpc).mockResolvedValue(okRpc);
+		const r = await handleApprove(
+			fakeSupabase({ change_type: 'close', proposed_values: {} }),
+			'owner',
+			form()
+		);
+		expect(r).toMatchObject({ ok: true });
 	});
 });
 
