@@ -24,7 +24,7 @@ test.describe('MO_WA auth and dashboard shell', () => {
 	test('redirects unauthenticated users to login', async ({ page }) => {
 		await page.goto('/');
 		await expect(page).toHaveURL(/\/login$/);
-		await expect(page.getByRole('heading', { name: 'MO_WA' })).toBeVisible();
+		await expect(page.getByRole('heading', { name: '로그인' })).toBeVisible();
 	});
 
 	test('forged auth cookie cannot enter a protected page (BE-02)', async ({ page, context }) => {
@@ -48,14 +48,14 @@ test.describe('MO_WA auth and dashboard shell', () => {
 		// getUser() 401 → login redirect; unreachable Auth → 503 (L-2). Neither grants access.
 		expect(onLogin || status === 503).toBe(true);
 		if (onLogin) {
-			await expect(page.getByRole('heading', { name: 'MO_WA' })).toBeVisible();
+			await expect(page.getByRole('heading', { name: '로그인' })).toBeVisible();
 		}
 	});
 
 	test('login page shows email and password fields', async ({ page }) => {
 		await page.goto('/login');
-		await expect(page.getByLabel('아이디(email)')).toBeVisible();
-		await expect(page.getByLabel('패스워드')).toBeVisible();
+		await expect(page.getByLabel('이메일', { exact: true })).toBeVisible();
+		await expect(page.getByLabel('비밀번호', { exact: true })).toBeVisible();
 		await expect(page.getByRole('button', { name: '로그인' })).toBeVisible();
 	});
 });

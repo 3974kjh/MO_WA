@@ -1,94 +1,439 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { tick } from 'svelte';
 	import type { ActionData } from './$types';
 	import MoWaLogo from '$lib/components/brand/MoWaLogo.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
-	import Input from '$lib/components/ui/Input.svelte';
+	import Icon from '$lib/components/ui/Icon.svelte';
+	import FileText from '@lucide/svelte/icons/file-text';
+	import ChartPie from '@lucide/svelte/icons/chart-pie';
+	import NotebookTabs from '@lucide/svelte/icons/notebook-tabs';
+	import Lock from '@lucide/svelte/icons/lock';
+	import Mail from '@lucide/svelte/icons/mail';
+	import Eye from '@lucide/svelte/icons/eye';
+	import EyeOff from '@lucide/svelte/icons/eye-off';
+	import CircleAlert from '@lucide/svelte/icons/circle-alert';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 
+	// DS §7-17 / handoff §19-6. 서버(+page.server.ts) 흐름은 그대로 — 마크업·스타일·클라이언트 상태만.
 	let { form }: { form: ActionData } = $props();
+
+	const EMAIL_RE = /^[^@\s]+@[^@\s]+$/;
+	const features = [
+		{ icon: FileText, name: '브리핑', desc: '장 마감 요약과 지표를 날짜별로' },
+		{ icon: ChartPie, name: '포트폴리오', desc: '보유·계획 종목과 변경 요청 확인' },
+		{ icon: NotebookTabs, name: '매매일지', desc: '매수·매도 기록과 점검 메모' }
+	];
+
+	// 첫 렌더(JS 없이 서버 실패 후 다시 그릴 때)만 서버가 돌려준 이메일로 채운다.
+	// svelte-ignore state_referenced_locally
+	let email = $state(form?.email ?? '');
+	let password = $state('');
 	let submitting = $state(false);
+	let revealed = $state(false);
+	let caps = $state(false);
+	let emailError = $state('');
+	let passwordError = $state('');
+	// 서버 실패(틀린 정보) 뒤 비밀번호 칸 빨간 테두리. 다시 입력하면 지운다.
+	let passwordFlagged = $state(false);
+
+	let emailInput: HTMLInputElement | undefined = $state();
+	let passwordInput: HTMLInputElement | undefined = $state();
+
+	// 서버 문장 '첫 문장. 나머지' → 첫 문장만 굵게(시안 callout err).
+	const message = $derived.by(() => {
+		const m = form?.message ?? '';
+		const i = m.indexOf('. ');
+		return i < 0 ? { lead: m, rest: '' } : { lead: m.slice(0, i + 1), rest: m.slice(i + 2) };
+	});
+
+	function validate(): boolean {
+		const e = email.trim();
+		emailError = !e
+			? '이메일을 입력해 주세요.'
+			: EMAIL_RE.test(e)
+				? ''
+				: '이메일 형식을 확인해 주세요. 예: name@example.com';
+		passwordError = password ? '' : '비밀번호를 입력해 주세요.';
+		if (emailError) emailInput?.focus();
+		else if (passwordError) passwordInput?.focus();
+		return !emailError && !passwordError;
+	}
+
+	function toggleReveal() {
+		revealed = !revealed;
+		passwordInput?.focus();
+	}
+
+	function onPasswordKey(e: KeyboardEvent) {
+		caps = e.getModifierState?.('CapsLock') ?? false;
+	}
 </script>
 
 <svelte:head>
-	<title>Login | MO_WA</title>
-	<meta name="description" content="MO_WA protected dashboard login." />
+	<title>로그인 · MO_WA</title>
+	<meta name="description" content="MO_WA 로그인" />
 </svelte:head>
 
-<main class="grid min-h-dvh place-items-center bg-canvas px-lg py-section text-text">
-	<section class="grid w-full max-w-[440px] gap-lg rounded-lg border border-line bg-surface p-xl">
-		<header class="grid justify-items-center gap-sm text-center">
-			<MoWaLogo size={52} showWordmark={false} />
-			<div class="grid gap-xxs">
-				<h1 class="font-display text-[40px] leading-[1.1] font-semibold tracking-[-0.28px]">
-					MO_WA
-				</h1>
-				<p class="text-[17px] leading-[1.47] tracking-[-0.374px] text-muted">
-					Money and Wallet in one place
-				</p>
-			</div>
-		</header>
+<main class="mw-login">
+	<header class="lg-head">
+		<MoWaLogo link={false} />
+	</header>
+
+	<section class="lg-intro" aria-labelledby="login-intro-title">
+		<h2 id="login-intro-title">투자 기록과 브리핑을<br />한곳에서 확인해요</h2>
+		<p class="lead">
+			매일 브리핑, 보유 종목, 매매일지를 보고 봇이 올린 변경 요청을 반영할지 정해요.
+		</p>
+		<ul class="feat">
+			{#each features as f (f.name)}
+				<li>
+					<span class="fi"><Icon icon={f.icon} size={20} /></span>
+					<div><b>{f.name}</b><span>{f.desc}</span></div>
+				</li>
+			{/each}
+		</ul>
+		<p class="lg-note">
+			<Icon icon={Lock} size={16} /><span>초대된 계정만 로그인할 수 있는 개인용 서비스예요.</span>
+		</p>
+	</section>
+
+	<section class="lg-panel" aria-labelledby="login-title">
+		<h1 id="login-title">로그인</h1>
+		<p class="lead">등록된 이메일과 비밀번호를 입력하세요.</p>
+
+		<div class="lg-alert" role="alert">
+			{#if form?.message && !submitting}
+				<div class="mw-callout err">
+					<Icon icon={CircleAlert} size={18} />
+					<div>
+						<b>{message.lead}</b>
+						{message.rest}
+					</div>
+				</div>
+			{/if}
+		</div>
 
 		<form
 			method="POST"
-			class="login-form grid gap-md"
-			use:enhance={() => {
+			class="lg-form"
+			novalidate
+			use:enhance={({ cancel }) => {
+				if (!validate()) {
+					cancel();
+					return;
+				}
+				revealed = false;
+				caps = false;
 				submitting = true;
-				return async ({ update }) => {
-					await update();
+				return async ({ result, update }) => {
+					await update({ reset: false });
 					submitting = false;
+					if (result.type === 'failure') {
+						// 틀린 정보: 이메일 유지 · 비밀번호 비움 · 비밀번호 칸 빨간 테두리 · 포커스
+						password = '';
+						passwordFlagged = true;
+						await tick();
+						passwordInput?.focus();
+					}
 				};
 			}}
 		>
-			<Input id="email" label="아이디(email)" type="email" value={form?.email ?? ''} required />
-			<Input id="password" label="패스워드" type="password" required />
+			<div class="label">
+				<label class="label-text" for="email">이메일</label>
+				<div class="mw-input-group" data-invalid={emailError ? '' : undefined}>
+					<Icon icon={Mail} size={18} />
+					<input
+						bind:this={emailInput}
+						bind:value={email}
+						oninput={() => (emailError = '')}
+						id="email"
+						name="email"
+						type="email"
+						inputmode="email"
+						autocomplete="username"
+						autocapitalize="none"
+						spellcheck="false"
+						enterkeyhint="next"
+						placeholder="name@example.com"
+						required
+						readonly={submitting}
+						aria-invalid={emailError ? 'true' : undefined}
+						aria-describedby={emailError ? 'email-help' : undefined}
+					/>
+				</div>
+				{#if emailError}
+					<p class="mw-help err" id="email-help">
+						<Icon icon={CircleAlert} size={16} /><span>{emailError}</span>
+					</p>
+				{/if}
+			</div>
 
-			{#if form?.message}
-				<p
-					class="rounded-md bg-surface-2 p-sm text-[14px] leading-[1.43] tracking-[-0.224px] text-muted"
-					aria-live="polite"
+			<div class="label">
+				<label class="label-text" for="password">비밀번호</label>
+				<div
+					class="mw-input-group"
+					data-invalid={passwordError || passwordFlagged ? '' : undefined}
 				>
-					{form.message}
-				</p>
-			{/if}
+					<Icon icon={Lock} size={18} />
+					<input
+						bind:this={passwordInput}
+						bind:value={password}
+						oninput={() => {
+							passwordError = '';
+							passwordFlagged = false;
+						}}
+						onkeydown={onPasswordKey}
+						onkeyup={onPasswordKey}
+						onblur={() => (caps = false)}
+						id="password"
+						name="password"
+						type={revealed ? 'text' : 'password'}
+						autocomplete="current-password"
+						enterkeyhint="go"
+						required
+						readonly={submitting}
+						aria-invalid={passwordError || passwordFlagged ? 'true' : undefined}
+						aria-describedby={[passwordError && 'password-help', caps && 'caps-help']
+							.filter(Boolean)
+							.join(' ') || undefined}
+					/>
+					<button
+						type="button"
+						class="pw-toggle btn-icon"
+						aria-pressed={revealed}
+						aria-controls="password"
+						aria-label={revealed ? '비밀번호 숨기기' : '비밀번호 보기'}
+						onclick={toggleReveal}
+					>
+						<Icon icon={revealed ? EyeOff : Eye} size={20} />
+					</button>
+				</div>
+				{#if passwordError}
+					<p class="mw-help err" id="password-help">
+						<Icon icon={CircleAlert} size={16} /><span>{passwordError}</span>
+					</p>
+				{/if}
+				{#if caps}
+					<p class="mw-help" id="caps-help">
+						<Icon icon={TriangleAlert} size={16} /><span>Caps Lock이 켜져 있어요.</span>
+					</p>
+				{/if}
+			</div>
 
-			<Button type="submit" label={submitting ? '로그인 중' : '로그인'} disabled={submitting} />
+			<button
+				type="submit"
+				class="btn w-full preset-filled-brand btn-lg"
+				disabled={submitting}
+				aria-busy={submitting}
+			>
+				{#if submitting}
+					<Icon icon={LoaderCircle} size={20} class="mw-spin" /><span>로그인 중…</span>
+				{:else}
+					<span>로그인</span>
+				{/if}
+			</button>
 		</form>
+
+		<p class="lg-foot">
+			로그인 상태는 이 기기에 유지돼요. 함께 쓰는 기기라면 사용 후 로그아웃하세요.
+		</p>
 	</section>
 </main>
 
 <style>
-	/*
-	 * handoff §13-8: 공유 Input(레거시 대시보드와 공용)은 수정하지 않고 로그인에서만 보완한다.
-	 * - 입력 높이 40(min-h-11=44 → 40), 모바일(<640) 입력 글자 16px(iOS 확대 방지)
-	 * - text-ink(다크 값 없음) → text-text 매핑: 다크에서 라벨·입력 글자가 보이도록. pill·데스크톱 17px 유지
-	 */
-	.login-form :global(input) {
-		min-height: 0;
-		height: 2.5rem;
-		padding-block: 0;
+	/* 시안 screens/login.html v1.7.0 — AppShell 밖. 모바일 1열 / ≥640 2열(소개 | 폼 카드). 정렬 §4-3 */
+	.mw-login {
+		min-height: 100dvh;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		align-content: start;
+		padding: max(20px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
+		background: var(--color-canvas);
 		color: var(--color-text);
 	}
-	.login-form :global(label > span) {
-		color: var(--color-text);
+	.lg-head :global(.mw-logo) {
+		font-size: var(--text-lg);
+		letter-spacing: -0.02em;
 	}
-	/* 공유 Input의 hairline(다크 값 없음)은 그대로 두고 로그인에서만 line-strong(대비 3:1, 토큰 주석) */
-	.login-form :global(input) {
-		border-color: var(--color-line-strong);
+	.lg-intro {
+		display: none;
 	}
-	/* 공유 Button(primary)의 레거시 파랑 → 공식 틸 bg-accent text-on-accent. 높이(~47px)는 유지 */
-	.login-form :global(button[type='submit']) {
-		background-color: var(--color-accent);
-		color: var(--color-on-accent);
+	.lg-panel {
+		margin-top: 32px;
+		width: 100%;
+		max-width: 420px;
+		justify-self: center;
 	}
-	.login-form :global(button[type='submit']:hover:not(:disabled)) {
-		background-color: var(--color-accent-hover);
+	.lg-panel h1 {
+		font-size: var(--text-2xl);
+		line-height: 2.2rem;
+		letter-spacing: -0.02em;
+		font-weight: 700;
 	}
-	.login-form :global(input::placeholder) {
+	.lg-panel .lead {
+		margin-top: 6px;
+		color: var(--color-muted);
+		font-size: var(--text-base);
+		line-height: 1.5rem;
+	}
+	.lg-form {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+		margin-top: 24px;
+	}
+	.lg-form .label {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+	/* Skeleton .label 의 자식 사이 margin(space-y) 대신 gap 6 하나로 */
+	.lg-form .label > :global(*) {
+		margin-block: 0;
+	}
+	.lg-form .btn-lg {
+		margin-top: 4px;
+	}
+	.lg-alert {
+		margin-top: 20px;
+	}
+	.lg-alert:empty {
+		display: none;
+	}
+	.lg-foot {
+		margin-top: 20px;
+		font-size: var(--text-sm);
+		line-height: 1.25rem;
 		color: var(--color-subtle);
 	}
+	.pw-toggle {
+		color: var(--color-muted);
+	}
+	.pw-toggle[aria-pressed='true'] {
+		color: var(--color-accent);
+	}
+	/* 브라우저 자동완성 배경이 입력 그룹 모양을 깨지 않게 surface 로 덮는다 */
+	.mw-login :global(.mw-input-group input:-webkit-autofill),
+	.mw-login :global(.mw-input-group input:-webkit-autofill:hover),
+	.mw-login :global(.mw-input-group input:-webkit-autofill:focus) {
+		-webkit-text-fill-color: var(--color-text);
+		-webkit-box-shadow: 0 0 0 40px var(--color-surface) inset;
+		caret-color: var(--color-text);
+		transition: background-color 9999s;
+	}
 	@media (max-width: 639px) {
-		.login-form :global(input) {
-			font-size: 1rem;
+		.lg-panel h1 {
+			font-size: var(--text-xl);
+			line-height: 1.85rem;
 		}
+	}
+	/* 태블릿·PC: 2열. 왼쪽 소개는 캔버스, 오른쪽 폼은 카드(그림자) */
+	@media (min-width: 640px) {
+		.mw-login {
+			grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+			grid-template-rows: auto auto;
+			column-gap: 28px;
+			row-gap: 28px;
+			align-content: center;
+			align-items: center;
+			max-width: 1040px;
+			margin: 0 auto;
+			padding: 32px 24px;
+		}
+		.lg-head {
+			grid-column: 1;
+			grid-row: 1;
+			align-self: end;
+		}
+		.lg-intro {
+			display: block;
+			grid-column: 1;
+			grid-row: 2;
+			align-self: start;
+		}
+		.lg-panel {
+			grid-column: 2;
+			grid-row: 1 / 3;
+			align-self: center;
+			margin: 0;
+			max-width: none;
+			background: var(--color-surface);
+			border: 1px solid var(--color-card-line);
+			border-radius: var(--radius-container);
+			box-shadow: var(--shadow-card);
+			padding: 28px;
+		}
+		.lg-panel h1 {
+			font-size: var(--text-xl);
+			line-height: 1.85rem;
+		}
+	}
+	@media (min-width: 1024px) {
+		.mw-login {
+			grid-template-columns: minmax(0, 1fr) 420px;
+			column-gap: 64px;
+			padding: 40px 32px;
+		}
+		.lg-panel {
+			padding: 32px;
+		}
+	}
+	.lg-intro h2 {
+		font-size: var(--text-2xl);
+		line-height: 2.2rem;
+		letter-spacing: -0.02em;
+		font-weight: 700;
+	}
+	.lg-intro .lead {
+		margin-top: 10px;
+		color: var(--color-muted);
+		font-size: var(--text-md);
+		line-height: 1.7rem;
+		max-width: 30rem;
+	}
+	.feat {
+		list-style: none;
+		margin: 28px 0 0;
+		padding: 0;
+		display: grid;
+		gap: 4px;
+		max-width: 30rem;
+	}
+	.feat li {
+		display: grid;
+		grid-template-columns: 40px minmax(0, 1fr);
+		column-gap: 14px;
+		align-items: center;
+		padding: 10px 0;
+	}
+	.fi {
+		width: 40px;
+		height: 40px;
+		border-radius: var(--radius-base);
+		background: var(--color-accent-soft);
+		color: var(--color-accent);
+		display: grid;
+		place-items: center;
+	}
+	.feat b {
+		display: block;
+		font-size: var(--text-base);
+		line-height: 1.5rem;
+	}
+	.feat div span {
+		display: block;
+		font-size: var(--text-sm);
+		line-height: 1.25rem;
+		color: var(--color-muted);
+	}
+	.lg-note {
+		margin-top: 24px;
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		font-size: var(--text-sm);
+		line-height: 1.25rem;
+		color: var(--color-subtle);
 	}
 </style>
