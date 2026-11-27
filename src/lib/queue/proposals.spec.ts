@@ -213,6 +213,11 @@ describe('기록 수정 입력(§7-12)', () => {
 });
 
 describe('폼 액션 결과 분류', () => {
+	it('R-FMT-13(소수 4자리 초과)은 한국어 안내, 규칙 코드는 쓰지 않는다', () => {
+		expect(
+			classifyActionResult({ type: 'failure', status: 400, data: { ruleIds: ['R-FMT-13'] } })
+		).toEqual({ kind: 'error', message: '평균 단가는 소수 넷째 자리까지 입력할 수 있어요.' });
+	});
 	it('code SUPERSEDED는 superseded(409·conflict보다 먼저, 일반 오류 아님)', () => {
 		expect(
 			classifyActionResult({

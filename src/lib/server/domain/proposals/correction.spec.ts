@@ -53,4 +53,15 @@ describe('BE-19 correction input', () => {
 		expect(r.ok).toBe(false);
 		if (!r.ok) expect(r.ruleId).toBe('R-VAL-M03');
 	});
+
+	it('B1 L-1: avg_price는 소수 4자리까지, 5자리 이상은 R-FMT-13 (문자열 입력 포함)', () => {
+		const base = { qty: 10, currency: 'USD', reason: '평단 정정', assetType: 'etf' as const };
+		expect(validateCorrectionInput({ ...base, avg_price: 100.1234 }).ok).toBe(true);
+		expect(validateCorrectionInput({ ...base, avg_price: '0.0001' }).ok).toBe(true);
+		for (const avg of [100.12345, '100.12341', 0.00001, '123.4567891']) {
+			const r = validateCorrectionInput({ ...base, avg_price: avg });
+			expect(r.ok).toBe(false);
+			if (!r.ok) expect(r.ruleId).toBe('R-FMT-13');
+		}
+	});
 });

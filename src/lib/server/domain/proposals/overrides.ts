@@ -176,7 +176,7 @@ export function isApprovedEdited(
 	return stableJson(appliedValues) !== stableJson(proposedValues);
 }
 
-function hasAtMostNDecimals(value: number, n: number): boolean {
+export function hasAtMostNDecimals(value: number, n: number): boolean {
 	if (!Number.isFinite(value)) return false;
 	const scaled = value * 10 ** n;
 	return Math.abs(scaled - Math.round(scaled)) < 1e-9;

@@ -5,6 +5,7 @@
  */
 import { charLength } from '$lib/schemas/charLength';
 import { parseQty, type AssetType } from '$lib/schemas/qty';
+import { hasAtMostNDecimals } from './overrides';
 
 export const CORRECTION_REASON_MAX = 120;
 
@@ -97,6 +98,14 @@ export function validateCorrectionInput(input: {
 			ok: false,
 			ruleId: 'R-VAL-M02',
 			message: '[R-VAL-M02] qty, avg_price (>0) and currency are required'
+		};
+	}
+	// B1 L-1: 승인 고치기 경로와 같은 D-4/R-FMT-13 — 소수 4자리까지만. 더 길면 numeric(20,6)이 조용히 반올림한다.
+	if (!hasAtMostNDecimals(avg, 4)) {
+		return {
+			ok: false,
+			ruleId: 'R-FMT-13',
+			message: '[R-FMT-13] USD/KRW unit prices keep at most 4 decimals on write'
 		};
 	}
 
