@@ -328,6 +328,11 @@
 		const note = rejectNote.trim();
 		rejectTarget = null;
 		rejectNote = '';
+		// 반영 경로와 같은 가드: 같은 종목의 형제가 유예·전송 중이면 보내지 않는다(이미 열린 시트를 확인한 경우).
+		if (siblingLocked(item)) {
+			toast.show(SIBLING_LOCK_TEXT);
+			return;
+		}
 		setBusy(item.id, true);
 		const base: Record<string, string> =
 			item.kind === 'principle' ? { id: item.id, action: 'reject' } : { id: item.id };

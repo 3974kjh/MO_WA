@@ -1084,6 +1084,39 @@ describe('FE-07 변경 요청 렌더', () => {
 			expect(locked(container, 'P-0802')).toBe(true);
 		});
 
+		// F2: 거절 확인도 반영과 같은 형제 가드(이미 열린 거절 시트를 형제 유예 중에 확인한 경우).
+		it('형제가 유예 중일 때 이미 열린 거절 시트를 확인하면 보내지 않고 같은 안내만 띄운다', async () => {
+			vi.useFakeTimers();
+			const { container } = setup([linked(), loose()]);
+			(cardOf(container, 'P-0802').querySelector('[data-action="reject"]') as HTMLElement).click();
+			flushSync();
+			confirmApproveOf(container, 'P-0801');
+			expect(locked(container, 'P-0802')).toBe(true);
+			(document.querySelector('[data-action="reject-confirm"]') as HTMLElement).click();
+			flushSync();
+			expect(
+				toast.items.filter(
+					(t) =>
+						t.message === '같은 종목의 다른 요청을 처리하는 중이에요 · 끝난 뒤 다시 확인해 주세요'
+				)
+			).toHaveLength(1);
+			await vi.advanceTimersByTimeAsync(6000);
+			expect(fetchSpy).toHaveBeenCalledTimes(1);
+			expect((fetchSpy.mock.calls[0] as [string])[0]).toBe('?/approve');
+		});
+
+		it('형제가 없으면 거절은 그대로 바로 전송된다', async () => {
+			vi.useFakeTimers();
+			const { container } = setup([linked(), loose({ instrument_id: 'inst-2' })]);
+			confirmApproveOf(container, 'P-0801');
+			(cardOf(container, 'P-0802').querySelector('[data-action="reject"]') as HTMLElement).click();
+			flushSync();
+			(document.querySelector('[data-action="reject-confirm"]') as HTMLElement).click();
+			await vi.advanceTimersByTimeAsync(0);
+			expect(fetchSpy).toHaveBeenCalledTimes(1);
+			expect((fetchSpy.mock.calls[0] as [string])[0]).toBe('?/reject');
+		});
+
 		// F1 후속 Nit-2: 반영 경로의 재조회(invalidateAll)와 잠금 해제 순서.
 		it('반영 전송 뒤 재조회가 실패해도 카드가 돌아오고 형제 잠금이 풀리며, 처리 안 된 거부가 없다', async () => {
 			vi.useFakeTimers();
