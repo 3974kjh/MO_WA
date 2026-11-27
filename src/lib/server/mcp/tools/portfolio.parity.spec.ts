@@ -4,7 +4,7 @@ import { createAuditRecorder, createImmediateWaitUntil, createMemoryAuditSink } 
 import { createStubMcpContext } from '../testing';
 import type { McpContext, McpToolResult } from '../types';
 import { revalidateMergedForApprove } from '$lib/server/domain/proposals/revalidate';
-import { proposedProblem } from '$lib/queue/proposals';
+import { proposedProblem, proposedProblemNote } from '$lib/queue/proposals';
 import { makeItem } from '../../../../../tests/queue/testItem';
 
 type Row = Record<string, unknown>;
@@ -390,13 +390,24 @@ describe('규칙 패리티: MCP propose · revalidate.ts · 클라이언트 prop
 			assetType: 'stock',
 			hasPosition: false
 		});
-		const clientRule = proposedProblem(
-			makeItem({ change_type: 'open_holding', proposed_values: values as never, position_id: null })
-		)?.ruleId;
+		const item = makeItem({
+			change_type: 'open_holding',
+			proposed_values: values as never,
+			position_id: null
+		});
+		const clientRule = proposedProblem(item)?.ruleId;
 		expect({ mcpPassed, rv: rv.ok ? null : rv.ruleId, clientRule }).toEqual({
 			mcpPassed: true,
 			rv: 'R-VAL-M01',
 			clientRule: 'R-VAL-M01'
 		});
+		// L-B: 카드·서버 안내 모두 '통화가 빠져 있어요'(수량·단가 누락이나 '원화·달러가 아니라서'가 아님).
+		expect(rv.ok).toBe(false);
+		if (!rv.ok) expect(rv.missing).toBe(true);
+		const note = proposedProblemNote(item);
+		expect(note).toContain('통화가 빠져 있어요');
+		expect(note).toContain('통화를 고르거나');
+		expect(note).not.toContain('수량이나 평균 단가');
+		expect(note).not.toContain('원화·달러가 아니라서');
 	});
 });

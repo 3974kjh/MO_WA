@@ -15,6 +15,19 @@ vi.mock('$app/navigation', () => ({
 }));
 vi.mock('$app/forms', () => ({ deserialize: (t: string) => JSON.parse(t) }));
 
+// Nit-B: 시트를 연 뒤에만 proposedProblem 을 참으로 바꿔 confirmApprove 가드를 검사한다.
+const nitbBlock = vi.hoisted(() => ({ on: false }));
+vi.mock('$lib/queue/proposals', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('$lib/queue/proposals')>();
+	return {
+		...actual,
+		proposedProblem: (item: Parameters<(typeof actual)['proposedProblem']>[0]) =>
+			nitbBlock.on
+				? { ruleId: 'R-FMT-13' as const, keys: ['avg_price'] }
+				: actual.proposedProblem(item)
+	};
+});
+
 import { invalidateAll } from '$app/navigation';
 import Page from './+page.svelte';
 import { makeItem } from '../../../../tests/queue/testItem';
@@ -77,6 +90,7 @@ beforeEach(() => {
 	vi.stubGlobal('fetch', fetchSpy);
 });
 afterEach(() => {
+	nitbBlock.on = false;
 	vi.unstubAllGlobals();
 	vi.useRealTimers();
 });
@@ -1433,6 +1447,31 @@ describe('FE-07 변경 요청 렌더', () => {
 				expect(fetchSpy).not.toHaveBeenCalled();
 			});
 		});
+	});
+
+	it('Nit-B: 확인 시트가 열린 뒤 봇 값이 막히는 요청이 되면 확인을 눌러도 보내지 않는다', async () => {
+		vi.useFakeTimers();
+		const item = makeItem({
+			id: 'nb',
+			display_id: 'P-1301',
+			proposed_values: { qty: 13, avg_price: 1234 }
+		});
+		const { container } = render(Page, {
+			data: { ...base, queue: { items: [item], total: 1 } } as never
+		});
+		(cardOf(container, 'P-1301').querySelector('[data-action="approve"]') as HTMLElement).click();
+		flushSync();
+		expect(document.querySelector('[data-action="approve-confirm"]')).not.toBeNull();
+		// 카드 가드를 우회해 시트를 연 뒤 proposedProblem 이 참이 되면 confirmApprove 가 막는다.
+		// 이 가드를 빼면 5초 뒤 ?/approve 가 나간다.
+		nitbBlock.on = true;
+		flushSync();
+		const btn = document.querySelector('[data-action="approve-confirm"]') as HTMLElement;
+		btn.click();
+		flushSync();
+		await vi.advanceTimersByTimeAsync(6000);
+		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(toast.items.some((t) => t.action?.label === '되돌리기')).toBe(false);
 	});
 
 	it('원칙 반영 409는 확인 필요로 옮기고 중립 토스트(시트 없음)', async () => {

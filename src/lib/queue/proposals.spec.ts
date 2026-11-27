@@ -451,6 +451,20 @@ describe('proposedProblem: 서버 재검증과 같은 규칙으로 미리 찾기
 			proposedProblem(oh({ qty: 3, avg_price: 1, currency: 'USD' }, { position_id: null }))
 		).toBeNull();
 	});
+	it('L-B: 통화 누락과 잘못된 통화는 안내 문구가 다르다(고쳐서 반영으로 통화를 고름)', () => {
+		const oh = (pv: Record<string, unknown>, over = {}) =>
+			mk(pv, { change_type: 'open_holding', position_id: null, ...over });
+		const missing = proposedProblemNote(oh({ qty: 3, avg_price: 1 }));
+		expect(missing).toBe(
+			'봇이 보낸 요청에 통화가 빠져 있어요. ‘고쳐서 반영’으로 통화를 고르거나 거절해 주세요.'
+		);
+		expect(missing).not.toContain('수량이나 평균 단가');
+		expect(missing).not.toContain('원화·달러가 아니라서');
+		const invalid = proposedProblemNote(oh({ qty: 3, avg_price: 1, currency: 'EUR' }));
+		expect(invalid).toContain('통화가 원화·달러가 아니라서');
+		expect(invalid).toContain('고쳐서 반영');
+		expect(invalid).not.toBe(missing);
+	});
 	it('수량 단위 안내는 종목 종류에 맞는다(주식·ETF 정수 / 현금 둘째 자리 / 그 밖은 괄호 없음)', () => {
 		expect(proposedProblemNote(mk({ qty: 1.5 }, { asset_type: 'stock' }))).toContain(
 			'(주식·ETF는 정수만)'
@@ -466,6 +480,11 @@ describe('proposedProblem: 서버 재검증과 같은 규칙으로 미리 찾기
 		for (const pv of [{ qty: 0 }, { avg_price: 0 }, { avg_price: 1.00005 }, {}]) {
 			expect(proposedProblemNote(mk(pv))).not.toMatch(/R-[A-Z]+-\d+/);
 		}
+		expect(
+			proposedProblemNote(
+				mk({ qty: 3, avg_price: 1 }, { change_type: 'open_holding', position_id: null })
+			)
+		).not.toMatch(/R-[A-Z]+-\d+/);
 	});
 });
 
@@ -479,11 +498,17 @@ describe('Nit-2·G3: 사용자 입력 문구와 보관 오류 문구', () => {
 		expect(cls({ ruleIds: ['R-VAL-M01'] }).message).toBe('통화는 원 또는 달러만 고를 수 있어요.');
 	});
 	it('봇 값이 비어서 막힌 경우(missing)는 거절만이 아니라 고쳐서 반영을 안내한다', () => {
-		for (const ruleId of ['R-VAL-P07', 'R-VAL-P04', 'R-VAL-M01']) {
+		for (const ruleId of ['R-VAL-P07', 'R-VAL-P04']) {
 			const m = cls({ ruleIds: [ruleId], source: 'proposed', missing: true }).message;
 			expect(m).toContain('고쳐서 반영');
-			expect(m).toContain('빠져 있어요');
+			expect(m).toContain('수량이나 평균 단가가 빠져 있어요');
 		}
+		const cur = cls({ ruleIds: ['R-VAL-M01'], source: 'proposed', missing: true }).message;
+		expect(cur).toBe(
+			'봇이 보낸 요청에 통화가 빠져 있어요. ‘고쳐서 반영’으로 통화를 고르거나 거절해 주세요.'
+		);
+		expect(cur).not.toContain('수량이나 평균 단가');
+		expect(cur).not.toContain('원화·달러가 아니라서');
 		// 비어 있지 않은 P07(바꿀 수 없는 항목)은 그대로 거절 안내
 		expect(cls({ ruleIds: ['R-VAL-P07'], source: 'proposed' }).message).toContain('거절해 주세요');
 		expect(cls({ ruleIds: ['R-VAL-P07'], source: 'proposed' }).message).not.toContain(

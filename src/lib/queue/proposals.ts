@@ -372,6 +372,9 @@ export function proposedProblemNote(item: QueueItem): string {
 	if (p.ruleId === 'R-VAL-P04' && p.keys.some((k) => !Object.hasOwn(item.proposed_values, k))) {
 		return MISSING_TEXT;
 	}
+	if (p.ruleId === 'R-VAL-M01' && !Object.hasOwn(item.proposed_values, 'currency')) {
+		return MISSING_CURRENCY_TEXT;
+	}
 	if (p.ruleId === 'R-VAL-M03') return qtyProblemText(item.asset_type);
 	return PROPOSED_RULE_TEXT[p.ruleId] ?? '';
 }
@@ -700,6 +703,9 @@ function qtyProblemText(asset: string | null): string {
 const MISSING_TEXT =
 	'봇이 보낸 요청에 수량이나 평균 단가가 빠져 있어요. ‘고쳐서 반영’으로 값을 채우거나 거절해 주세요.';
 
+const MISSING_CURRENCY_TEXT =
+	'봇이 보낸 요청에 통화가 빠져 있어요. ‘고쳐서 반영’으로 통화를 고르거나 거절해 주세요.';
+
 const ARCHIVED_TEXT = {
 	ARCHIVED_POSITION:
 		'이 보유 기록은 보관돼 있어서 반영할 수 없어요. 거절하거나, 보관함에서 복원한 뒤 새 요청을 받아 주세요.',
@@ -753,6 +759,9 @@ export function classifyActionResult(result: {
 		}
 		const ids = Array.isArray(data.ruleIds) ? (data.ruleIds as unknown[]) : [];
 		if (data.source === 'proposed' && data.missing === true) {
+			if (ids.includes('R-VAL-M01')) {
+				return { kind: 'error', message: MISSING_CURRENCY_TEXT };
+			}
 			return { kind: 'error', message: MISSING_TEXT };
 		}
 		const texts = data.source === 'proposed' ? PROPOSED_RULE_TEXT : RULE_TEXT;
