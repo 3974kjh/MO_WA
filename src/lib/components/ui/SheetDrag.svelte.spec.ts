@@ -35,6 +35,20 @@ function point(el: Element, name: string, x: number, y: number, opts: PointerEve
 	);
 }
 
+function swipeGrabThenClick(dx: number, dy: number) {
+	const sheet = dlg()!;
+	const grab = grabBtn()!;
+	const r = grab.getBoundingClientRect();
+	const x = r.x + r.width / 2;
+	const y = r.y + r.height / 2;
+	point(grab, 'pointerdown', x, y, { button: 0 });
+	point(sheet, 'pointermove', x + dx, y + dy);
+	point(sheet, 'pointerup', x + dx, y + dy);
+	grab.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	flushSync();
+	return sheet;
+}
+
 function touch(el: Element, name: string, x: number, y: number, withTouch: boolean) {
 	const t = new Touch({ identifier: 1, target: el, clientX: x, clientY: y });
 	el.dispatchEvent(
@@ -195,6 +209,47 @@ describe('바텀시트 끌어 닫기 (v1.7.3)', () => {
 		point(sheet, 'pointerup', x, y - 80);
 		flushSync();
 		expect(open()).toBe(true);
+	});
+
+	it('손잡이에서 위로 15px 움직였다 놓으면 click이 와도 열린 채다 (v1.7.4)', async () => {
+		openSheet();
+		await waitOpen();
+		swipeGrabThenClick(0, -15);
+		expect(open()).toBe(true);
+		expect(dlg()!.classList.contains('dragging')).toBe(false);
+	});
+
+	it('손잡이에서 옆으로 30px 움직였다 놓으면 click이 와도 열린 채다 (v1.7.4)', async () => {
+		openSheet();
+		await waitOpen();
+		swipeGrabThenClick(30, 0);
+		expect(open()).toBe(true);
+		expect(dlg()!.classList.contains('dragging')).toBe(false);
+	});
+
+	it('3px 흔들린 탭은 닫힌다 (슬롭 안, v1.7.4)', async () => {
+		openSheet();
+		await waitOpen();
+		swipeGrabThenClick(3, 0);
+		flushSync();
+		await expect.poll(() => dlg()?.hasAttribute('inert') ?? true, { timeout: 1000 }).toBe(true);
+		expect(document.activeElement).toBe(opener());
+	});
+
+	it('손잡이에서 Space를 누르면 닫힌다 (v1.7.4)', async () => {
+		openSheet();
+		await waitOpen();
+		const grab = grabBtn()!;
+		grab.focus();
+		expect(document.activeElement).toBe(grab);
+		// Space/Enter는 버튼의 click 활성화를 탄다(vitest page.keyboard 없음). 기존 Enter 테스트와 같은 경로.
+		grab.dispatchEvent(
+			new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true, cancelable: true })
+		);
+		grab.click();
+		flushSync();
+		await expect.poll(() => dlg()?.hasAttribute('inert') ?? true, { timeout: 1000 }).toBe(true);
+		expect(document.activeElement).toBe(opener());
 	});
 
 	it('≥640 중앙 모달은 X가 보이고 손잡이는 숨기며 끌기를 무시한다', async () => {

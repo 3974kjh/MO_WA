@@ -386,6 +386,7 @@
 			align-self: stretch;
 			display: flex;
 			flex-direction: column;
+			min-height: max-content; /* v1.7.4: 0fr+stretch 에서 긴 알림이 카드 밖으로 넘치지 않게 */
 			margin: 0;
 			max-width: none;
 			background: var(--color-surface);

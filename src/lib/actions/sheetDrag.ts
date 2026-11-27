@@ -45,6 +45,7 @@ export function sheetDrag(node: HTMLElement, params: Params) {
 		pts: [number, number][];
 		pid?: number;
 		touch?: boolean;
+		aborted?: boolean; // 슬롭을 넘겼지만 위·옆 → 끌기 아님, 그래도 click 은 버림
 	};
 	let d: Drag | null = null;
 	let suppressClick = false;
@@ -61,14 +62,14 @@ export function sheetDrag(node: HTMLElement, params: Params) {
 		};
 	}
 	function move(x: number, y: number, t: number): boolean {
-		if (!d) return false;
+		if (!d || d.aborted) return false;
 		const dx = x - d.x0;
 		const dy = y - d.y0;
 		if (!d.on) {
 			const intent = decideDragIntent(dx, dy);
 			if (intent === 'wait') return false;
 			if (intent === 'abort') {
-				d = null;
+				d.aborted = true;
 				return false;
 			}
 			d.on = true;
@@ -83,13 +84,19 @@ export function sheetDrag(node: HTMLElement, params: Params) {
 		while (d.pts.length > 2 && t - d.pts[0][0] > 100) d.pts.shift();
 		return true;
 	}
+	function suppressNextClick() {
+		suppressClick = true;
+		setTimeout(() => (suppressClick = false), 0);
+	}
 	function end(cancelled = false) {
 		if (!d) return;
 		const g = d;
 		d = null;
-		if (!g.on) return;
-		suppressClick = true;
-		setTimeout(() => (suppressClick = false), 0);
+		if (!g.on) {
+			if (g.aborted) suppressNextClick();
+			return;
+		}
+		suppressNextClick();
 		const a = g.pts[0];
 		const b = g.pts[g.pts.length - 1];
 		const v = b[0] > a[0] ? (b[1] - a[1]) / (b[0] - a[0]) : 0;
