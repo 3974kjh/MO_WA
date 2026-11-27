@@ -37,6 +37,13 @@
 			href="/fonts/pretendard/woff2-dynamic-subset/PretendardVariable.subset.90.woff2"
 		/>
 		<link rel="stylesheet" href="/fonts/pretendard/pretendard.css" />
+		<!-- 파비콘·앱 아이콘 1안 반사 (handoff §19-5, 사용자 확정 11/27 13:50). favicon.svg 는 탭 다크에서 색이 바뀜 -->
+		<link rel="icon" href="/favicon.ico" sizes="32x32" />
+		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+		<link rel="manifest" href="/site.webmanifest" />
+		<meta name="theme-color" content="#F5F6F8" media="(prefers-color-scheme: light)" />
+		<meta name="theme-color" content="#0D1017" media="(prefers-color-scheme: dark)" />
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

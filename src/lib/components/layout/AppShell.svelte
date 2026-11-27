@@ -9,6 +9,7 @@
 	import type { Snippet } from 'svelte';
 	import { resolve } from '$app/paths';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
+	import MoWaLogo from '$lib/components/brand/MoWaLogo.svelte';
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import MoreSheet from './MoreSheet.svelte';
 	import NavItem from './NavItem.svelte';
@@ -54,7 +55,7 @@
 
 <aside class="side" aria-label="주 메뉴">
 	<a class="brand" href={resolve('/')} aria-label="MO_WA 홈">
-		<span class="brand-mark" aria-hidden="true">M</span><span class="t">MO_WA</span>
+		<MoWaLogo link={false} showWordmark={false} /><span class="t">MO_WA</span>
 	</a>
 	<nav class="nav" aria-label="섹션">
 		{#each PRIMARY_NAV as n (n.id)}
@@ -163,18 +164,6 @@
 	}
 	.brand:hover {
 		text-decoration: none;
-	}
-	.brand-mark {
-		width: 28px;
-		height: 28px;
-		border-radius: 8px;
-		background: var(--color-accent);
-		color: var(--color-on-accent);
-		display: grid;
-		place-items: center;
-		font-size: 13px;
-		font-weight: 800;
-		flex: none;
 	}
 	.nav {
 		display: flex;

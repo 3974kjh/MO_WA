@@ -1,43 +1,77 @@
 <script lang="ts">
+	/**
+	 * MO_WA 마크 — 1안 반사 (handoff §19-5, 사용자 확정 11/27 13:50): 틸 타일 + M(위)·거울 W(아래).
+	 * 색은 토큰: 타일 var(--color-accent), 획 var(--color-on-accent) → data-theme·OS 다크를 따른다.
+	 * 기본 28×28. 옆에 'MO_WA' 글자가 있으면 SVG는 aria-hidden, 로고만 있는 링크는 aria-label="MO_WA 홈".
+	 * 부모 inline-flex items-center gap 10px(gap-2.5) — 글자 줄높이 28px로 마크와 세로 가운데.
+	 */
 	import { resolve } from '$app/paths';
 
-	type LogoVariant = 'ink' | 'on-dark' | 'primary';
-
 	let {
-		size = 36,
-		label = 'MO_WA',
-		variant = 'ink',
-		showWordmark = true
+		size = 28,
+		showWordmark = true,
+		link = true,
+		label = 'MO_WA 홈'
 	}: {
 		size?: number;
-		label?: string;
-		variant?: LogoVariant;
 		showWordmark?: boolean;
+		/** true면 홈(/) 링크. 이미 링크 안에 넣을 때는 false */
+		link?: boolean;
+		/** 링크 접근 이름(로고만 있을 때 필수) */
+		label?: string;
 	} = $props();
-
-	/*
-	 * 마크는 인라인 SVG(fill=currentColor)라 글자색 토큰을 따른다. <img>로는 currentColor가 상속되지 않아
-	 * 다크에서 검정으로 보였다(handoff §13-8 다크 대비). 기본 ink는 테마 토큰 text-text로 매핑
-	 * (--color-ink는 다크 값이 없음). 경로는 $lib/assets/mo-wa-logo.svg와 같다.
-	 */
-	const variantClass = $derived(
-		variant === 'primary' ? 'text-primary' : variant === 'on-dark' ? 'text-on-dark' : 'text-text'
-	);
 </script>
 
-<a class="inline-flex items-center gap-xs {variantClass}" href={resolve('/')} aria-label={label}>
+{#snippet body()}
 	<svg
-		class="block"
-		viewBox="0 0 128 128"
+		viewBox="0 0 32 32"
 		width={size}
 		height={size}
+		class="block shrink-0"
 		aria-hidden="true"
 		focusable="false"
 	>
-		<path fill="currentColor" d="M18 104V24h14l32 42 32-42h14v80H94V53L68 86h-8L34 53v51H18Z" />
-		<path fill="currentColor" fill-opacity=".28" d="M28 28h18l18 23 18-23h18L68 72h-8L28 28Z" />
+		<rect x="1" y="1" width="30" height="30" rx="7.5" fill="var(--color-accent)" />
+		<path
+			d="M7.5 13V7L16 13 24.5 7v6"
+			fill="none"
+			stroke="var(--color-on-accent)"
+			stroke-width="3"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+		/>
+		<path
+			d="M7.5 19v6L16 19 24.5 25v-6"
+			fill="none"
+			stroke="var(--color-on-accent)"
+			stroke-width="3"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+		/>
 	</svg>
-	{#if showWordmark}
-		<span class="font-display text-[21px] font-semibold tracking-[-0.231px]">MO_WA</span>
-	{/if}
-</a>
+	{#if showWordmark}<span class="mw-logo-text">MO_WA</span>{/if}
+{/snippet}
+
+{#if link}
+	<a class="mw-logo" href={resolve('/')} aria-label={label}>{@render body()}</a>
+{:else}
+	<span class="mw-logo">{@render body()}</span>
+{/if}
+
+<style>
+	.mw-logo {
+		display: inline-flex;
+		align-items: center;
+		gap: 10px;
+		color: var(--color-text);
+	}
+	a.mw-logo:hover {
+		text-decoration: none;
+	}
+	.mw-logo-text {
+		font-size: var(--text-lg);
+		line-height: 28px;
+		font-weight: 800;
+		letter-spacing: -0.02em;
+	}
+</style>

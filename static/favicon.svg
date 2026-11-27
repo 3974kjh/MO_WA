@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+<!-- MO_WA 파비콘 1안 반사 — 사용자 확정 2026-11-27 13:50 KST. 틸 타일 + M(위)·거울 W(아래). 탭이 다크면 밝은 틸 타일 + 잉크 획(SVG 안 미디어쿼리, Chrome·Firefox·Edge) -->
+<style>.t{fill:#0B6E67}.m{fill:none;stroke:#FFFFFF}@media (prefers-color-scheme:dark){.t{fill:#4FC4B8}.m{stroke:#04201D}}</style>
+<rect class="t" x="1" y="1" width="30" height="30" rx="7.5"/>
+<path class="m" d="M7.5 13V7L16 13 24.5 7v6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<path class="m" d="M7.5 19v6L16 19 24.5 25v-6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
