@@ -162,12 +162,14 @@ const initBody = {
 	console.log(`note S3 protocolVersion=${pv} wall_ms=${Date.now() - t0}`);
 }
 
-// S4 tools/list
+// S4 tools/list (S6 이 get_report 가 실제로 목록에 있었는지 확인하도록 이름을 남긴다)
+let listedToolNames;
 {
 	const r = await post({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }, auth);
 	assert(r.status === 200, 'S4 tools/list → 200');
 	const tools = r.json?.result?.tools ?? [];
 	const names = tools.map((t) => t.name).sort();
+	listedToolNames = names;
 	// 스파이크 전용 echo/db_ping은 제거됨. 키 스코프마다 목록이 달라 정확한 목록 대신 불변식만 본다.
 	assert(names.includes('whoami'), `S4 whoami listed (tools=${names.join(',')})`);
 	assert(!names.includes('echo') && !names.includes('db_ping'), 'S4 no spike tools (echo/db_ping)');
@@ -230,6 +232,11 @@ const initBody = {
 	);
 	assert(r.status === 200, 'S6 zod fail HTTP 200');
 	assert(r.json?.result?.isError === true, 'S6 isError true');
+	// isError 만 보면 '스코프 없음·모르는 툴' 거절도 통과한다(B Nit-3). 툴이 실제로 목록에 있었어야 인자 검증 실패다.
+	assert(
+		(listedToolNames ?? []).includes('get_report'),
+		'S6 get_report was listed in S4 (zod path, not scope/unknown-tool)'
+	);
 }
 
 console.log('smoke done (no key material printed)');
