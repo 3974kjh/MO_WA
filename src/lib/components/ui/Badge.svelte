@@ -16,48 +16,19 @@
 		class?: string;
 		children: Snippet;
 	} = $props();
+
+	// v1.7.0 (DS §7-0): Skeleton badge + preset-tonal-*. 크기(12px·높이 22·반경 6)는 skeleton-overrides.css
+	const PRESET: Record<BadgeTone, string> = {
+		default: 'preset-tonal-surface',
+		up: 'preset-tonal-error',
+		down: 'preset-tonal-secondary',
+		warn: 'preset-tonal-warning',
+		info: 'preset-tonal-tertiary',
+		ok: 'preset-tonal-success',
+		accent: 'preset-tonal-primary'
+	};
 </script>
 
-<span class="mw-badge {tone} {className}" {title}
+<span class="badge {PRESET[tone]} {className}" {title}
 	>{#if icon}<span aria-hidden="true">{icon}</span>{/if}{@render children()}</span
 >
-
-<style>
-	.mw-badge {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		height: 22px;
-		padding: 0 8px;
-		border-radius: var(--radius-xs);
-		font-size: var(--text-xs);
-		font-weight: 600;
-		white-space: nowrap;
-		background: var(--color-surface-2);
-		color: var(--color-muted);
-	}
-	.up {
-		background: var(--color-up-soft);
-		color: var(--color-up);
-	}
-	.down {
-		background: var(--color-down-soft);
-		color: var(--color-down);
-	}
-	.warn {
-		background: var(--color-warn-soft);
-		color: var(--color-warn);
-	}
-	.info {
-		background: var(--color-info-soft);
-		color: var(--color-info);
-	}
-	.ok {
-		background: var(--color-ok-soft);
-		color: var(--color-ok);
-	}
-	.accent {
-		background: var(--color-accent-soft);
-		color: var(--color-accent);
-	}
-</style>

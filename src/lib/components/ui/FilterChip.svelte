@@ -15,43 +15,28 @@
 	} = $props();
 </script>
 
-<button type="button" class="mw-chip" aria-pressed={pressed} {onclick}
+<button
+	type="button"
+	class="chip {pressed ? 'preset-filled-brand' : 'preset-outlined-surface-500'}"
+	aria-pressed={pressed}
+	{onclick}
 	>{@render children()}{#if count != null}<span class="count num">{count}</span>{/if}</button
 >
 
 <style>
-	.mw-chip {
-		display: inline-flex;
-		align-items: center;
+	/* DS §7-0: chip preset-outlined-surface-500 / 선택 preset-filled-brand, 클릭 40(overrides .chip), 긴 이름 줄바꿈 허용(v1.3) */
+	.chip {
 		gap: 6px;
-		min-height: 32px;
-		padding: 0 12px;
+		max-width: 100%;
+		padding-inline: 12px;
 		border-radius: var(--radius-full);
-		border: 1px solid var(--color-line);
-		background: var(--color-surface);
-		color: var(--color-muted);
 		font-size: var(--text-sm);
-		white-space: nowrap;
-		flex: none;
-	}
-	.mw-chip:hover {
-		border-color: var(--color-line-strong);
-		color: var(--color-text);
-	}
-	.mw-chip[aria-pressed='true'] {
-		background: var(--color-accent);
-		border-color: var(--color-accent);
-		color: var(--color-on-accent);
-		font-weight: 600;
+		line-height: 1.25;
+		white-space: normal;
+		text-align: left;
 	}
 	.count {
 		font-size: var(--text-xs);
 		opacity: 0.85;
-	}
-	/* 터치 영역 ≥40px: 시각 높이 32px + 위아래 히트 영역 확장 */
-	@media (pointer: coarse) {
-		.mw-chip {
-			min-height: var(--size-touch);
-		}
 	}
 </style>

@@ -65,8 +65,12 @@
 </script>
 
 <div class="tbl-outer" class:hint={canScrollRight && mode === 'scroll'} data-mode={mode}>
-	<div class="tbl-wrap" bind:this={wrap} onscroll={updateHint}>
-		<table class="tbl {mode}" class:sticky-first={stickyFirst} class:sticky-m={mode === 'scroll'}>
+	<div class="tbl-wrap table-wrap" bind:this={wrap} onscroll={updateHint}>
+		<table
+			class="tbl table {mode}"
+			class:sticky-first={stickyFirst}
+			class:sticky-m={mode === 'scroll'}
+		>
 			{#if caption}<caption class="sr-only">{caption}</caption>{/if}
 			<thead>
 				<tr>
@@ -143,7 +147,7 @@
 		background: var(--color-surface);
 		-webkit-overflow-scrolling: touch;
 	}
-	:global(.mw-card.flush) .tbl-wrap {
+	:global(.card.flush) .tbl-wrap {
 		border: 0;
 		border-radius: 0;
 	}

@@ -31,7 +31,7 @@
 	button {
 		border: 0;
 		background: transparent;
-		min-height: 34px;
+		min-height: var(--size-touch);
 		padding: 0 14px;
 		border-radius: calc(var(--radius-sm) - 1px);
 		color: var(--color-muted);

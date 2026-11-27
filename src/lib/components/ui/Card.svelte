@@ -23,7 +23,7 @@
 	} = $props();
 </script>
 
-<section class="mw-card {className}" class:flush>
+<section class="card {className}" class:flush>
 	{#if title || aside || sub}
 		<header class="card-head">
 			{#if title}
@@ -36,11 +36,9 @@
 </section>
 
 <style>
-	.mw-card {
-		background: var(--color-surface);
-		border: 1px solid var(--color-card-line); /* 라이트 transparent(그림자만), 다크 연한 1px */
+	/* 면·테두리(card-line)·그림자는 Skeleton card + skeleton-overrides.css. 반경 12·패딩 16은 여기 */
+	.card {
 		border-radius: var(--radius-md);
-		box-shadow: var(--shadow-card);
 		padding: 16px;
 		min-width: 0;
 	}

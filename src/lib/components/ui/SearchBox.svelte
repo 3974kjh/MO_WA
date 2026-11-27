@@ -55,7 +55,7 @@
 	$effect(() => () => emit.cancel());
 </script>
 
-<label class="search-box">
+<label class="mw-input-group">
 	<Search size={18} strokeWidth={1.8} aria-hidden="true" />
 	<span class="sr-only">{label}</span>
 	<input
@@ -67,33 +67,3 @@
 		autocomplete="off"
 	/>
 </label>
-
-<style>
-	.search-box {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		background: var(--color-surface);
-		border: 1px solid var(--color-line-strong);
-		border-radius: var(--radius-sm);
-		padding: 0 12px;
-		height: var(--size-touch);
-		color: var(--color-subtle);
-		min-width: 0;
-	}
-	.search-box:focus-within {
-		outline: 2px solid var(--color-focus);
-		outline-offset: 1px;
-	}
-	input {
-		border: 0;
-		background: transparent;
-		outline: 0;
-		color: var(--color-text);
-		width: 100%;
-		min-width: 0;
-	}
-	input::placeholder {
-		color: var(--color-subtle);
-	}
-</style>
