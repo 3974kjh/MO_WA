@@ -118,7 +118,7 @@
 		</label>
 		<input type="hidden" name="rule" value={data.filter.rule} />
 		<div class="btns">
-			<Button type="submit" variant="primary" compact label="적용" />
+			<Button type="submit" variant="primary" label="적용" />
 			{#if active}
 				<a class="reset" href={base} data-testid="audit-reset">필터 초기화</a>
 			{/if}
@@ -261,6 +261,13 @@
 		border: 0;
 		cursor: pointer;
 		padding: 4px;
+	}
+	/* 터치 영역 ≥ 40px (디자이너 16:27): 글자 높이가 아니라 줄 전체를 눌러지게 */
+	.reset {
+		display: inline-flex;
+		align-items: center;
+		min-height: var(--size-touch);
+		padding-inline: 8px;
 	}
 	.mw-h2 {
 		margin: 0 0 8px;
