@@ -13,6 +13,9 @@ node_modules/
 
 # 디자인 확정본 토큰 원본(design/tokens.css) 그대로 복사 — 서식 변경 금지
 src/tokens.css
+# 디자이너 Skeleton 테마·덮어쓰기 원본(design/skeleton/*.css) 그대로 복사 — 서식 변경 금지 (handoff §19-1)
+src/lib/styles/skeleton-mowa.css
+src/lib/styles/skeleton-overrides.css
 
 # BE-14 generated from live zod schemas (`pnpm docs:mcp-tools`)
 docs/mcp-tools.generated.md
