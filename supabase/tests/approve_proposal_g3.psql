@@ -1,0 +1,194 @@
+-- G3 + L-1 DB test: approve_proposal (archived position/instrument block, merged-value re-check, ordering, grants).
+-- 로컬 전용 PG 에서만 실행한다(운영·원격 DB 금지). 데이터는 이 파일이 만든 임의 UUID 행뿐이고, 마지막에 rollback 한다.
+-- 실행: psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p <port> -U postgres -d <db> -f approve_proposal_g3.psql
+-- 모드: -v is_new=1 → G3 마이그레이션 적용 상태 기대(기본) / -v is_new=0 → 롤백(0800 원본) 상태 기대(보관 승인이 통과함을 확인)
+\set ON_ERROR_STOP on
+\if :{?is_new}
+\else
+  \set is_new 1
+\endif
+\pset tuples_only on
+\pset format unaligned
+begin;
+create temp table ids(k text primary key, id uuid);
+grant all on ids to public;
+create temp table results(n serial, name text, ok boolean);
+grant all on results to public;
+grant usage on sequence results_n_seq to public;
+
+create function pg_temp.id(k text) returns uuid language sql as $$ select id from ids where k = $1 $$;
+
+create function pg_temp.check(p_name text, p_got text, p_want text) returns void language plpgsql as $$
+begin
+  if p_got like p_want || '%' then
+    insert into results(name, ok) values (p_name, true);
+    raise notice 'ok   - %', p_name;
+  else
+    insert into results(name, ok) values (p_name, false);
+    raise exception 'FAIL - %: got [%] want [%...]', p_name, p_got, p_want;
+  end if;
+end $$;
+
+create function pg_temp.mkprop(p_type text, p_pos uuid, p_inst uuid, p_vals jsonb,
+    p_status text default 'pending', p_exp interval default '7 days', p_base int default null) returns uuid
+language plpgsql as $$
+declare v_id uuid := gen_random_uuid(); v_inst uuid := p_inst; v_base int := p_base;
+begin
+  perform set_config('session_replication_role', 'replica', true);
+  if p_pos is not null then
+    select instrument_id, coalesce(v_base, approval_version) into v_inst, v_base from public.positions where id = p_pos;
+  end if;
+  insert into public.position_proposals(id, owner_id, display_no, change_type, position_id, instrument_id, base_version,
+      proposed_values, evidence, proposed_by_type, status, expires_at)
+  values (v_id, pg_temp.id('u1'), (select coalesce(max(display_no),0)+1 from public.position_proposals), p_type, p_pos, v_inst, v_base,
+      p_vals, '[{"note":"g3 test"}]'::jsonb, 'bot', p_status, now() + p_exp);
+  perform set_config('session_replication_role', 'origin', true);
+  return v_id;
+end $$;
+
+create function pg_temp.try(p uuid, ov jsonb default '{}', uid uuid default null, jwt_role text default 'authenticated', sql_role text default 'authenticated')
+returns text language plpgsql as $$
+declare r text;
+begin
+  perform set_config('request.jwt.claims', case when uid is null then '' else json_build_object('sub', uid, 'role', jwt_role)::text end, true);
+  perform set_config('role', sql_role, true);
+  begin
+    perform public.approve_proposal(p, ov, null);
+    r := 'ok';
+  exception when others then
+    r := sqlstate || '|' || sqlerrm;
+  end;
+  perform set_config('role', 'none', true);
+  perform set_config('request.jwt.claims', '', true);
+  return r;
+end $$;
+
+create function pg_temp.status_of(p uuid) returns text language sql as $$ select status from public.position_proposals where id = p $$;
+
+-- ───────── fixtures (as postgres, 트리거 우회 삽입) ─────────
+select set_config('session_replication_role', 'replica', true);
+insert into ids values ('u1', gen_random_uuid()), ('u2', gen_random_uuid());
+insert into auth.users(id, email) select id, k || '@g3.invalid' from ids;
+insert into public.instruments(id, owner_id, ticker, name, market, asset_type, archived_at) values
+  (gen_random_uuid(), pg_temp.id('u1'), '900001', 'g3 stock', 'KRX', 'stock', null),
+  (gen_random_uuid(), pg_temp.id('u1'), '900002', 'g3 etf', 'KRX', 'etf', null),
+  (gen_random_uuid(), pg_temp.id('u1'), '900003', 'g3 archived stock', 'KRX', 'stock', now()),
+  (gen_random_uuid(), pg_temp.id('u1'), '900004', 'g3 new stock', 'KRX', 'stock', null),
+  (gen_random_uuid(), pg_temp.id('u1'), '900005', 'g3 new archived', 'KRX', 'stock', now()),
+  (gen_random_uuid(), pg_temp.id('u1'), '900006', 'g3 cash', 'KRX', 'cash', null),
+  (gen_random_uuid(), pg_temp.id('u1'), '900007', 'g3 no-currency', 'KRX', 'stock', null);
+insert into ids select 'i_' || ticker, id from public.instruments where ticker like '9000__' and owner_id = pg_temp.id('u1');
+insert into public.positions(id, owner_id, instrument_id, status, currency, qty, avg_price, archived_at) values
+  (gen_random_uuid(), pg_temp.id('u1'), pg_temp.id('i_900001'), 'holding', 'KRW', 10, 70000, null),
+  (gen_random_uuid(), pg_temp.id('u1'), pg_temp.id('i_900002'), 'holding', 'USD', 10, 50, now()),
+  (gen_random_uuid(), pg_temp.id('u1'), pg_temp.id('i_900003'), 'holding', 'KRW', 10, 1000, null),
+  (gen_random_uuid(), pg_temp.id('u1'), pg_temp.id('i_900006'), 'holding', 'KRW', 100, 1, null);
+insert into ids select 'p_' || i.ticker, p.id from public.positions p join public.instruments i on i.id = p.instrument_id
+ where p.owner_id = pg_temp.id('u1');
+select set_config('session_replication_role', 'origin', true);
+
+\echo == is_new = :is_new ==
+-- ───────── 1. 기준선: 정상 승인 ─────────
+select pg_temp.mkprop('set_qty_avg', pg_temp.id('p_900001'), null, '{"qty":12}') as p \gset ok1_
+select pg_temp.check('baseline: valid set_qty_avg approves', pg_temp.try(:'ok1_p'::uuid, '{}', pg_temp.id('u1')), 'ok');
+select pg_temp.check('baseline: proposal approved', pg_temp.status_of(:'ok1_p'::uuid), 'approved');
+select pg_temp.check('baseline: position qty applied', (select qty::text from public.positions where id = pg_temp.id('p_900001')), '12');
+
+-- ───────── 2. 세션·권한 ─────────
+select pg_temp.mkprop('set_qty_avg', pg_temp.id('p_900001'), null, '{"qty":13}') as p \gset s_
+select pg_temp.check('no session -> 42501', pg_temp.try(:'s_p'::uuid, '{}', null), '42501|');
+select pg_temp.check('service_role jwt -> 42501', pg_temp.try(:'s_p'::uuid, '{}', pg_temp.id('u1'), 'service_role', 'authenticated'), '42501|');
+select pg_temp.check('other owner -> P0002', pg_temp.try(:'s_p'::uuid, '{}', pg_temp.id('u2')), 'P0002|proposal not found');
+select pg_temp.check('anon sql role -> permission denied (42501)', pg_temp.try(:'s_p'::uuid, '{}', pg_temp.id('u1'), 'authenticated', 'anon'), '42501|');
+select pg_temp.check('service_role sql role -> permission denied (42501)', pg_temp.try(:'s_p'::uuid, '{}', pg_temp.id('u1'), 'service_role', 'service_role'), '42501|');
+select pg_temp.check('grants: authenticated only',
+  has_function_privilege('authenticated','public.approve_proposal(uuid,jsonb,text)','execute')::text
+  || has_function_privilege('anon','public.approve_proposal(uuid,jsonb,text)','execute')::text
+  || has_function_privilege('service_role','public.approve_proposal(uuid,jsonb,text)','execute')::text, 'truefalsefalse');
+select pg_temp.check('security definer + search_path', (select prosecdef::text || (proconfig::text) from pg_proc where oid = 'public.approve_proposal(uuid,jsonb,text)'::regprocedure),
+  'true{"search_path=public, pg_temp"}');
+select pg_temp.check('still pending after denied attempts', pg_temp.status_of(:'s_p'::uuid), 'pending');
+
+-- ───────── 3. 보관 차단 (G3) ─────────
+select pg_temp.mkprop('set_qty_avg', pg_temp.id('p_900002'), null, '{"qty":11}') as p \gset a1_
+select pg_temp.mkprop('set_qty_avg', pg_temp.id('p_900003'), null, '{"qty":11}') as p \gset a2_
+select pg_temp.mkprop('open_holding', null, pg_temp.id('i_900005'), '{"qty":5,"avg_price":100,"currency":"KRW"}') as p \gset a3_
+select pg_temp.mkprop('open_holding', null, pg_temp.id('i_900004'), '{"qty":5,"avg_price":100,"currency":"KRW"}') as p \gset a4_
+\if :is_new
+select pg_temp.check('archived position -> MW001 [R-VAL-P02]', pg_temp.try(:'a1_p'::uuid, '{}', pg_temp.id('u1')), 'MW001|[R-VAL-P02] position is archived');
+select pg_temp.check('archived position: proposal untouched (pending)', pg_temp.status_of(:'a1_p'::uuid), 'pending');
+select pg_temp.check('archived position: positions unchanged', (select qty::text from public.positions where id = pg_temp.id('p_900002')), '10');
+select pg_temp.check('active position on archived instrument -> MW002', pg_temp.try(:'a2_p'::uuid, '{}', pg_temp.id('u1')), 'MW002|[R-VAL-P02] instrument is archived');
+select pg_temp.check('open_holding w/o position on archived instrument -> MW002', pg_temp.try(:'a3_p'::uuid, '{}', pg_temp.id('u1')), 'MW002|');
+select pg_temp.check('open_holding w/o position, archived: no position created',
+  (select count(*)::text from public.positions where instrument_id = pg_temp.id('i_900005')), '0');
+select pg_temp.check('open_holding w/o position on active instrument approves', pg_temp.try(:'a4_p'::uuid, '{}', pg_temp.id('u1')), 'ok');
+select pg_temp.check('open_holding w/o position: holding created',
+  (select count(*)::text from public.positions where instrument_id = pg_temp.id('i_900004') and status = 'holding' and qty = 5 and avg_price = 100), '1');
+select pg_temp.check('blocked archived proposal wrote no audit row',
+  (select count(*)::text from public.mcp_audit_log where tool = 'proposal.approve' and affected_ids::text like '%' || :'a1_p' || '%'), '0');
+\else
+select pg_temp.check('OLD (rolled back): archived position approve passes (documents pre-G3 behaviour)', pg_temp.try(:'a1_p'::uuid, '{}', pg_temp.id('u1')), 'ok');
+select pg_temp.check('OLD (rolled back): archived instrument approve passes', pg_temp.try(:'a2_p'::uuid, '{}', pg_temp.id('u1')), 'ok');
+\endif
+
+\if :is_new
+-- ───────── 4. 합친 값 재검사 (L-1) ─────────
+create function pg_temp.fresh(p_vals jsonb, p_type text default 'set_qty_avg') returns uuid language plpgsql as $$
+begin
+  return case p_type
+    when 'set_qty_avg' then pg_temp.mkprop('set_qty_avg', pg_temp.id('p_900006'), null, p_vals)
+    else pg_temp.mkprop('open_holding', null, pg_temp.id('i_900001'), p_vals) end;
+end $$;
+-- 새 제안이 이전 제안을 supersede 하지 않으므로(트리거 우회 삽입) 같은 포지션에 여러 개 둬도 된다.
+select pg_temp.check('avg 1.00005 (5dp) -> R-FMT-13', pg_temp.try(pg_temp.fresh('{"avg_price":1.00005}'), '{}', pg_temp.id('u1')), '22023|[R-FMT-13]');
+select pg_temp.check('avg 0.12345 -> R-FMT-13', pg_temp.try(pg_temp.fresh('{"avg_price":0.12345}'), '{}', pg_temp.id('u1')), '22023|[R-FMT-13]');
+select pg_temp.check('RPC direct override 1.00005 -> R-FMT-13 (cannot bypass app)', pg_temp.try(pg_temp.fresh('{"qty":14}'), '{"avg_price":1.00005}', pg_temp.id('u1')), '22023|[R-FMT-13]');
+select pg_temp.check('override fixes bad bot value (1.0001) -> ok', pg_temp.try(pg_temp.fresh('{"avg_price":1.00005}'), '{"avg_price":1.0001}', pg_temp.id('u1')), 'ok');
+select pg_temp.check('trailing zeros 1.00000 are 1 (not 5dp) -> ok', pg_temp.try(pg_temp.fresh('{"avg_price":1.00000}'), '{}', pg_temp.id('u1')), 'ok');
+select pg_temp.check('avg 4dp 1.2345 -> ok', pg_temp.try(pg_temp.fresh('{"avg_price":1.2345}'), '{}', pg_temp.id('u1')), 'ok');
+select pg_temp.check('avg string "12" -> R-VAL-M02', pg_temp.try(pg_temp.fresh('{"avg_price":"12"}'), '{}', pg_temp.id('u1')), '22023|[R-VAL-M02]');
+select pg_temp.check('avg 0 -> R-VAL-M02', pg_temp.try(pg_temp.fresh('{"avg_price":0}'), '{}', pg_temp.id('u1')), '22023|[R-VAL-M02]');
+select pg_temp.check('avg -5 -> R-VAL-M02', pg_temp.try(pg_temp.fresh('{"avg_price":-5}'), '{}', pg_temp.id('u1')), '22023|[R-VAL-M02]');
+select pg_temp.check('avg null -> R-VAL-M02', pg_temp.try(pg_temp.fresh('{"avg_price":null}'), '{}', pg_temp.id('u1')), '22023|[R-VAL-M02]');
+select pg_temp.check('qty string "3" -> R-VAL-M03', pg_temp.try(pg_temp.fresh('{"qty":"3"}'), '{}', pg_temp.id('u1')), '22023|[R-VAL-M03] qty must be a finite number');
+select pg_temp.check('qty non-numeric string "abc" -> R-VAL-M03 (no cast error)', pg_temp.try(pg_temp.fresh('{"qty":"abc"}'), '{}', pg_temp.id('u1')), '22023|[R-VAL-M03] qty must be a finite number');
+select pg_temp.check('qty null -> R-VAL-M03', pg_temp.try(pg_temp.fresh('{"qty":null}'), '{}', pg_temp.id('u1')), '22023|[R-VAL-M03]');
+select pg_temp.check('qty 0 -> R-VAL-P04', pg_temp.try(pg_temp.fresh('{"qty":0}'), '{}', pg_temp.id('u1')), '22023|[R-VAL-P04] qty must be greater than 0');
+select pg_temp.check('qty -2 -> R-VAL-P04', pg_temp.try(pg_temp.fresh('{"qty":-2}'), '{}', pg_temp.id('u1')), '22023|[R-VAL-P04]');
+select pg_temp.check('qty 2.5 on stock -> R-VAL-M03 (unit, existing check)', pg_temp.try(pg_temp.mkprop('set_qty_avg', pg_temp.id('p_900001'), null, '{"qty":2.5}'), '{}', pg_temp.id('u1')), '22023|[R-VAL-M03]');
+select pg_temp.check('qty 2.555 on cash -> R-VAL-M03 (existing Q-31)', pg_temp.try(pg_temp.fresh('{"qty":2.555}'), '{}', pg_temp.id('u1')), '22023|[R-VAL-M03]');
+select pg_temp.check('set_qty_avg with neither value -> R-VAL-P07', pg_temp.try(pg_temp.fresh('{}'), '{}', pg_temp.id('u1')), '22023|[R-VAL-P07] set_qty_avg needs');
+select pg_temp.check('open_holding missing avg_price -> R-VAL-P04', pg_temp.try(pg_temp.fresh('{"qty":3,"currency":"KRW"}', 'open_holding'), '{}', pg_temp.id('u1')), '22023|[R-VAL-P04] open_holding needs');
+select pg_temp.check('open_holding w/o position, no currency -> R-VAL-M01', pg_temp.try(pg_temp.mkprop('open_holding', null, pg_temp.id('i_900007'), '{"qty":3,"avg_price":10}'), '{}', pg_temp.id('u1')), '22023|[R-VAL-M01] currency is required');
+select pg_temp.check('currency EUR (open_holding on new instrument) -> R-VAL-M01',
+  pg_temp.try(pg_temp.mkprop('open_holding', null, pg_temp.id('i_900002'), '{"qty":3,"avg_price":10,"currency":"EUR"}'), '{}', pg_temp.id('u1')), '22023|[R-VAL-M01]');
+select pg_temp.check('currency lowercase usd -> R-VAL-M01',
+  pg_temp.try(pg_temp.mkprop('open_holding', null, pg_temp.id('i_900002'), '{"qty":3,"avg_price":10,"currency":"usd"}'), '{}', pg_temp.id('u1')), '22023|[R-VAL-M01]');
+select pg_temp.check('currency number -> R-VAL-M01',
+  pg_temp.try(pg_temp.mkprop('open_holding', null, pg_temp.id('i_900002'), '{"qty":3,"avg_price":10,"currency":1}'), '{}', pg_temp.id('u1')), '22023|[R-VAL-M01]');
+select pg_temp.check('direct-write override key still R-PERM-13', pg_temp.try(pg_temp.fresh('{"qty":14}'), '{"trigger_price":1}', pg_temp.id('u1')), '22023|[R-PERM-13]');
+select pg_temp.check('unknown override key -> R-PERM-13', pg_temp.try(pg_temp.fresh('{"qty":14}'), '{"memo":"x"}', pg_temp.id('u1')), '22023|[R-PERM-13]');
+select pg_temp.fresh('{"avg_price":2.00005}') as p \gset bad_
+select pg_temp.check('bad values: rejected', pg_temp.try(:'bad_p'::uuid, '{}', pg_temp.id('u1')), '22023|[R-FMT-13]');
+select pg_temp.check('bad values: proposal still pending (no partial write)', pg_temp.status_of(:'bad_p'::uuid), 'pending');
+select pg_temp.check('bad values: audit row absent', (select count(*)::text from public.mcp_audit_log where tool = 'proposal.approve' and affected_ids::text like '%' || :'bad_p' || '%'), '0');
+
+-- ───────── 5. 순서(L-2): 만료·superseded·버전 충돌이 재검사보다 먼저 ─────────
+select pg_temp.mkprop('set_qty_avg', pg_temp.id('p_900006'), null, '{"avg_price":1.00005}', 'pending', '-1 hour') as p \gset e_
+select pg_temp.check('expired + invalid values -> returns expired row (no value error)', pg_temp.try(:'e_p'::uuid, '{}', pg_temp.id('u1')), 'ok');
+select pg_temp.check('expired + invalid: status flipped to expired', pg_temp.status_of(:'e_p'::uuid), 'expired');
+select pg_temp.mkprop('set_qty_avg', pg_temp.id('p_900006'), null, '{"avg_price":1.00005}', 'superseded') as p \gset sp_
+select pg_temp.check('superseded + invalid -> P0001 already superseded', pg_temp.try(:'sp_p'::uuid, '{}', pg_temp.id('u1')), 'P0001|proposal is already superseded');
+select pg_temp.mkprop('set_qty_avg', pg_temp.id('p_900006'), null, '{"avg_price":1.00005}', 'pending', '7 days', 99) as p \gset c_
+select pg_temp.check('version conflict + invalid values -> conflict row, not value error', pg_temp.try(:'c_p'::uuid, '{}', pg_temp.id('u1')), 'ok');
+select pg_temp.check('version conflict: status conflict', pg_temp.status_of(:'c_p'::uuid), 'conflict');
+select pg_temp.mkprop('set_qty_avg', pg_temp.id('p_900002'), null, '{"qty":3}', 'pending', '7 days', 99) as p \gset c2_
+select pg_temp.check('archived position beats version conflict (blocked, not flipped to conflict)', pg_temp.try(:'c2_p'::uuid, '{}', pg_temp.id('u1')), 'MW001|');
+select pg_temp.check('archived beats conflict: still pending', pg_temp.status_of(:'c2_p'::uuid), 'pending');
+\endif
+
+-- ───────── 결과 ─────────
+\echo ---- summary ----
+select 'passed=' || count(*) filter (where ok) || ' failed=' || count(*) filter (where not ok) from results;
+rollback;
