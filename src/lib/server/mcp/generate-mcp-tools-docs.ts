@@ -13,6 +13,7 @@ import { z } from 'zod';
 import {
 	ALL_MCP_TOOL_NAMES,
 	EVENT_WRITE_SENTINEL,
+	FEED_TOOLS,
 	PROPOSAL_TOOLS,
 	REPORT_KIND_TO_SCOPE,
 	REPORT_WRITE_SCOPE_LIST,
@@ -62,14 +63,16 @@ const TOOL_MODULE_FILES = [
 	'principles.ts',
 	'reports.ts',
 	'journal.ts',
-	'market.ts'
+	'market.ts',
+	'feed.ts'
 ] as const;
 
 export type CapturedTool = {
 	name: string;
 	title: string;
 	description: string;
-	inputSchema: Record<string, z.ZodType>;
+	/** Raw shape, or a strict object when the tool sets `strictInput`. */
+	inputSchema: Record<string, z.ZodType> | z.ZodObject;
 	outputSchema?: Record<string, z.ZodType>;
 	annotations?: AuditedToolDefinition['annotations'];
 };
@@ -124,7 +127,7 @@ export function collectRegisteredTools(): CapturedTool[] {
 			config: {
 				title?: string;
 				description?: string;
-				inputSchema?: Record<string, z.ZodType>;
+				inputSchema?: Record<string, z.ZodType> | z.ZodObject;
 				outputSchema?: Record<string, z.ZodType>;
 				annotations?: AuditedToolDefinition['annotations'];
 			}
@@ -152,8 +155,11 @@ export function collectRegisteredTools(): CapturedTool[] {
 	return captured;
 }
 
-function shapeToJsonSchema(shape: Record<string, z.ZodType>): Record<string, unknown> {
-	const schema = z.toJSONSchema(z.object(shape), { target: 'draft-7' }) as Record<string, unknown>;
+function shapeToJsonSchema(
+	shape: Record<string, z.ZodType> | z.ZodObject
+): Record<string, unknown> {
+	const obj = shape instanceof z.ZodObject ? shape : z.object(shape);
+	const schema = z.toJSONSchema(obj, { target: 'draft-7' }) as Record<string, unknown>;
 	// Drop $schema noise for readable committed docs.
 	const rest = { ...schema };
 	delete rest.$schema;
@@ -292,6 +298,12 @@ function renderOperatorGuide(): string {
 		`- Tool → required scope: \`TOOL_REQUIRED_SCOPE\` in \`scopes.ts\` (sentinels \`${REPORT_WRITE_SENTINEL}\` / \`${EVENT_WRITE_SENTINEL}\` mean any-of write scopes).`,
 		'- `import:all` unlocks non-proposal tools (`importAllUnlocksTool`); proposal tools stay finance-manager propose scopes only:',
 		`  ${[...PROPOSAL_TOOLS]
+			.sort()
+			.map((t) => `\`${t}\``)
+			.join(', ')}`,
+		`- \`import:all\` also does not unlock the daily feed (\`FEED_TOOLS\`, scope \`market:feed\` only): ${[
+			...FEED_TOOLS
+		]
 			.sort()
 			.map((t) => `\`${t}\``)
 			.join(', ')}`,

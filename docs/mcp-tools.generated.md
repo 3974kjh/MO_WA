@@ -77,6 +77,7 @@ Notable gate rule IDs from `errors.ts` / `tool-gate.ts` / `scopes.ts`:
 - Tool → required scope: `TOOL_REQUIRED_SCOPE` in `scopes.ts` (sentinels `reports:*` / `events:*` mean any-of write scopes).
 - `import:all` unlocks non-proposal tools (`importAllUnlocksTool`); proposal tools stay finance-manager propose scopes only:
   `cancel_principle_proposal`, `cancel_proposal`, `list_principle_proposals`, `propose_position_change`, `propose_principle_change`
+- `import:all` also does not unlock the daily feed (`FEED_TOOLS`, scope `market:feed` only): `submit_daily_market_feed`
 - Report kind → write scope (`REPORT_KIND_TO_SCOPE`):
 
   - `daily_brief` → `reports:daily_brief`
@@ -91,7 +92,7 @@ Notable gate rule IDs from `errors.ts` / `tool-gate.ts` / `scopes.ts`:
 
 ## Tools
 
-Registered tools: **31** (must match `ALL_MCP_TOOL_NAMES`).
+Registered tools: **32** (must match `ALL_MCP_TOOL_NAMES`).
 
 ### `add_journal_entry`
 
@@ -1390,6 +1391,256 @@ id로 리포트 1건을 조회한다. include_body=false면 본문을 제외한�
 #### Notable rule IDs (from description + implementing module)
 
 `R-PERM-13`, `R-SYS-01`
+
+### `submit_daily_market_feed`
+
+- **Title:** Submit daily market feed
+- **Source:** `src/lib/server/mcp/tools/feed.ts`
+- **Required scope:** `market:feed`
+- **Annotations:** idempotentHint=true, destructiveHint=false
+
+일일 시세 피드 1건(scope market:feed 전용). dry_run 필수: true면 검증과 바뀔 내용만 돌려주고 쓰지 않는다. 서버 게이트(R-FEED-01~14): strict 입력·ISO 날짜, feed_date=오늘/어제(KST)·주말 거부, 시장별 기대 as_of와 휴장 달력(KRX·NYSE·SIFMA), 허용 8종목·기대 종목 중 최대 1개 결측, 급변(KRX ±30%·미국 ±50%)·등락률 교차 확인 0.3%p, 지표 범위·usdkrw 서울 15:30·전일 ±25원, 수급 5종목(주 단위, 기존 가격 행의 수급 칸만), 정정은 직전 거래일·feed_date당 1회, source=fm:daily-feed 고정, 삭제 없음. 거부가 하나라도 있으면 아무것도 쓰지 않는다(live는 VALIDATION). 소유자는 키에서만 정한다(R-PERM-03).
+
+#### Input JSON Schema
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "feed_date": {
+      "type": "string",
+      "maxLength": 10
+    },
+    "feed_id": {
+      "type": "string",
+      "maxLength": 16,
+      "pattern": "^fm-\\d{8}-[1-9]$"
+    },
+    "dry_run": {
+      "type": "boolean"
+    },
+    "prices": {
+      "maxItems": 20,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12,
+            "pattern": "^[A-Z0-9]{1,12}$"
+          },
+          "as_of": {
+            "type": "string",
+            "maxLength": 10
+          },
+          "close": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1000000000000
+          },
+          "change_pct": {
+            "type": "number",
+            "minimum": -35,
+            "maximum": 35
+          }
+        },
+        "required": [
+          "ticker",
+          "as_of",
+          "close",
+          "change_pct"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "indicators": {
+      "maxItems": 10,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "kospi",
+              "kosdaq",
+              "usdkrw",
+              "ust10y",
+              "vix"
+            ]
+          },
+          "as_of": {
+            "type": "string",
+            "maxLength": 10
+          },
+          "value": {
+            "type": "number",
+            "minimum": -1000000,
+            "maximum": 1000000
+          },
+          "change_pct": {
+            "type": "number",
+            "minimum": -35,
+            "maximum": 35
+          },
+          "basis": {
+            "type": "string",
+            "const": "seoul_1530"
+          }
+        },
+        "required": [
+          "key",
+          "as_of",
+          "value"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "flows": {
+      "maxItems": 20,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12,
+            "pattern": "^[A-Z0-9]{1,12}$"
+          },
+          "base_date": {
+            "type": "string",
+            "maxLength": 10
+          },
+          "foreign_shares": {
+            "type": "integer",
+            "minimum": -1000000000,
+            "maximum": 1000000000
+          },
+          "inst_shares": {
+            "type": "integer",
+            "minimum": -1000000000,
+            "maximum": 1000000000
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "provisional"
+            ]
+          },
+          "src": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32,
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          }
+        },
+        "required": [
+          "ticker",
+          "base_date",
+          "foreign_shares",
+          "inst_shares",
+          "status",
+          "src"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "corrections": {
+      "maxItems": 20,
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "ticker": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 12,
+                "pattern": "^[A-Z0-9]{1,12}$"
+              },
+              "as_of": {
+                "type": "string",
+                "maxLength": 10
+              },
+              "close": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000000000
+              },
+              "change_pct": {
+                "type": "number",
+                "minimum": -35,
+                "maximum": 35
+              }
+            },
+            "required": [
+              "ticker",
+              "as_of",
+              "close",
+              "change_pct"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "enum": [
+                  "kospi",
+                  "kosdaq",
+                  "usdkrw",
+                  "ust10y",
+                  "vix"
+                ]
+              },
+              "as_of": {
+                "type": "string",
+                "maxLength": 10
+              },
+              "value": {
+                "type": "number",
+                "minimum": -1000000,
+                "maximum": 1000000
+              },
+              "change_pct": {
+                "type": "number",
+                "minimum": -35,
+                "maximum": 35
+              },
+              "basis": {
+                "type": "string",
+                "const": "seoul_1530"
+              }
+            },
+            "required": [
+              "key",
+              "as_of",
+              "value"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "feed_date",
+    "feed_id",
+    "dry_run"
+  ],
+  "additionalProperties": false
+}
+```
+
+#### Notable rule IDs (from description + implementing module)
+
+`R-FEED-01`, `R-FEED-02`, `R-FEED-03`, `R-FEED-04`, `R-FEED-05`, `R-FEED-06`, `R-FEED-07`, `R-FEED-08`, `R-FEED-09`, `R-FEED-10`, `R-FEED-11`, `R-FEED-12`, `R-FEED-13`, `R-FEED-14`, `R-FEED-20`, `R-FEED-21`, `R-FEED-22`, `R-FEED-23`, `R-FEED-24`, `R-FEED-30`, `R-PERM-03`
 
 ### `update_journal_entry`
 

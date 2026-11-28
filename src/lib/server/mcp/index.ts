@@ -5,6 +5,7 @@ export {
 	assertReportKindScope,
 	assertToolScope,
 	EVENT_WRITE_SENTINEL,
+	FEED_TOOLS,
 	filterToolsByScopes,
 	hasReportWriteScope,
 	hasScope,

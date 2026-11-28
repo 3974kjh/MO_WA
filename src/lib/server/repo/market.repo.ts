@@ -245,3 +245,170 @@ export async function upsertMarketIndicators(
 	});
 	return { count: payload.length, error: (error as Error | null) ?? null };
 }
+
+/* ------------------------------------------------------------------------------------------
+ * Daily market feed (mcp-feed-design §3-4). All reads owner-filtered (fromRepo forces it too);
+ * writes never delete. price_snapshots' unique key has no owner_id, so writes are
+ * update-by-id (owner-filtered) + batch insert, never upsert.
+ * ---------------------------------------------------------------------------------------- */
+
+export type FeedPriceRow = {
+	id: number;
+	instrument_id: string;
+	as_of: string;
+	close: number;
+	change_pct: number | null;
+	currency: string;
+	source: string | null;
+	extra: Record<string, unknown>;
+	foreign_net_buy: number | null;
+	inst_net_buy: number | null;
+};
+
+export type FeedIndicatorRow = {
+	key: string;
+	as_of: string;
+	value: number;
+	change_pct: number | null;
+	source: string | null;
+};
+
+function numOrNull(v: unknown): number | null {
+	if (v === null || v === undefined || v === '') return null;
+	const n = Number(v);
+	return Number.isFinite(n) ? n : null;
+}
+
+function plainObject(v: unknown): Record<string, unknown> {
+	return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
+/** Owner's price rows for `instrumentIds` with from ≤ as_of ≤ to (ascending as_of). */
+export async function listFeedPriceWindow(
+	repo: RepoClient,
+	instrumentIds: readonly string[],
+	from: string,
+	to: string
+): Promise<{ data: FeedPriceRow[]; error: Error | null }> {
+	if (instrumentIds.length === 0) return { data: [], error: null };
+	const ownerId = requireOwnerId(repo);
+	let q = fromRepo(repo, 'price_snapshots')
+		.select(
+			'id, instrument_id, as_of, close, change_pct, currency, source, extra, foreign_net_buy, inst_net_buy'
+		)
+		.in('instrument_id', [...instrumentIds])
+		.gte('as_of', from)
+		.lte('as_of', to)
+		.order('as_of', { ascending: true });
+	q = withOwnerFilter(q, ownerId);
+	const { data, error } = await q;
+	if (error) return { data: [], error: error as Error };
+	const rows = ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+		id: Number(r.id),
+		instrument_id: String(r.instrument_id),
+		as_of: String(r.as_of),
+		close: Number(r.close),
+		change_pct: numOrNull(r.change_pct),
+		currency: String(r.currency),
+		source: typeof r.source === 'string' ? r.source : null,
+		extra: plainObject(r.extra),
+		foreign_net_buy: numOrNull(r.foreign_net_buy),
+		inst_net_buy: numOrNull(r.inst_net_buy)
+	}));
+	return { data: rows, error: null };
+}
+
+/** Owner's indicator rows for `keys` with from ≤ as_of ≤ to (ascending as_of). */
+export async function listFeedIndicatorWindow(
+	repo: RepoClient,
+	keys: readonly string[],
+	from: string,
+	to: string
+): Promise<{ data: FeedIndicatorRow[]; error: Error | null }> {
+	if (keys.length === 0) return { data: [], error: null };
+	const ownerId = requireOwnerId(repo);
+	let q = fromRepo(repo, 'market_indicators')
+		.select('key, as_of, value, change_pct, source')
+		.in('key', [...keys])
+		.gte('as_of', from)
+		.lte('as_of', to)
+		.order('as_of', { ascending: true });
+	q = withOwnerFilter(q, ownerId);
+	const { data, error } = await q;
+	if (error) return { data: [], error: error as Error };
+	const rows = ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+		key: String(r.key),
+		as_of: String(r.as_of),
+		value: Number(r.value),
+		change_pct: numOrNull(r.change_pct),
+		source: typeof r.source === 'string' ? r.source : null
+	}));
+	return { data: rows, error: null };
+}
+
+export type FeedPriceInsert = {
+	instrument_id: string;
+	as_of: string;
+	close: number;
+	change_pct: number;
+	currency: 'KRW' | 'USD';
+	source: string;
+	extra: Record<string, unknown>;
+	foreign_net_buy?: number;
+	inst_net_buy?: number;
+};
+
+/** Columns the feed may change on an existing price row (never owner/instrument/as_of/id). */
+export type FeedPricePatch = Partial<
+	Pick<
+		FeedPriceInsert,
+		'close' | 'change_pct' | 'currency' | 'source' | 'extra' | 'foreign_net_buy' | 'inst_net_buy'
+	>
+>;
+
+const FEED_PRICE_PATCH_KEYS = [
+	'close',
+	'change_pct',
+	'currency',
+	'source',
+	'extra',
+	'foreign_net_buy',
+	'inst_net_buy'
+] as const;
+
+export async function insertFeedPriceRows(
+	repo: RepoClient,
+	rows: readonly FeedPriceInsert[]
+): Promise<{ ids: number[]; error: Error | null }> {
+	if (rows.length === 0) return { ids: [], error: null };
+	const stamps = serverCreateStamps(repo.actor);
+	const payload = rows.map((r) => ({ ...r, ...stamps }));
+	const { data, error } = await fromRepo(repo, 'price_snapshots').insert(payload).select('id');
+	if (error) return { ids: [], error: error as Error };
+	return { ids: ((data ?? []) as Array<{ id: number }>).map((r) => Number(r.id)), error: null };
+}
+
+/** Update one owner price row by id; errors unless exactly one row matched. */
+export async function updateFeedPriceRow(
+	repo: RepoClient,
+	id: number,
+	patch: FeedPricePatch
+): Promise<{ error: Error | null }> {
+	const ownerId = requireOwnerId(repo);
+	const stamps = serverCreateStamps(repo.actor);
+	const safe: Record<string, unknown> = {};
+	for (const k of FEED_PRICE_PATCH_KEYS) {
+		if (patch[k] !== undefined) safe[k] = patch[k];
+	}
+	if (Object.keys(safe).length === 0) return { error: null };
+	let q = fromRepo(repo, 'price_snapshots')
+		.update({ ...safe, source_bot_id: stamps.source_bot_id })
+		.eq('id', id);
+	q = withOwnerFilter(q, ownerId);
+	const { data, error } = await q.select('id');
+	if (error) return { error: error as Error };
+	if (!Array.isArray(data) || data.length !== 1) {
+		return { error: new Error(`price row ${id} not updated (owner mismatch or missing)`) };
+	}
+	return { error: null };
+}

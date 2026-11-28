@@ -68,6 +68,24 @@ describe('scope-filtered tools/list', () => {
 		expect(listed).not.toContain('propose_principle_change');
 		expect(listed).not.toContain('cancel_principle_proposal');
 		expect(listed).not.toContain('list_principle_proposals');
+		expect(listed).not.toContain('submit_daily_market_feed');
+	});
+
+	it('market:feed lists exactly the daily feed tool; no other scope unlocks it', () => {
+		expect(toolsForContext({ scopes: ['market:feed'] })).toEqual(['submit_daily_market_feed']);
+		expect(TOOL_REQUIRED_SCOPE.submit_daily_market_feed).toBe('market:feed');
+		const allButFeed = [
+			'read',
+			'prices:write',
+			'indicators:write',
+			'import:all',
+			'instruments:write',
+			'portfolio:snapshot'
+		];
+		expect(toolsForContext({ scopes: allButFeed })).not.toContain('submit_daily_market_feed');
+		expect(assertToolScope({ scopes: ['market:feed'] }, 'record_price_snapshots')).not.toBeNull();
+		expect(assertToolScope({ scopes: ['market:feed'] }, 'record_market_indicators')).not.toBeNull();
+		expect(assertToolScope({ scopes: ['import:all'] }, 'submit_daily_market_feed')).not.toBeNull();
 	});
 
 	it('principles:propose lists exactly the three BE-17 tools (no approve/reject/hold)', () => {

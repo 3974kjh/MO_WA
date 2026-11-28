@@ -37,4 +37,10 @@ describe('botProfiles (BE-12 / design §5-2)', () => {
 		expect(isBotProfile('Finance-Manager')).toBe(false);
 		expect(isBotProfile('other')).toBe(false);
 	});
+
+	it('no default profile includes market:feed (granted explicitly at key issue only)', () => {
+		for (const scopes of Object.values(DEFAULT_SCOPES_BY_PROFILE)) {
+			expect(scopes).not.toContain('market:feed');
+		}
+	});
 });

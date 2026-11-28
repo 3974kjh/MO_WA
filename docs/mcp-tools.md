@@ -169,12 +169,22 @@ ID 형식: `R-<영역>-<번호>` (예: `R-VAL-R12`, `R-PERM-04`, `R-SYS-05`).
 | `record_price_snapshots` | `prices:write` | — | TBD |
 | `record_portfolio_snapshot` | `portfolio:snapshot` | — | TBD |
 | `record_market_indicators` | `indicators:write` | — | TBD |
+| `submit_daily_market_feed` | `market:feed` (전용, `import:all`로 안 열림) | 일일 시세 피드 | `docs/mcp-tools.generated.md` |
 | `upsert_decision` | `decisions:write` | — | TBD |
 | `archive_decision` | `decisions:write` | — | TBD |
 | `upsert_event` | `events:*` (any of `events:stock`/`macro`/`realestate`) | — | TBD |
 | `archive_event` | `events:*` (any of `events:stock`/`macro`/`realestate`) | — | TBD |
 
-`import:all`로 열리지 **않는** 제안 큐 툴(`PROPOSAL_TOOLS`): `propose_position_change`, `cancel_proposal`, `propose_principle_change`, `cancel_principle_proposal`, `list_principle_proposals`. 그 외 등록 툴은 `import:all`이 필요 스코프를 대신할 수 있다.
+`import:all`로 열리지 **않는** 제안 큐 툴(`PROPOSAL_TOOLS`): `propose_position_change`, `cancel_proposal`, `propose_principle_change`, `cancel_principle_proposal`, `list_principle_proposals`. 일일 시세 피드 `submit_daily_market_feed`(`FEED_TOOLS`)도 `import:all`로 열리지 않는다. 그 외 등록 툴은 `import:all`이 필요 스코프를 대신할 수 있다.
+
+### `submit_daily_market_feed`
+
+- 스코프: `market:feed`만. 기본 프로필 어디에도 없다 — 피드 키는 scopes `["market:feed"]` 하나로 발급한다.
+- 설명: finance-manager-boot가 평일 브리핑 직후 하루치 종가·지표·수급을 보낸다. `dry_run`(필수)이 `true`면 검증과 바뀔 내용(`would_insert`/`would_update`/`unchanged`/`rejected`/`warnings`)만 돌려주고 아무것도 쓰지 않는다. `false`면 거부가 0건일 때만 쓰고, 하나라도 있으면 `VALIDATION`으로 거절하며 아무것도 쓰지 않는다.
+- 서버 게이트(`R-FEED-01`~`R-FEED-14`): strict 입력(모르는 키 거부)·ISO 실제 날짜, `feed_date`=오늘/어제(KST)·주말 거부, 시장별 기대 `as_of`(KR=feed_date, 미국·vix=직전 NYSE 거래일, ust10y=직전 SIFMA 거래일)와 휴장 달력(`marketCalendar.ts`, 2026–2027, 범위 밖은 dry_run만), 허용 8종목·기대 종목 중 최대 1개 결측, 직전 종가 대비 KRX ±30%·미국 ±50%, 직전 거래일 행이 있으면 등락률 0.3%p 교차 확인, 지표 범위(usdkrw는 `basis:"seoul_1530"` 필수·전일 ±25원), 수급 5종목(단위 주, 기존 가격 행의 수급 칸만, 확정→잠정 덮어쓰기 거부), 기존 행 source가 `notion:daily-brief`/`fm:daily-feed`일 때만 덮어씀, 정정은 직전 거래일 행만·feed_date당 1회(이전 값은 `extra.prev`), 같은 `feed_id`+다른 값 거부.
+- 서버가 정하는 값: owner(키), `instrument_id`, `currency`, `source='fm:daily-feed'`, `extra`, `source_bot_id`(트리거). 삭제 기능 없음.
+- 감사: `mcp_audit_log.warnings`에 `R-FEED-30` 요약(dry_run 여부·건수)을 남긴다(응답에는 안 나옴).
+- 입력·출력 스키마: `docs/mcp-tools.generated.md`.
 
 각 툴 절은 스키마를 채울 때 다음 형식으로 적는다.
 

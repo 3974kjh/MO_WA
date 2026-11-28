@@ -1,5 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { z } from 'zod';
+import { z } from 'zod';
 import type { RepoClient } from '$lib/server/repo';
 import type { AuditRecorder } from '../audit';
 import { runAuditedToolCall, type AuditedToolHandler } from '../tool-gate';
@@ -33,6 +33,8 @@ export type ToolHandlerOutcome = {
 	warnings?: McpRuleIssue[];
 	affectedIds?: McpAffectedId[];
 	ruleIds?: string[];
+	/** Audit-only notes (mcp_audit_log.warnings); not part of the tool response. */
+	auditNotes?: McpRuleIssue[];
 };
 
 export type ToolHandler = (input: ToolHandlerInput) => Promise<ToolHandlerOutcome>;
@@ -42,6 +44,11 @@ export type AuditedToolDefinition = {
 	title: string;
 	description: string;
 	inputSchema: Record<string, z.ZodType>;
+	/**
+	 * Reject unknown top-level keys at the SDK boundary (`z.strictObject(inputSchema)`).
+	 * Default (false) keeps the SDK's raw-shape behaviour (unknown keys stripped).
+	 */
+	strictInput?: boolean;
 	outputSchema?: Record<string, z.ZodType>;
 	annotations?: {
 		readOnlyHint?: boolean;
@@ -72,7 +79,7 @@ export function registerAuditedTool(
 		{
 			title: def.title,
 			description: def.description,
-			inputSchema: def.inputSchema,
+			inputSchema: def.strictInput ? z.strictObject(def.inputSchema) : def.inputSchema,
 			...(def.outputSchema ? { outputSchema: def.outputSchema } : {}),
 			...(def.annotations ? { annotations: def.annotations } : {})
 		},

@@ -1,5 +1,6 @@
 import type { McpContext } from '../types';
 import { ALL_MCP_TOOL_NAMES, filterToolsByScopes } from '../scopes';
+import { registerFeedTools } from './feed';
 import { registerJournalTools } from './journal';
 import { registerMarketTools } from './market';
 import { registerPortfolioTools } from './portfolio';
@@ -31,4 +32,5 @@ export function registerAllMcpTools(reg: ToolRegistrationContext): void {
 	registerReportsTools(reg);
 	registerJournalTools(reg);
 	registerMarketTools(reg);
+	registerFeedTools(reg);
 }

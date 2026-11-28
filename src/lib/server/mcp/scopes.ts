@@ -53,6 +53,7 @@ export const TOOL_REQUIRED_SCOPE: Readonly<Record<string, string>> = {
 	record_price_snapshots: 'prices:write',
 	record_portfolio_snapshot: 'portfolio:snapshot',
 	record_market_indicators: 'indicators:write',
+	submit_daily_market_feed: 'market:feed',
 	upsert_decision: 'decisions:write',
 	archive_decision: 'decisions:write',
 	upsert_event: EVENT_WRITE_SENTINEL,
@@ -111,6 +112,12 @@ export const PROPOSAL_TOOLS = new Set([
 	'list_principle_proposals'
 ]);
 
+/**
+ * Daily market feed tool (mcp-feed-design §2 / §3-1). Opened only by `market:feed`;
+ * `import:all` must NOT unlock it (feed gates assume a dedicated, narrow key).
+ */
+export const FEED_TOOLS = new Set(['submit_daily_market_feed']);
+
 /** @deprecated alias — prefer PROPOSAL_TOOLS (principles subset of proposal tools). */
 export const PRINCIPLES_WRITE_TOOLS = new Set([
 	'propose_principle_change',
@@ -128,10 +135,10 @@ export function hasScope(ctx: Pick<McpContext, 'scopes'>, scope: string): boolea
 
 /**
  * Whether `import:all` may unlock this tool (I-7 migration via existing write tools).
- * Not a wildcard: proposal tools (positions + principles) stay excluded.
+ * Not a wildcard: proposal tools (positions + principles) and the daily feed stay excluded.
  */
 export function importAllUnlocksTool(tool: string): boolean {
-	return !PROPOSAL_TOOLS.has(tool);
+	return !PROPOSAL_TOOLS.has(tool) && !FEED_TOOLS.has(tool);
 }
 
 /** Scopes that allow at least one report kind write (principles are never writable). */

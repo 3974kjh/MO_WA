@@ -36,6 +36,8 @@ export type AuditedToolHandler = (input: {
 	warnings?: McpRuleIssue[];
 	affectedIds?: McpAffectedId[];
 	ruleIds?: string[];
+	/** Recorded in mcp_audit_log.warnings only — never returned to the caller (e.g. feed summary). */
+	auditNotes?: McpRuleIssue[];
 }>;
 
 function collectWarnings(data: Record<string, unknown>, explicit?: McpRuleIssue[]): McpRuleIssue[] {
@@ -85,6 +87,7 @@ export async function runAuditedToolCall(options: {
 	try {
 		const outcome = await handler({ args: sanitized.args, ctx, ruleIds: identityRuleIds });
 		const warnings = collectWarnings(outcome.data, outcome.warnings);
+		const auditNotes = (outcome.auditNotes ?? []).filter((w) => w && typeof w.rule === 'string');
 		const allRuleIds = unique([
 			...identityRuleIds,
 			...(outcome.ruleIds ?? []),
@@ -98,7 +101,7 @@ export async function runAuditedToolCall(options: {
 			args: sanitized.args,
 			result: 'ok',
 			ruleIds: allRuleIds,
-			warnings,
+			warnings: [...warnings, ...auditNotes],
 			affectedIds: outcome.affectedIds,
 			durationMs: Date.now() - startedAt,
 			ip: meta.ip,

@@ -18,6 +18,8 @@ export const FINANCE_MANAGER_ONLY_SCOPES = ['positions:propose', 'principles:pro
 
 /**
  * Default scopes by profile (design §5-2).
+ * `market:feed` (submit_daily_market_feed) is intentionally in no default: the daily-feed key is
+ * issued with scopes `["market:feed"]` only (mcp-feed-design §3-2).
  * finance-manager: includes reports:equity_analysis; no valuations:write / principles:write.
  */
 export const DEFAULT_SCOPES_BY_PROFILE: Readonly<Record<BotProfile, readonly string[]>> =
