@@ -48,7 +48,7 @@
 	/* 자리를 차지하지 않는 sticky 줄(높이 1px − 음수 여백 1px, 0이면 자동화 도구가 숨김으로 본다): 스크롤한 화면에서도 상단바 바로 아래에 패널이 보인다 */
 	.wrap {
 		position: sticky;
-		top: var(--size-topbar);
+		top: calc(var(--size-topbar) + var(--safe-top));
 		height: 1px;
 		margin-bottom: -1px;
 		display: flex;
@@ -56,6 +56,12 @@
 		justify-content: center;
 		pointer-events: none;
 		animation: nl-fade 200ms var(--ease-out) both;
+	}
+	/* 상단바(TopBar)와 같은 높이: 모바일은 52 + safe-top */
+	@media (max-width: 639px) {
+		.wrap {
+			top: calc(var(--size-topbar-m) + var(--safe-top));
+		}
 	}
 	.panel {
 		width: min(100%, 440px);
