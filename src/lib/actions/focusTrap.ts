@@ -1,9 +1,10 @@
+/** tabindex=-1 컨트롤(목차 점 roving)은 제외. 포함되면 last가 마지막 점이 되어 Tab이 시트를 나간다. */
 const FOCUSABLE =
-	'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+	'a[href]:not([tabindex="-1"]),button:not([disabled]):not([tabindex="-1"]),input:not([disabled]):not([tabindex="-1"]),select:not([disabled]):not([tabindex="-1"]),textarea:not([disabled]):not([tabindex="-1"]),[tabindex]:not([tabindex="-1"])';
 
 export function focusableIn(root: HTMLElement): HTMLElement[] {
 	return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-		(el) => !el.hasAttribute('inert') && el.getClientRects().length > 0
+		(el) => !el.hasAttribute('inert') && el.getClientRects().length > 0 && el.tabIndex >= 0
 	);
 }
 

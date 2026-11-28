@@ -8,6 +8,7 @@ import { page } from 'vitest/browser';
 import { flushSync } from 'svelte';
 import Harness from '../../../../tests/ui/SheetTocHarness.svelte';
 import { resetOpenSheets } from './sheetStack';
+import { focusableIn } from '$lib/actions/focusTrap';
 
 type Props = {
 	sections?: number;
@@ -461,5 +462,89 @@ describe('끌어 닫기 회귀 (합격 기준 9)', () => {
 		await openSheet({ sections: 3 }, [1280, 800]);
 		expect(getComputedStyle(q('.close')!).display).not.toBe('none');
 		expect(getComputedStyle(q('.grab')!).display).toBe('none');
+	});
+});
+
+describe('꼬리 없는 목차 시트의 포커스 트랩 (리뷰 M1)', () => {
+	async function openNoFoot(
+		props: Props = { sections: 3, foot: false, variant: 'full' },
+		vp: [number, number] = [1280, 800]
+	) {
+		await page.viewport(vp[0], vp[1]);
+		render(Harness, { props });
+		const opener = document.querySelector<HTMLElement>('[data-testid="sheet-opener"]')!;
+		opener.focus();
+		opener.click();
+		flushSync();
+		await expect.poll(() => !!document.querySelector('.sheet.open'), { timeout: 1500 }).toBe(true);
+		await tick(350);
+		await frame();
+		return opener;
+	}
+
+	function key(el: HTMLElement, k: string, shift = false) {
+		el.dispatchEvent(
+			new KeyboardEvent('keydown', { key: k, shiftKey: shift, bubbles: true, cancelable: true })
+		);
+		flushSync();
+	}
+
+	it('tabindex=-1 목차 점은 가둠 목록에서 빠지고, Tab/Shift+Tab이 시트 안에서만 순환한다', async () => {
+		await openNoFoot();
+		await expect.poll(() => dots().length).toBe(3);
+		expect(q('.sheet-foot')).toBeNull();
+		const hidden = dots().filter((d) => d.tabIndex < 0);
+		expect(hidden.length).toBe(2);
+		const items = focusableIn(sheet());
+		expect(items.length).toBeGreaterThanOrEqual(2);
+		expect(items.every((el) => el.tabIndex >= 0)).toBe(true);
+		expect(items.some((el) => hidden.includes(el))).toBe(false);
+		expect(items).toContain(dots().find((d) => d.tabIndex === 0)!);
+
+		const first = items[0];
+		const last = items[items.length - 1];
+		last.focus();
+		key(last, 'Tab');
+		expect(document.activeElement).toBe(first);
+		expect(sheet().contains(document.activeElement)).toBe(true);
+		key(first, 'Tab', true);
+		expect(document.activeElement).toBe(last);
+		expect(sheet().contains(document.activeElement)).toBe(true);
+
+		for (const el of items) {
+			el.focus();
+			key(el, 'Tab');
+			expect(sheet().contains(document.activeElement)).toBe(true);
+			el.focus();
+			key(el, 'Tab', true);
+			expect(sheet().contains(document.activeElement)).toBe(true);
+		}
+	});
+
+	it('열리면 포커스가 시트 안으로 들어가고, Esc는 여는 버튼으로 되돌린다', async () => {
+		const opener = await openNoFoot();
+		await expect.poll(() => sheet().contains(document.activeElement)).toBe(true);
+		expect(document.activeElement).not.toBe(body());
+		key(document.activeElement as HTMLElement, 'Escape');
+		await expect
+			.poll(() => document.querySelector('.sheet.open')?.hasAttribute('inert') ?? true)
+			.toBe(true);
+		expect(document.activeElement).toBe(opener);
+	});
+
+	it('꼬리 없는 bottom 시트(390)에서도 Tab이 마지막 실정지점에서 처음으로 돌아온다', async () => {
+		await openNoFoot({ sections: 3, foot: false, variant: 'bottom' }, [390, 844]);
+		await expect.poll(() => dots().length).toBe(3);
+		expect(q('.sheet-foot')).toBeNull();
+		const items = focusableIn(sheet());
+		expect(items.some((el) => el.tabIndex < 0)).toBe(false);
+		const first = items[0];
+		const last = items[items.length - 1];
+		last.focus();
+		key(last, 'Tab');
+		expect(document.activeElement).toBe(first);
+		expect(sheet().contains(document.activeElement)).toBe(true);
+		key(first, 'Tab', true);
+		expect(document.activeElement).toBe(last);
 	});
 });
