@@ -57,7 +57,7 @@ const ITEMS: LocatedItem[] = [
 
 type L = { t: unknown; n: string; f: () => void };
 
-function fakeSdk() {
+function fakeSdk(flags: { naverContainerStyle?: boolean } = {}) {
 	const ls: L[] = [];
 	const fire = (t: unknown, n: string) =>
 		ls.filter((l) => l.t === t && l.n === n).forEach((l) => l.f());
@@ -87,6 +87,8 @@ function fakeSdk() {
 			public el: HTMLElement,
 			opts: { zoom: number } & Record<string, unknown>
 		) {
+			// 네이버 SDK는 지도 컨테이너에 인라인 position:relative를 덮어쓴다
+			if (flags.naverContainerStyle) el.style.position = 'relative';
 			this.zoom = opts.zoom;
 			this.options = opts;
 			calls.maps++;
@@ -714,6 +716,51 @@ describe('ComplexMap 쌓임·한 마감', () => {
 		flushSync();
 		expect(root().dataset.state).toBe('timeout');
 		expect(Date.now() - t0).toBeLessThan(250);
+		r.unmount();
+	});
+});
+
+describe('ComplexMap 캔버스 크기', () => {
+	it('SDK가 컨테이너에 position:relative를 덮어써도, 높이 있는 부모 안에서 캔버스는 0이 아니다', async () => {
+		await page.viewport(1280, 800);
+		const sdk = fakeSdk({ naverContainerStyle: true });
+		const loader = fakeLoader(() => Promise.resolve(sdk.ns));
+		const r = render(ComplexMap, {
+			items: ITEMS,
+			keyId: KEY,
+			selectedId: null,
+			onselect: () => {},
+			loader,
+			observe: false
+		});
+		// 부모에 확정 높이(운영의 .rm-mapbox clamp/calc·모바일 fixed top/bottom과 같음)
+		r.container.style.cssText = 'width:960px;height:640px;position:relative;';
+		await tick();
+		sdk.fire(sdk.map(), 'tilesloaded');
+		flushSync();
+		await new Promise((res) => requestAnimationFrame(res));
+
+		const canvas = r.container.querySelector('.canvas') as HTMLElement;
+		const box = r.container.querySelector('.box') as HTMLElement;
+		expect(canvas).not.toBeNull();
+		// 실제 SDK와 같이 인라인 position이 relative로 덮였다
+		expect(canvas.style.position).toBe('relative');
+		const cs = getComputedStyle(canvas);
+		expect(cs.zIndex).toBe('0');
+		expect(cs.isolation).toBe('isolate');
+		const cr = canvas.getBoundingClientRect();
+		const br = box.getBoundingClientRect();
+		// 증명은: SDK가 position:relative를 인라인으로 덮어도, 높이 있는 부모
+		// (.rm-map → .box, 여기선 640px) 안에서 캔버스가 0으로 접히지 않는다.
+		// width/height:100%가 없으면 relative로 바뀐 뒤 높이가 0이 되어 타일·핀이 안 보인다.
+		expect(br.height).toBe(640);
+		expect(cr.height).toBeGreaterThan(100);
+		expect(cr.height).toBeCloseTo(br.height, 0);
+		expect(cr.width).toBeGreaterThan(100);
+		expect(cr.width).toBeCloseTo(br.width, 0);
+		expect(cs.height).not.toBe('0px');
+		expect(cs.height).not.toBe('auto');
+
 		r.unmount();
 	});
 });

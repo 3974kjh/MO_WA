@@ -929,6 +929,9 @@
 	.canvas {
 		position: absolute;
 		inset: 0;
+		/* SDK가 컨테이너에 인라인 position:relative를 덮어쓰면 inset만으로는 높이가 0이 된다 */
+		width: 100%;
+		height: 100%;
 		/* SDK 마커 zIndex(수백~수천)가 이 쌓임 맥락 안에만 있게 해서 PC 앵커 카드(.iw) 아래로 둔다 */
 		z-index: 0;
 		isolation: isolate;
