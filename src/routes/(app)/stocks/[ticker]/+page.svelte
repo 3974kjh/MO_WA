@@ -33,6 +33,7 @@
 		ALIGNMENT_LABEL,
 		analysisHref,
 		isStale,
+		latestBySlug,
 		LENS_LABEL,
 		marketLabel,
 		NO_BASIS,
@@ -53,17 +54,26 @@
 	let journalHref = $derived(
 		`${resolve('/journal')}?ticker=${encodeURIComponent(data.instrument.ticker)}`
 	);
-	type RelItem = { href: string; date: string; tag?: string; info?: boolean; title: string };
+	type RelItem = {
+		id: string;
+		href: string;
+		date: string;
+		tag?: string;
+		info?: boolean;
+		title: string;
+	};
 	// 관련 기록 세 묶음(분석 리포트 · 매매일지 · 브리핑 언급)을 같은 목록 모양으로
 	let relGroups = $derived.by(() => {
 		if (data.portfolioOnly) return [];
 		const t = data.instrument.ticker;
+		const reps = latestBySlug(full.reports);
 		return [
 			{
-				h: `분석 리포트 ${full.reports.length}`,
+				h: `분석 리포트 ${reps.length}`,
 				empty: '아직 분석 리포트가 없어요.',
-				items: full.reports.map(
+				items: reps.map(
 					(r): RelItem => ({
+						id: r.id,
 						href: analysisHref(r.slug, t),
 						date: r.report_date,
 						tag: reportKindLabel(r),
@@ -78,6 +88,7 @@
 				empty: '이 종목의 매매일지가 없어요.',
 				items: full.journal.items.map(
 					(j): RelItem => ({
+						id: j.id,
 						href: resolve('/(app)/journal/[id]', { id: j.id }),
 						date: j.entry_date,
 						tag: JOURNAL_TYPE_LABEL[j.kind as JournalType] ?? j.kind,
@@ -91,6 +102,7 @@
 				items: full.mentions.map((b): RelItem => {
 					const path = briefingDetailPath(b);
 					return {
+						id: b.id,
 						href: path ? resolve(path) : resolve('/briefings'),
 						date: b.report_date,
 						title: b.title
@@ -547,7 +559,7 @@
 		</h3>
 		{#if g.items.length}
 			<ul class="rel">
-				{#each g.items as x (x.href)}
+				{#each g.items as x (x.id)}
 					<li>
 						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- relGroups가 resolve·analysisHref로 만든 경로 -->
 						<a href={x.href}>

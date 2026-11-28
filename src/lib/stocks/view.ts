@@ -233,3 +233,12 @@ export function stockMemo(
 	}
 	return null;
 }
+
+/**
+ * 같은 slug 리포트는 report_date 최신 1건만(PM 결정 2026-11-28). 목록이 이미 최신순이라 첫 건을 남긴다.
+ * 같은 slug 두 건이 같은 링크·키가 되어 화면이 깨지는 것(each_key_duplicate)도 막는다.
+ */
+export function latestBySlug<T extends { slug: string }>(list: readonly T[]): T[] {
+	const seen = new Set<string>();
+	return list.filter((r) => !seen.has(r.slug) && (seen.add(r.slug), true));
+}

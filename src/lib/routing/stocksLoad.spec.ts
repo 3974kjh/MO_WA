@@ -176,6 +176,23 @@ describe('FE-11 /stocks/[ticker] 상세 load', () => {
 		expect(d.memo).toMatchObject({ reason: '검색 점유율' });
 		expect(JSON.stringify(d)).not.toContain('internal_note');
 	});
+	it('H1: 같은 slug 리포트가 날짜만 다르게 두 건이면 최신 1건만 넘긴다', async () => {
+		repoMock.getStockInstrument.mockResolvedValueOnce(ok({ ...INST, ticker: '005930' }));
+		const rep = (id: string, report_date: string) => ({
+			id,
+			slug: 'samsung-q4',
+			title: id,
+			subtype: 'equity_analysis',
+			status: 'published',
+			report_date,
+			tickers: ['005930']
+		});
+		repoMock.listEquityReports.mockResolvedValueOnce(
+			ok([rep('new', '2026-11-20'), rep('old', '2026-10-01')])
+		);
+		const d = await detail('005930');
+		expect((d.reports as Array<{ id: string }>).map((r) => r.id)).toEqual(['new']);
+	});
 	it('보유 종목은 평가금액(홈·포트폴리오와 같은 계산)', async () => {
 		repoMock.getStockInstrument.mockResolvedValueOnce(ok(INST));
 		repoMock.listStockPositions.mockResolvedValueOnce(

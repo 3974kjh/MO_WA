@@ -13,7 +13,7 @@ import {
 } from '$lib/server/repo';
 import { INFO_LOAD_ERROR, publicListError } from '$lib/server/web/listError';
 import { requireUser } from '$lib/server/web/requireUser';
-import { isStockAsset, isTickerParam, stockMemo } from '$lib/stocks/view';
+import { isStockAsset, isTickerParam, latestBySlug, stockMemo } from '$lib/stocks/view';
 
 /**
  * FE-11 `/stocks/[ticker]` 상세(표시 전용, 기록을 고치지 않음).
@@ -60,7 +60,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		positionsError: err('positions', pos.error),
 		series: series.data,
 		seriesError: err('series', series.error),
-		reports: reports.data.map(({ meta: _m, ...r }) => (void _m, r)),
+		reports: latestBySlug(reports.data).map(({ meta: _m, ...r }) => (void _m, r)),
 		memo: stockMemo(reports.data, instrument.ticker),
 		reportsError: err('reports', reports.error),
 		targets: targets.data,

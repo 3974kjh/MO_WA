@@ -147,6 +147,46 @@ describe('FE-11 종목 상세 화면', () => {
 		expect(q('.px')?.textContent).toContain('전일 대비');
 		r.unmount();
 	});
+	it('H1: 같은 slug 리포트 두 건·상세 경로 없는 브리핑 여러 건이어도 화면이 그려진다', () => {
+		const rep = (id: string, report_date: string) => ({
+			id,
+			slug: 'samsung-q4',
+			title: `삼성 4분기 ${id}`,
+			subtype: 'equity_analysis',
+			status: 'published',
+			report_date,
+			tickers: ['005930']
+		});
+		const r = render(Page, {
+			data: full({
+				instrument: { ...INST, ticker: '005930', name: '삼성전자' },
+				reports: [rep('new', '2026-11-20'), rep('old', '2026-10-01')],
+				// 주간 브리핑은 상세 경로가 없어 링크가 모두 /briefings — 키가 겹치면 안 된다
+				mentions: [
+					{
+						id: 'w1',
+						slug: 'weekly',
+						kind: 'weekly_brief',
+						report_date: '2026-11-22',
+						title: '주간 1'
+					},
+					{
+						id: 'w2',
+						slug: 'weekly',
+						kind: 'weekly_brief',
+						report_date: '2026-11-15',
+						title: '주간 2'
+					}
+				]
+			})
+		});
+		expect(text()).toContain('삼성 4분기 new');
+		expect(text()).not.toContain('삼성 4분기 old');
+		expect(text()).toContain('분석 리포트 1');
+		expect(text()).toContain('주간 1');
+		expect(text()).toContain('주간 2');
+		r.unmount();
+	});
 	it('리포트가 없으면 최신 리포트 버튼은 비활성 + 이유', () => {
 		const r = render(Page, { data: full({ reports: [] }) });
 		const off = q('[aria-disabled="true"]');
