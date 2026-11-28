@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import Page from './+page.svelte';
 
@@ -395,6 +396,44 @@ describe('홈 대시보드 렌더 (FE-03)', () => {
 		});
 		expect(container.querySelector('[data-testid="home-triggers"]')).toBeNull();
 		expect(text(container)).toContain('감시 중인 종목이 없어요');
+	});
+
+	it('≥640에서 지표·키워드를 접으면 높이가 줄고, 다시 누르면 펼쳐진다 (M1)', async () => {
+		await page.viewport(768, 1024);
+		const { container } = render(Page, {
+			data: {
+				...empty,
+				tickers: {
+					kospi: { key: 'kospi', value: 2500, change_pct: -1, as_of: '2026-11-20' },
+					kosdaq: { key: 'kosdaq', value: 800, change_pct: 1, as_of: '2026-11-20' },
+					usdkrw: { key: 'usdkrw', value: 1400, change_pct: 0, as_of: '2026-11-20' },
+					ust10y: { key: 'ust10y', value: 4.2, change_pct: null, as_of: '2026-11-20' }
+				},
+				recentBriefings: [
+					{
+						id: 'r1',
+						kind: 'daily_brief',
+						slug: 'daily',
+						headline: '금리 동결',
+						title: '데일리',
+						report_date: '2026-11-20',
+						tags: ['금리'],
+						kospi_change_pct: null
+					}
+				]
+			} as never
+		});
+		const details = container.querySelector<HTMLDetailsElement>('details.more')!;
+		await expect.poll(() => details.open && !details.hasAttribute('data-ssr')).toBe(true);
+		const openH = details.getBoundingClientRect().height;
+		expect(openH).toBeGreaterThan(40);
+		details.querySelector('summary')!.click();
+		await expect.poll(() => details.open).toBe(false);
+		const closedH = details.getBoundingClientRect().height;
+		expect(closedH).toBeLessThan(openH);
+		details.querySelector('summary')!.click();
+		await expect.poll(() => details.open).toBe(true);
+		expect(details.getBoundingClientRect().height).toBeGreaterThan(closedH);
 	});
 });
 

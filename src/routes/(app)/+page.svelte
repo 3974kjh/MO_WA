@@ -95,9 +95,12 @@
 	let hasTicker = $derived(HOME_TICKERS.some((t) => data.tickers[t.key] != null));
 
 	// 지표·키워드: ≥640에서는 펼쳐 두고, 모바일은 접어 둔다(시안과 같음).
+	// data-ssr은 하이드레이션 전에만 쓴다(첫 페인트 높이를 펼친 상태로 맞춤). 마운트에서 open을 정한 뒤 같은 틱에 뗀다.
 	let moreOpen = $state(false);
+	let ssrPaint = $state(true);
 	onMount(() => {
 		if (window.matchMedia('(min-width: 640px)').matches) moreOpen = true;
+		ssrPaint = false;
 	});
 
 	const unitPrice = (v: number, ccy: 'KRW' | 'USD' | null) =>
@@ -193,7 +196,7 @@
 				{leadHeadline.text}
 			</p>
 		{/if}
-		<details class="more" bind:open={moreOpen}>
+		<details class="more" bind:open={moreOpen} data-ssr={ssrPaint ? '' : undefined}>
 			<summary>지표·키워드 보기</summary>
 			{#if data.tickersError && !hasTicker}
 				<p class="muted-note">지표를 불러오지 못했어요.</p>
@@ -616,9 +619,10 @@
 	.more {
 		margin-top: 10px;
 	}
-	/* ≥640은 onMount에서 펼친다. SSR 첫 페인트도 같은 높이로 보이게 해 하이드레이션 때 카드가 커지며 아래가 밀리는 것을 막는다(::details-content 미지원 브라우저는 예전 동작) */
+	/* ≥640 첫 페인트만 펼친 높이로(하이드레이션 전). 마운트 뒤에는 data-ssr이 빠져 네이티브 open으로 접고 펼 수 있다.
+	   ::details-content 미지원 브라우저는 이 규칙이 무시되어, 예전처럼 마운트 때 펼치며 CLS가 생길 수 있다 */
 	@media (min-width: 640px) {
-		.more::details-content {
+		.more[data-ssr]::details-content {
 			content-visibility: visible;
 		}
 	}
