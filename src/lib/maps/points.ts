@@ -137,12 +137,13 @@ export function latestSnapshots(rows: readonly SnapshotRow[]): Map<string, Snaps
 }
 
 function compare(a: ComplexItem, b: ComplexItem): number {
-	const sa = a.score ?? -1;
-	const sb = b.score ?? -1;
-	if (sa !== sb) return sb - sa;
+	// 시안(v1.7.8): 등급(최우선→관심→후보→참고) 순, 같은 등급 안에서는 총점 높은 순
 	const ta = TIER_ORDER.indexOf(a.tier);
 	const tb = TIER_ORDER.indexOf(b.tier);
 	if (ta !== tb) return ta - tb;
+	const sa = a.score ?? -1;
+	const sb = b.score ?? -1;
+	if (sa !== sb) return sb - sa;
 	return a.name.localeCompare(b.name, 'ko');
 }
 

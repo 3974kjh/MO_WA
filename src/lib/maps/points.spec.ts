@@ -56,7 +56,7 @@ describe('지도 데이터 매핑(points)', () => {
 			}),
 			row({ id: 'c', lat: 40, total_score: 10 })
 		]);
-		expect(m.items.map((i) => i.id)).toEqual(['b', 'a', 'c']);
+		expect(m.items.map((i) => i.id)).toEqual(['a', 'c', 'b']);
 		expect(m.located).toBe(1);
 		expect(m.missing).toBe(2);
 		expect(m.items.filter(isLocated).map((i) => i.id)).toEqual(['a']);
@@ -78,7 +78,7 @@ describe('지도 데이터 매핑(points)', () => {
 		expect(TIER_ORDER.map((t) => TIER_LABEL[t])).toEqual(['최우선', '관심', '후보', '참고']);
 	});
 
-	it('순서: 총점 높은 순(없으면 뒤) → 구분 → 이름, rank는 1부터', () => {
+	it('순서: 구분(최우선→관심→후보→참고) → 총점 높은 순(없으면 뒤) → 이름, rank는 1부터', () => {
 		const m = buildComplexMapModel([
 			row({ id: 'n', name: '나', total_score: null, is_target: false, roles: ['secondary'] }),
 			row({ id: 'g', name: '가', total_score: null, is_target: false, roles: ['secondary'] }),
