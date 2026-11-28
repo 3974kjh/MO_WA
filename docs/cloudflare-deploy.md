@@ -59,6 +59,7 @@ Production / Preview 각각 설정합니다 (Preview에도 동일 값 권장).
 | `PUBLIC_SUPABASE_URL` | Plaintext | `https://YOUR-PROJECT-REF.supabase.co` |
 | `PUBLIC_SUPABASE_ANON_KEY` | Plaintext | Supabase anon key |
 | `SUPABASE_SERVICE_ROLE_KEY` | **Secret** (Encrypt) | Supabase service_role key |
+| `PUBLIC_NAVER_MAP_KEY_ID` | Plaintext (Production만) | 네이버 클라우드 Maps Application의 **Client ID**(공개 값). Client Secret은 넣지 않는다. 비우면 부동산 지도 탭은 안내 화면(목록·네이버 지도 링크)으로 동작한다 — 부록 A |
 
 Git 연동 배포 시 **Dashboard 환경 변수만** 사용합니다.
 
@@ -205,3 +206,22 @@ Supabase Redirect URLs에 Preview 패턴(`https://*.mo-wa.pages.dev/**`)을 추�
 | Git 자동 배포 | ✅ 기본 지원 | 별도 Workers Builds 설정 |
 | Preview URL | ✅ 브랜치/PR별 | 제한적 |
 | 배포 CLI | `wrangler pages deploy` | `wrangler deploy` |
+
+---
+
+## 부록 A. 네이버 지도(부동산 ⑤ 지도 탭)
+
+- 변수: `PUBLIC_NAVER_MAP_KEY_ID` = Maps Application **Client ID**만. 값은 저장소·코드·테스트·로그에 쓰지 않는다(테스트는 자리 표시 값). Client Secret은 지도 표시에 쓰지 않으며 어디에도 넣지 않는다.
+- 전달 경로: `src/lib/server/web/naverMapKey.ts`가 서버에서만 `$env/dynamic/public`을 읽고, 로그인 뒤 `/realestate` load 결과로만 내려준다. 클라이언트 코드는 `$env/dynamic/public`을 import하지 않는다(그러면 SvelteKit이 로그인 화면을 포함한 모든 HTML에 공개 env를 싣는다 — 빌드 manifest의 `uses_env_dynamic_public:false` 유지).
+- 적용: Pages는 변수 변경 뒤 **새 배포**부터 반영된다(변수 저장 → Retry deployment).
+- SDK: `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=<Client ID>`를 지도 탭이 화면에 보일 때만 요청한다(외부 전송 약 92 KB gzip, 빌드 크기 가드 대상 아님). 요청 시점에만 `nrbe.pstatic.net`·`map.pstatic.net` preconnect를 붙인다.
+- 네이버 콘솔 웹 서비스 URL(호스트만, 포트·경로 없음): `https://mo-wa.pages.dev`(필수), `http://localhost`(로컬), `http://127.0.0.1`(선택). 와일드카드는 쓰지 않는다.
+- 실패 시 화면: 키 없음·인증 실패(`navermap_authFailure`)·스크립트 오류·시간 초과(8초, 첫 타일 포함)·오프라인·렌더 오류 모두 빈 지도 대신 안내 + 목록. 검증용 상태는 지도 자리의 `data-state`(`nokey|init|idle|loading|ready|auth-failed|load-failed|timeout|offline|error`)·`data-markers`.
+- CSP: 지금은 CSP 헤더가 없어 허용할 것이 없다. 나중에 도입하면 아래를 허용한다(SDK v3.10.5 기준, 실측 필요).
+
+| 지시어 | 허용 |
+|---|---|
+| `script-src` | `https://oapi.map.naver.com` |
+| `connect-src` | `https://oapi.map.naver.com` `https://map.pstatic.net` `https://nrbe.pstatic.net` (선택 `https://kr-col-ext.nelo.navercorp.com`) |
+| `img-src` | `https://map.pstatic.net` `https://nrbe.pstatic.net` `https://simg.pstatic.net` `https://ssl.pstatic.net` `data:` `blob:` |
+| `style-src` | SDK 인라인 스타일 — `'unsafe-inline'` 필요 가능성(실측 필요) |
