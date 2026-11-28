@@ -82,7 +82,10 @@ describe('FE-11 종목 상세 화면', () => {
 				instrument: { ...INST, ticker: 'UST_30Y', name: '미국채 30년', asset_type: 'bond' }
 			} as never
 		});
-		expect(text()).toContain('미국채 30년은(는) 포트폴리오에서 봐 주세요');
+		// 이름 뒤 조사 표기 없이(DS §7-15 v1.7.5 '조사')
+		expect(text()).toContain('포트폴리오에서 봐 주세요');
+		expect(text()).toContain('채권·현금은 종목 화면에서 다루지 않아요');
+		expect(text()).not.toContain('은(는)');
 		expect(q('a[href="/portfolio"]')).not.toBeNull();
 		expect(q('[data-testid="stock-basis"]')).toBeNull();
 		r.unmount();
@@ -110,6 +113,38 @@ describe('FE-11 종목 상세 화면', () => {
 		);
 		expect(links.length).toBeGreaterThan(0);
 		expect(links.every((h) => h === '/analyses/plan-108490?from=108490')).toBe(true);
+		r.unmount();
+	});
+	it("'내 보유' 기준 시각은 시세 시각, 보유 기록 시각은 따로", () => {
+		const r = render(Page, {
+			data: full({
+				series: [point('2026-10-28')],
+				positions: [
+					{
+						...(full() as { positions: object[] }).positions[0],
+						base_at: '2026-11-28T06:40:00Z'
+					}
+				]
+			})
+		});
+		const t = q('[data-testid="hold-basis"]')?.textContent ?? '';
+		expect(t).toContain('기준 시각 10/28(수) KRX 종가');
+		expect(t).toContain('보유 기록 11/28 15:40');
+		r.unmount();
+	});
+	it('시세 0건이면 "아직 없어요"(현재가는 위에… 문구 없음) + 헤더 — 에 SR 현재가 없음', () => {
+		const r = render(Page, { data: full({ series: [] }) });
+		expect(text()).toContain('시세 기록이 아직 없어요');
+		expect(text()).not.toContain('현재가는 위에 표시돼요');
+		expect(text()).toContain('현재가 없음');
+		r.unmount();
+		const short = render(Page, { data: full() });
+		expect(text()).toContain('시세 기록이 아직 짧아요');
+		short.unmount();
+	});
+	it('헤더 등락 앞에 전일 대비', () => {
+		const r = render(Page, { data: full() });
+		expect(q('.px')?.textContent).toContain('전일 대비');
 		r.unmount();
 	});
 	it('리포트가 없으면 최신 리포트 버튼은 비활성 + 이유', () => {

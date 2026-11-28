@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	axisLeft,
 	barDomain,
 	barLabelVisible,
 	barShape,
@@ -227,5 +228,13 @@ describe('barShape (BarChart Low-2)', () => {
 		const shapes = [1, NaN, -2, Infinity, 0].map((v) => barShape(v, y, y0));
 		expect(shapes).toHaveLength(5);
 		expect(shapes.map((s) => s === null)).toEqual([false, true, false, true, false]);
+	});
+});
+
+describe('axisLeft (y축 라벨 안 잘림)', () => {
+	it('짧은 라벨은 최소 여백, 긴 라벨은 폭 + 10', () => {
+		expect(axisLeft(['0', '10'], 44)).toBe(44);
+		expect(axisLeft(['254,880', '−35,209'], 44)).toBe(Math.ceil(7 * 6.6) + 10);
+		expect(axisLeft([], 54)).toBe(54);
 	});
 });

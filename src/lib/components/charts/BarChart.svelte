@@ -8,6 +8,7 @@
 	import {
 		BAR_DEFAULT_HEIGHT,
 		bandIndex,
+		axisLeft,
 		barDomain,
 		barLabelVisible,
 		barShape,
@@ -47,8 +48,20 @@
 	let width = $state(600);
 	let mobile = $derived(isMobileChart(width));
 	let H = $derived(chartHeight(width, height, BAR_DEFAULT_HEIGHT));
-	const m = { l: 44, r: 8, t: 18, b: 26 };
 	let n = $derived(items.length);
+	// 왼쪽 여백은 위·아래 끝 눈금 라벨 폭에 맞춘다(잘림 방지, DS §7-15 v1.7.5)
+	let m = $derived.by(() => {
+		const [lo, hi] = n ? barDomain(items.map((i) => i.value)) : [0, 0];
+		return {
+			l: axisLeft(
+				[lo, hi].map((v) => signedNumber(v, 0) + unit),
+				44
+			),
+			r: 8,
+			t: 18,
+			b: 26
+		};
+	});
 	let fmtValue = $derived((v: number) => signedNumber(v, digits));
 	let fmtUnit = $derived((v: number) =>
 		Number.isFinite(v) ? signedNumber(v, digits) + unit : signedNumber(v, digits)

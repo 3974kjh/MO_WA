@@ -24,6 +24,12 @@ export function isMobileChart(width: number): boolean {
 	return width > 0 && width < CHART_MOBILE_MAX;
 }
 
+/** y축 라벨이 잘리지 않는 왼쪽 여백(DS §7-15 v1.7.5): 라벨 최대 폭(11px 숫자 ≈ 6.6px/글자) + 눈금 간격 6 + 4. */
+export function axisLeft(labels: readonly string[], min: number): number {
+	const chars = Math.max(0, ...labels.map((s) => s.length));
+	return Math.max(min, Math.ceil(chars * 6.6) + 10);
+}
+
 /** <480이면 190, 아니면 지정 높이(없으면 기본값). */
 export function chartHeight(width: number, height: number | undefined, fallback: number): number {
 	return isMobileChart(width) ? CHART_MOBILE_HEIGHT : (height ?? fallback);

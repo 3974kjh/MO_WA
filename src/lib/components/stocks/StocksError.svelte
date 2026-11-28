@@ -6,16 +6,25 @@
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import ErrorState from '$lib/components/ui/ErrorState.svelte';
 
-	let { what, title, desc }: { what: string; title: string; desc: string } = $props();
+	let {
+		what,
+		title,
+		desc,
+		from = null
+	}: { what: string; title: string; desc: string; from?: string | null } = $props();
 </script>
 
 <Card>
 	{#if page.status === 404}
-		<EmptyState icon="○" {title} {desc}>
+		<EmptyState icon="🔍" {title} {desc}>
 			{#snippet action()}
 				<a class="btn-primary-m btn preset-filled-brand" href={resolve('/(app)/stocks')}
 					>종목 목록으로</a
 				>
+				{#if from}<a
+						class="btn-primary-m btn preset-outlined-surface-500"
+						href={resolve('/(app)/stocks/[ticker]', { ticker: from })}>종목 화면으로</a
+					>{/if}
 			{/snippet}
 		</EmptyState>
 	{:else}

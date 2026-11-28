@@ -17,6 +17,12 @@
 	import BarChart from '$lib/components/charts/BarChart.svelte';
 	import LineChart from '$lib/components/charts/LineChart.svelte';
 	import StockTrigger from '$lib/components/stocks/StockTrigger.svelte';
+	import Icon from '$lib/components/ui/Icon.svelte';
+	import ChartColumn from '@lucide/svelte/icons/chart-column';
+	import ChartLine from '@lucide/svelte/icons/chart-line';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import NotebookText from '@lucide/svelte/icons/notebook-text';
+	import Target from '@lucide/svelte/icons/target';
 	import { returnPct, shortDate } from '$lib/dashboard/home';
 	import { DIRECTION_BADGE, triggerState } from '$lib/dashboard/trigger';
 	import { formatAsOf } from '$lib/format/datetime';
@@ -100,8 +106,8 @@
 {#if data.portfolioOnly}
 	<Card>
 		<EmptyState
-			icon="○"
-			title="{data.instrument.name}은(는) 포트폴리오에서 봐 주세요"
+			icon="💼"
+			title="포트폴리오에서 봐 주세요"
 			desc="채권·현금은 종목 화면에서 다루지 않아요. 보유 기록과 평가금액은 포트폴리오에서 볼 수 있어요."
 		>
 			{#snippet action()}
@@ -136,7 +142,7 @@
 				<b>최신 시세가 아니에요.</b> 마지막으로 받은 시세는
 				<b class="num">{quoteBasis(last?.as_of, i.market)}</b>예요. 아래 등락·수익률·감시 가격
 				거리는 이 시각 기준이에요.
-				<button type="button" class="btn preset-outlined-surface-500 btn-sm" onclick={reload}
+				<button type="button" class="rl btn preset-outlined-surface-500" onclick={reload}
 					>다시 불러오기</button
 				>
 			</Banner>
@@ -155,11 +161,14 @@
 			<h2>{i.name} <span class="code">{i.ticker}</span></h2>
 		</div>
 		<div class="px">
-			<b class="num big">{unitPrice(price, ccy)}</b>
+			<b class="num big"
+				>{unitPrice(price, ccy)}{#if price == null}<span class="sr-only">현재가 없음</span>{/if}</b
+			>
 			<span>
+				<span class="muted">전일 대비</span>
 				{#if diff != null && chg != null}
 					<span class="num">{unitPrice(Math.abs(diff), ccy)}</span> <Delta value={chg} />
-				{:else}<span class="muted">전일 대비 —</span>{/if}
+				{:else}<span class="muted">—</span>{/if}
 			</span>
 			<span class="muted text-xs" data-testid="stock-basis"
 				>{quoteBasis(last?.as_of, i.market)}{stale ? ' · 갱신 멈춤' : ''}</span
@@ -197,23 +206,32 @@
 				<Card title="시세">
 					{#if full.seriesError}
 						{@render fail()}
+					{:else if full.series.length === 0}
+						<EmptyState
+							icon="📈"
+							title="시세 기록이 아직 없어요"
+							desc="가격이 기록되면 여기에 추이를 그려요."
+						/>
 					{:else if full.series.length < 5}
 						<EmptyState
 							icon="📈"
 							title="시세 기록이 아직 짧아요"
-							desc="종가가 5일 이상 쌓이면 추이를 그려 보여 줘요. 현재가는 위에 표시돼요."
+							desc="종가가 5일 이상 쌓이면 추이를 그려요. 현재가는 위에 표시돼요."
 						/>
 					{:else}
-						{@render priceCard(full.series, hold?.avg_price ?? null, ccy, price!)}
+						<!-- 기준선 하나: 보유 = 평균 단가, 미보유 = 감시 가격(DS §7-15 v1.7.5) -->
+						{@const ref = hold
+							? hold.avg_price != null
+								? { v: hold.avg_price, label: `평균 단가 ${unitPrice(hold.avg_price, ccy)}` }
+								: undefined
+							: t.state !== 'watch'
+								? {
+										v: pos!.trigger_price!,
+										label: `감시 가격 ${unitPrice(pos!.trigger_price, ccy)}`
+									}
+								: undefined}
+						{@render priceCard(full.series, ref, ccy, price!)}
 					{/if}
-				</Card>
-			</div>
-			<div id="c-metric" class="o6">
-				<Card title="지표">
-					{@render none(
-						'지표가 아직 없어요',
-						'기업분석 리포트에 PER·PBR 같은 지표가 기록되면 그 리포트 기준으로 보여 줘요.'
-					)}
 				</Card>
 			</div>
 			<div id="c-flow" class="o5">
@@ -222,12 +240,18 @@
 						{@render fail('수급 자료를 불러오지 못했어요')}
 					{:else if i.market !== 'KRX'}
 						{@render none(
+							ChartColumn,
 							'미국 종목은 수급 자료가 없어요',
 							'외국인·기관 순매수는 국내 종목만 제공돼요.'
 						)}
 					{:else}
 						{@render flowCard()}
 					{/if}
+				</Card>
+			</div>
+			<div id="c-metric" class="o6">
+				<Card title="지표">
+					{@render none(ChartLine, '지표가 아직 없어요', '지표 자료가 연결되면 여기에 보여 줘요.')}
 				</Card>
 			</div>
 		</div>
@@ -280,7 +304,10 @@
 						{/if}
 						<div class="trig">
 							{#if t.state === 'watch'}
-								<p class="text-sm"><Badge>관심만</Badge> 감시 가격 없이 지켜보는 중이에요.</p>
+								<p class="text-sm">
+									{#if pos?.watch_only}<Badge>관심만</Badge> 감시 가격 없이 지켜보는 중이에요.
+									{:else}감시 가격이 아직 없어요.{/if}
+								</p>
 							{:else}
 								{@const d = DIRECTION_BADGE[t.direction]}
 								<p class="text-sm">
@@ -294,9 +321,12 @@
 								<StockTrigger {t} />
 							{/if}
 							{#if pos?.memo}<p class="hint">{pos.memo}</p>{/if}
-							{#if pos}<p class="hint" data-testid="hold-basis">
-									{formatAsOf(pos.base_at) ? `기준 시각 ${formatAsOf(pos.base_at)}` : NO_BASIS}
-								</p>{/if}
+							<!-- 기준 시각 = 시세 시각, 보유 기록 시각은 이름을 달리해 따로(DS §7-15 v1.7.5) -->
+							<p class="hint" data-testid="hold-basis">
+								{last
+									? `기준 시각 ${quoteBasis(last.as_of, i.market)}`
+									: NO_BASIS}{#if formatAsOf(pos?.base_at)}{` · 보유 기록 ${formatAsOf(pos?.base_at)}`}{/if}
+							</p>
 						</div>
 						<p class="hint">
 							이 화면에서는 보유 기록을 고칠 수 없어요. 수량·평균 단가는 포트폴리오의 ‘기록
@@ -316,6 +346,7 @@
 						{@render fail()}
 					{:else if full.targets.length === 0}
 						{@render none(
+							Target,
 							'목표가 기록이 없어요',
 							'기업분석 리포트에서 목표가를 제시하면 여기에 쌓여요.'
 						)}
@@ -355,6 +386,7 @@
 						</dl>
 					{:else}
 						{@render none(
+							NotebookText,
 							'메모가 아직 없어요',
 							'기업분석 리포트가 생기면 선택 이유와 시장관 일치 여부를 여기 요약해요.'
 						)}
@@ -365,8 +397,12 @@
 	</div>
 {/if}
 
-{#snippet none(title: string, desc: string)}
-	<EmptyState icon="○" {title} {desc} />
+<!-- 보조 카드의 작은 빈 상태(DS §7-15 v1.7.5): 아이콘 + 한 줄 제목 + 한 줄 설명 -->
+{#snippet none(icon: typeof ChartLine, title: string, desc: string)}
+	<div class="mini">
+		<Icon {icon} size={20} />
+		<p><b>{title}</b><span class="hint">{desc}</span></p>
+	</div>
 {/snippet}
 {#snippet fail(title?: string)}
 	<ErrorState {title} desc="다른 정보는 그대로 볼 수 있어요." onretry={reload} />
@@ -379,7 +415,12 @@
 	>
 {/snippet}
 
-{#snippet priceCard(series: Full['series'], avg: number | null, ccy: 'KRW' | 'USD', price: number)}
+{#snippet priceCard(
+	series: Full['series'],
+	ref: { v: number; label: string } | undefined,
+	ccy: 'KRW' | 'USD',
+	price: number
+)}
 	{@const pts = range === 'm' ? series.slice(-22) : series}
 	{@const yearAgo = series.at(-1)!.as_of.replace(/^\d{4}/, (y) => String(+y - 1))}
 	{@const full = series[0].as_of <= yearAgo}
@@ -404,7 +445,8 @@
 		ariaLabel="{data.instrument.name} 종가 추이"
 		area
 		digits={ccy === 'USD' ? 2 : 0}
-		refLine={avg != null ? { v: avg, label: `평균 단가 ${unitPrice(avg, ccy)}` } : undefined}
+		mobileGrid={3}
+		refLine={ref}
 	/>
 	<p class="hint">
 		기록된 날의 종가만 표시({shortDate(pts[0].as_of)}~{shortDate(pts.at(-1)!.as_of)}). 단위: {ccy ===
@@ -430,7 +472,7 @@
 				<i style:left="{posPct}%"></i>
 			</div>
 			<p class="row hint">
-				<span>최저 {unitPrice(lo, ccy)}</span><span>최고 {unitPrice(hi, ccy)}</span>
+				<span>최저 {unitPrice(lo, ccy)} · 최고 {unitPrice(hi, ccy)}</span>
 			</p>
 		</div>
 	{/if}
@@ -441,7 +483,11 @@
 		.filter((s) => s.foreign_net_buy != null || s.inst_net_buy != null)
 		.slice(-10)}
 	{#if pts.length === 0}
-		{@render none('수급 기록이 아직 없어요', '브리핑에서 수급이 기록되면 여기에 쌓여요.')}
+		{@render none(
+			ChartColumn,
+			'수급 기록이 아직 없어요',
+			'브리핑에서 수급이 기록되면 여기에 쌓여요.'
+		)}
 	{:else}
 		{@const key = who === 'f' ? 'foreign_net_buy' : 'inst_net_buy'}
 		{@const sum = (k: typeof key) => pts.reduce((a, s) => a + (s[k] ?? 0), 0)}
@@ -536,30 +582,32 @@
 				.slice(k + 1)
 				.find((y) => y.source === x.source && y.source_name === x.source_name)}
 			{@const slug = slugOf.get(x.report_id)}
-			<li class="row tp">
-				<span>
-					<b class="num text-sm">{x.as_of.slice(2).replaceAll('-', '.')}</b>
-					<Badge tone={x.source === 'internal' ? 'accent' : 'default'}
-						>{x.source === 'internal' ? '공식' : '증권사'}{x.source_name
-							? ` · ${x.source_name}`
-							: ''}</Badge
-					>
-					{#if x.note}<span class="hint">{x.note}</span>{/if}
-				</span>
-				<span class="r">
-					<b class="num">{unitPrice(x.target_price, x.currency)}</b>
-					{#if prev?.target_price != null && x.target_price != null && prev.target_price !== x.target_price}
-						<span class="num hint"
-							>이전 {unitPrice(prev.target_price, x.currency)}
-							{x.target_price < prev.target_price ? '▼ 하향' : '▲ 상향'}</span
+			<!-- 1줄 날짜·출처 … 목표가 / 2줄 이전·상향·의견 … 리포트 보기(DS §7-15 v1.7.5) -->
+			<li class="tp">
+				<p class="row">
+					<span>
+						<b class="num text-sm">{x.as_of.slice(2).replaceAll('-', '.')}</b>
+						<Badge tone={x.source === 'internal' ? 'accent' : 'default'}
+							>{x.source === 'internal' ? '공식' : '증권사'}{x.source_name
+								? ` · ${x.source_name}`
+								: ''}</Badge
 						>
-					{/if}
-					<span class="hint">의견 {OPINION[x.opinion]}</span>
+					</span>
+					<b class="num">{unitPrice(x.target_price, x.currency)}</b>
+				</p>
+				<p class="row">
+					<span class="hint num">
+						{#if prev?.target_price != null && x.target_price != null && prev.target_price !== x.target_price}
+							이전 {unitPrice(prev.target_price, x.currency)}
+							{x.target_price < prev.target_price ? '▼ 하향' : '▲ 상향'} ·
+						{/if}의견 {OPINION[x.opinion]}{#if x.note}
+							· {x.note}{/if}
+					</span>
 					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- analysisHref: 앱 고정 경로(/analyses/[slug]) -->
-					{#if slug}<a class="text-xs" href={analysisHref(slug, data.instrument.ticker)}
-							>리포트 보기</a
+					{#if slug}<a class="go" href={analysisHref(slug, data.instrument.ticker)}
+							>리포트 보기<Icon icon={ChevronRight} size={14} /></a
 						>{/if}
-				</span>
+				</p>
 			</li>
 		{/each}
 	</ul>
@@ -621,11 +669,16 @@
 	}
 	.jump a {
 		flex: none;
-		padding: 6px 12px;
+		display: inline-flex;
+		align-items: center;
+		min-height: 40px;
+		padding: 0 14px;
 		border: 1px solid var(--color-line);
 		border-radius: 999px;
+		background: var(--color-surface);
 		color: var(--color-muted);
 		font-size: var(--text-sm);
+		font-weight: 600;
 	}
 	.grid {
 		display: grid;
@@ -718,11 +771,35 @@
 		color: var(--color-text);
 	}
 	.tp {
-		align-items: flex-start;
-		padding: 10px 0;
+		padding: 8px 0 0;
 	}
-	.tp .r {
-		text-align: right;
+	.tp .row {
+		align-items: center;
+	}
+	.rel .go {
+		padding: 0;
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
+		min-height: 40px;
+		color: var(--color-accent);
+		font-size: var(--text-sm);
+		font-weight: 600;
+	}
+	.mini {
+		display: flex;
+		gap: 10px;
+		padding: 16px 0;
+		color: var(--color-muted);
+	}
+	.mini b {
+		display: block;
+		color: var(--color-text);
+		font-size: var(--text-sm);
+	}
+	.rl {
+		min-height: 40px;
+		margin-left: 8px;
 	}
 	.tp-now {
 		justify-content: flex-start;
@@ -749,6 +826,16 @@
 		.grid {
 			display: flex;
 			flex-direction: column;
+			align-items: stretch;
+		}
+		.jump a,
+		.rel .go,
+		.rl {
+			min-height: 44px;
+		}
+		.rl {
+			display: flex;
+			margin: 8px 0 0;
 		}
 		.col {
 			display: contents;

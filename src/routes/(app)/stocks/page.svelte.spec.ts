@@ -77,4 +77,26 @@ describe('FE-11 /stocks 화면', () => {
 		expect(links.every((a) => a.textContent?.includes('NAVER'))).toBe(true);
 		r.unmount();
 	});
+	it("'관심만'은 watch_only에만, 감시 가격 없는 관심 종목은 —", () => {
+		const r = render(Page, {
+			data: data({
+				rows: [
+					row({ ticker: '005380', name: '현대차', kind: 'watch', watch_only: true, planned: true }),
+					row({ ticker: '000660', name: 'SK하이닉스', kind: 'watch' })
+				]
+			})
+		});
+		const cells = [...document.querySelectorAll('td[data-label="감시 가격"]')].map(
+			(td) => td.textContent?.trim() ?? ''
+		);
+		expect(cells[0]).toContain('관심만');
+		expect(cells[1]).toBe('—');
+		expect(cells[1]).not.toContain('관심만');
+		r.unmount();
+	});
+	it('표 머리글은 현재가 · 전일 대비', () => {
+		const r = render(Page, { data: data({ rows: [row()] }) });
+		expect(document.querySelector('thead')?.textContent).toContain('현재가 · 전일 대비');
+		r.unmount();
+	});
 });

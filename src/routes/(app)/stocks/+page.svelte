@@ -26,6 +26,7 @@
 	import {
 		isStale,
 		latestAsOf,
+		marketLabel,
 		matchesQuery,
 		quoteBasis,
 		reportKindLabel,
@@ -137,7 +138,7 @@
 				<thead>
 					<tr>
 						<th scope="col">종목</th>
-						<th scope="col" class="r">현재가 · 등락</th>
+						<th scope="col" class="r">현재가 · 전일 대비</th>
 						{#if hold}
 							<th scope="col" class="r">평균 단가</th>
 							<th scope="col" class="r">수익률</th>
@@ -157,6 +158,7 @@
 								<a class="nm" href={resolve('/(app)/stocks/[ticker]', { ticker: r.ticker })}
 									>{r.name}</a
 								>
+								<span class="mk">{marketLabel(r.market)}</span>
 								<span class="hint"
 									>{r.ticker} · {hold ? `보유${r.qty != null ? ` ${r.qty}주` : ''}` : '관심'}{r.memo
 										? ` · ${r.memo}`
@@ -179,11 +181,11 @@
 									>{#if r.value_krw != null}<Money value={r.value_krw} />{:else}—{/if}</td
 								>
 							{:else}
+								<!-- '관심만'은 watch_only에만, 감시 가격이 없으면 — (DS §7-15 v1.7.5) -->
 								<td class="r num" data-label="감시 가격"
-									>{#if r.t.state === 'watch'}<Badge>관심만</Badge>{:else}{unitPrice(
-											r.trigger_price,
-											r.currency
-										)}
+									>{#if r.watch_only}<Badge>관심만</Badge>{:else if r.trigger_price == null}<span
+											aria-label="감시 가격 없음">—</span
+										>{:else}{unitPrice(r.trigger_price, r.currency)}
 										<span class="hint"
 											>{r.trigger_direction === 'above'
 												? '▲ 이상으로 오르면'
@@ -218,7 +220,7 @@
 {:else if rows.length === 0}
 	<Card>
 		<EmptyState
-			icon="○"
+			icon="📈"
 			title="아직 모아 볼 종목이 없어요"
 			desc="보유 종목은 포트폴리오에 기록되면, 관심 종목은 봇이 매매일지·매수 계획서에 기록하면 여기에 모여요."
 		>
@@ -241,7 +243,7 @@
 				등락·수익률·감시 가격 거리는 이 시각 기준이에요.
 				<button
 					type="button"
-					class="btn preset-outlined-surface-500 btn-sm"
+					class="rl btn preset-outlined-surface-500"
 					onclick={() => location.reload()}>다시 불러오기</button
 				>
 			</Banner>
@@ -294,11 +296,13 @@
 	{#if data.reportsError}<p class="gap hint">리포트 정보를 불러오지 못했어요.</p>{/if}
 
 	{#if f !== 'watch'}
-		<Card flush title="보유 종목 {shownHeld.length}종목" class="gap">
-			{#snippet aside()}<a class="text-sm" href={resolve('/portfolio')}>포트폴리오에서 보기 →</a
-				>{/snippet}
-			{@render board(shownHeld, true)}
-		</Card>
+		<div class="gap">
+			<Card flush title="보유 종목 {shownHeld.length}종목">
+				{#snippet aside()}<a class="text-sm" href={resolve('/portfolio')}>포트폴리오에서 보기 →</a
+					>{/snippet}
+				{@render board(shownHeld, true)}
+			</Card>
+		</div>
 	{/if}
 	{#if f !== 'hold'}
 		<Card flush title="관심 종목 {shownWatch.length}종목" sub="감시 가격은 봇이 기록한 값">
@@ -322,11 +326,29 @@
 		margin-bottom: 12px;
 	}
 	.tools {
+		flex-wrap: nowrap;
 		justify-content: flex-start;
 	}
 	.tools > :global(:first-child) {
 		flex: 1 1 220px;
 		max-width: 360px;
+	}
+	.tools .select {
+		flex: none;
+		width: auto;
+		min-width: 160px;
+	}
+	.mk {
+		margin-left: 4px;
+		padding: 0 6px;
+		border-radius: 4px;
+		background: var(--color-surface-2);
+		color: var(--color-muted);
+		font-size: var(--text-xs);
+	}
+	.rl {
+		min-height: 40px;
+		margin-left: 8px;
 	}
 	.lead,
 	.asof,
@@ -446,6 +468,22 @@
 	@media (max-width: 639px) {
 		.tiles {
 			gap: 8px;
+		}
+		.tools {
+			flex-direction: column;
+			align-items: stretch;
+		}
+		.tools > :global(:first-child) {
+			flex: none;
+			max-width: none;
+		}
+		.gap {
+			margin-bottom: 12px;
+		}
+		.rl {
+			display: flex;
+			min-height: 44px;
+			margin: 8px 0 0;
 		}
 		tbody {
 			grid-template-columns: 1fr;

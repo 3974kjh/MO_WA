@@ -6,6 +6,7 @@
 	 */
 	import { area as d3area, line as d3line, scaleLinear } from 'd3';
 	import {
+		axisLeft,
 		categoryColor,
 		chartHeight,
 		isMobileChart,
@@ -35,6 +36,7 @@
 		height,
 		digits = 0,
 		format,
+		mobileGrid = 5,
 		class: className = ''
 	}: {
 		series: readonly LineSeries[];
@@ -51,6 +53,8 @@
 		digits?: number;
 		/** 값 표기 함수(지정하면 digits 대신 사용) */
 		format?: (v: number) => string;
+		/** <480에서 가로 격자(눈금) 수 */
+		mobileGrid?: number;
 		class?: string;
 	} = $props();
 
@@ -58,19 +62,32 @@
 	let mobile = $derived(isMobileChart(width));
 	let H = $derived(chartHeight(width, height, LINE_DEFAULT_HEIGHT));
 	let fmt = $derived(format ?? ((v: number) => plainNumber(v, digits)));
-	let m = $derived({ l: mobile ? 44 : 54, r: 12, t: 12, b: 26 });
 	let n = $derived(labels.length);
 	let colors = $derived(series.map((s, k) => s.color ?? categoryColor(k)));
 
-	let geo = $derived.by(() => {
+	let dom = $derived.by(() => {
 		const all = series.flatMap((s) => s.values.filter(Number.isFinite));
 		if (refLine && Number.isFinite(refLine.v)) all.push(refLine.v);
 		if (all.length === 0 || n === 0) return null;
 		let lo = Math.min(...all);
 		let hi = Math.max(...all);
 		const pad = (hi - lo) * 0.08 || Math.abs(hi) * 0.05 || 1;
+		const k = (mobile ? mobileGrid : 5) - 1;
 		lo -= pad;
 		hi += pad;
+		return { lo, hi, grid: Array.from({ length: k + 1 }, (_, g) => lo + ((hi - lo) * g) / k) };
+	});
+	// 왼쪽 여백은 y축 라벨 폭에 맞춘다(잘림 방지)
+	let m = $derived({
+		l: axisLeft(dom?.grid.map(fmt) ?? [], mobile ? 44 : 54),
+		r: 12,
+		t: 12,
+		b: 26
+	});
+
+	let geo = $derived.by(() => {
+		if (!dom) return null;
+		const { lo, hi, grid } = dom;
 		const iw = Math.max(1, width - m.l - m.r);
 		const ih = Math.max(1, H - m.t - m.b);
 		const x = scaleLinear()
@@ -79,7 +96,6 @@
 		const y = scaleLinear()
 			.domain([lo, hi])
 			.range([m.t + ih, m.t]);
-		const grid = Array.from({ length: 5 }, (_, g) => lo + ((hi - lo) * g) / 4);
 		const defined = (v: number) => Number.isFinite(v);
 		const lineGen = d3line<number>()
 			.defined(defined)

@@ -38,7 +38,7 @@
 <article class="detail" data-testid="analysis-detail" data-mode={data.mode}>
 	<header class="head">
 		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- load가 만든 /stocks 경로 -->
-		<a class="muted text-sm" href={data.backHref} data-testid="analysis-back">{data.backLabel}</a>
+		<a class="back" href={data.backHref} data-testid="analysis-back">{data.backLabel}</a>
 		<h2>{r.title}</h2>
 		<span class="badges">
 			<Badge tone={r.subtype === 'buy_plan' ? 'info' : 'default'}
@@ -101,6 +101,20 @@
 	}
 	.muted {
 		color: var(--color-muted);
+	}
+	/* 이동 링크 터치 40/44(DS §7-15 v1.7.5) */
+	.back {
+		display: inline-flex;
+		align-items: center;
+		min-height: 40px;
+		color: var(--color-accent);
+		font-size: var(--text-sm);
+		font-weight: 600;
+	}
+	@media (max-width: 639px) {
+		.back {
+			min-height: 44px;
+		}
 	}
 	.summary {
 		display: flex;
