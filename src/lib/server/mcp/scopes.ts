@@ -200,3 +200,28 @@ export function assertToolScope(
 	}
 	return forbiddenScopeError(tool, requiredLabel(tool));
 }
+
+/** Scopes that exist without being the required scope of a registered tool. */
+const EXTRA_KNOWN_SCOPES = [
+	'import:all',
+	'valuations:write',
+	'principles:write',
+	'realestate:write'
+] as const;
+
+/**
+ * Every scope string a key may hold. Key issuance rejects anything else (typos, invented scopes).
+ * Derived from the tool registry so a new tool's scope is automatically issuable.
+ */
+export const KNOWN_SCOPES: ReadonlySet<string> = new Set([
+	...Object.values(TOOL_REQUIRED_SCOPE).filter(
+		(s) => s !== REPORT_WRITE_SENTINEL && s !== EVENT_WRITE_SENTINEL
+	),
+	...Object.values(TOOL_ANY_OF_SCOPES).flat(),
+	...Object.values(REPORT_KIND_TO_SCOPE),
+	...EXTRA_KNOWN_SCOPES
+]);
+
+export function isKnownScope(scope: string): boolean {
+	return KNOWN_SCOPES.has(scope);
+}

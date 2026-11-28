@@ -125,6 +125,43 @@ describe('FE-09 설정 화면', () => {
 		expect(JSON.parse(hidden.value)).toEqual(['read', 'valuations:write']);
 	});
 
+	it('market:feed는 기본으로 꺼져 있고, 직접 켜야 요청에 ["market:feed"]만 실린다', () => {
+		const { container } = render(Page, { data: makeData() });
+		const hidden = container.querySelector('input[name="scopes"]') as HTMLInputElement;
+		const optin = () =>
+			container.querySelector<HTMLInputElement>(
+				'[data-testid="issue-optin-scopes"] input[value="market:feed"]'
+			)!;
+		flushSync();
+		// 기본: 체크 안 됨, 기본 권한 어디에도 없음, 전송값에도 없음
+		expect(optin().checked).toBe(false);
+		expect(text(optin().closest('label'))).toContain('market:feed');
+		expect(JSON.parse(hidden.value)).not.toContain('market:feed');
+		const defaultChecks = [
+			...container.querySelectorAll<HTMLInputElement>(
+				'[data-testid="issue-scopes"] input[type="checkbox"]'
+			)
+		];
+		expect(defaultChecks.map((c) => c.value)).not.toContain('market:feed');
+		// 기본 권한을 모두 끄고 market:feed만 켠다
+		for (const c of defaultChecks) {
+			c.click();
+		}
+		flushSync();
+		expect(JSON.parse(hidden.value)).toEqual([]);
+		optin().click();
+		flushSync();
+		expect(optin().checked).toBe(true);
+		expect(JSON.parse(hidden.value)).toEqual(['market:feed']);
+		// 프로필을 바꾸면 선택지가 사라지고 값도 되돌아간다
+		const sel = container.querySelector('[data-testid="issue-profile"]') as HTMLSelectElement;
+		sel.value = 'equity-analyst';
+		sel.dispatchEvent(new Event('change', { bubbles: true }));
+		flushSync();
+		expect(container.querySelector('[data-testid="issue-optin-scopes"]')).toBeNull();
+		expect(JSON.parse(hidden.value)).not.toContain('market:feed');
+	});
+
 	it('발급 성공 응답에서만 키 원문을 한 번 보여 주고, 폼이 없으면 어디에도 없다', () => {
 		const KEY = 'mowa_dummydummy_DUMMYDUMMYDUMMYDUMMYDUMMYDUMMYDUMMYDUMMY1';
 		const issued = render(Page, {

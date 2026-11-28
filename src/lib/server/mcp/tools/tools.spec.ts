@@ -10,6 +10,8 @@ import {
 	SPIKE_TOOL_NAMES,
 	TOOL_REQUIRED_SCOPE
 } from '../scopes';
+import { DEFAULT_SCOPES_BY_PROFILE } from '../botProfiles';
+import { isKnownScope, KNOWN_SCOPES } from '../scopes';
 import { toolsForContext } from './index';
 
 const READ_TOOLS = [
@@ -172,5 +174,33 @@ describe('instrument / event any-of scopes', () => {
 			expect(assertToolScope({ scopes: [scope] }, 'archive_event')).toBeNull();
 		}
 		expect(assertToolScope({ scopes: ['journal:write'] }, 'upsert_event')?.isError).toBe(true);
+	});
+});
+
+describe('KNOWN_SCOPES (key issuance allow-list)', () => {
+	it('covers every default scope, every tool scope, and market:feed', () => {
+		for (const scopes of Object.values(DEFAULT_SCOPES_BY_PROFILE)) {
+			for (const s of scopes) expect(isKnownScope(s), s).toBe(true);
+		}
+		for (const required of Object.values(TOOL_REQUIRED_SCOPE)) {
+			if (required === 'reports:*' || required === 'events:*') continue;
+			expect(isKnownScope(required), required).toBe(true);
+		}
+		expect(isKnownScope('market:feed')).toBe(true);
+	});
+	it('rejects invented, malformed and sentinel scopes', () => {
+		for (const bad of [
+			'market:feeds',
+			'market:*',
+			'reports:*',
+			'events:*',
+			'admin',
+			'READ',
+			'',
+			' read'
+		]) {
+			expect(isKnownScope(bad), bad).toBe(false);
+		}
+		expect(KNOWN_SCOPES.has('__proto__')).toBe(false);
 	});
 });

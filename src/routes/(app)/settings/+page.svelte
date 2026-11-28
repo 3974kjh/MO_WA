@@ -25,6 +25,8 @@
 		expiryRequired,
 		FINANCE_MANAGER_PROFILE,
 		needsExpiryClearConfirm,
+		OPT_IN_SCOPE_LABEL,
+		optInScopes,
 		profileLabel,
 		PROPOSE_SCOPES,
 		selectableScopes,
@@ -74,6 +76,8 @@
 	let profile = $state('finance-manager');
 	const defaults = $derived(data.profileScopes[profile] ?? []);
 	const scopeChoices = $derived(selectableScopes(profile, defaults));
+	// 기본값에 없는 권한(market:feed)은 체크 해제로 시작 — picked는 scopeChoices만으로 채워진다.
+	const optInChoices = $derived(optInScopes(profile));
 	let picked = $derived<string[]>([...scopeChoices]);
 	const scopesValue = $derived(JSON.stringify(picked));
 	// N-3: JS 없이(SSR 그대로) 제출하면 hidden scopes는 빈 값 → 서버가 고른 프로필의 기본 권한을 쓴다.
@@ -231,6 +235,29 @@
 					</p>
 				{/if}
 			</fieldset>
+			{#if optInChoices.length > 0}
+				<fieldset class="scopes" data-testid="issue-optin-scopes">
+					<legend>직접 켜야 하는 권한</legend>
+					{#each optInChoices as s (s)}
+						<label class="check">
+							<input
+								class="checkbox"
+								type="checkbox"
+								value={s}
+								checked={picked.includes(s)}
+								disabled={!hydrated}
+								onchange={(e) => {
+									picked = e.currentTarget.checked ? [...picked, s] : picked.filter((x) => x !== s);
+								}}
+							/>
+							{OPT_IN_SCOPE_LABEL[s] ?? s}
+						</label>
+					{/each}
+					<p class="muted" data-testid="optin-note">
+						기본으로 켜지지 않아요. 시세 적재 키라면 위 권한을 모두 끄고 이것만 켜 주세요.
+					</p>
+				</fieldset>
+			{/if}
 			<input type="hidden" name="scopes" value={hydrated ? scopesValue : ''} />
 			<Button type="submit" variant="primary" label="키 발급" disabled={picked.length === 0} />
 		</form>

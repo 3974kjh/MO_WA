@@ -6,6 +6,8 @@ import {
 	auditFilterActive,
 	expiryRequired,
 	needsExpiryClearConfirm,
+	OPT_IN_SCOPES,
+	optInScopes,
 	parseAuditFilter,
 	selectableScopes,
 	settingsErrorMessage,
@@ -53,6 +55,22 @@ describe('권한 범위·만료', () => {
 			expect(s).not.toContain('positions:propose');
 			expect(s).not.toContain('principles:propose');
 		}
+	});
+	it('market:feed는 선택지(기본값 파생)에 안 들어가고, 재무 관리 봇에서만 직접 켤 수 있다', () => {
+		expect(OPT_IN_SCOPES).toEqual(['market:feed']);
+		expect(optInScopes('finance-manager')).toEqual(['market:feed']);
+		for (const p of ['equity-analyst', 'house-signal', 'importer', 'custom', 'nope']) {
+			expect(optInScopes(p)).toEqual([]);
+		}
+		for (const p of ['finance-manager', 'equity-analyst', 'importer', 'custom']) {
+			expect(selectableScopes(p, defaults)).not.toContain('market:feed');
+		}
+	});
+	it('서버 안내(알 수 없는 권한·market:feed 프로필)를 한글로, 규칙 ID 없이 보여 준다', () => {
+		expect(settingsErrorMessage('[R-PERM-10] unknown scope')).toBe('알 수 없는 권한 범위예요.');
+		expect(settingsErrorMessage('[R-PERM-10] market:feed requires finance-manager')).toBe(
+			'시세 적재 권한은 재무 관리 봇에만 줄 수 있어요.'
+		);
 	});
 	it('importer만 만료 필수', () => {
 		expect(expiryRequired('importer')).toBe(true);

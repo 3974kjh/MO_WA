@@ -17,6 +17,14 @@ export type BotProfile = (typeof BOT_PROFILES)[number];
 export const FINANCE_MANAGER_ONLY_SCOPES = ['positions:propose', 'principles:propose'] as const;
 
 /**
+ * Scopes never in any profile default: issued only when explicitly requested, and only for the
+ * listed profile. `market:feed` = submit_daily_market_feed (daily-feed key, finance-manager only).
+ * Keep in sync with OPT_IN_SCOPES in `$lib/settings/view` (spec asserts equality).
+ */
+export const OPT_IN_SCOPES = ['market:feed'] as const;
+export const OPT_IN_SCOPE_PROFILE: BotProfile = 'finance-manager';
+
+/**
  * Default scopes by profile (design §5-2).
  * `market:feed` (submit_daily_market_feed) is intentionally in no default: the daily-feed key is
  * issued with scopes `["market:feed"]` only (mcp-feed-design §3-2).
@@ -61,6 +69,14 @@ export const DEFAULT_SCOPES_BY_PROFILE: Readonly<Record<BotProfile, readonly str
 		importer: Object.freeze(['import:all']),
 		custom: Object.freeze(['read'])
 	});
+
+/** True when scopes include an opt-in scope that this profile may not hold. */
+export function scopesViolateOptIn(scopes: readonly string[], profile: BotProfile): boolean {
+	return (
+		profile !== OPT_IN_SCOPE_PROFILE &&
+		scopes.some((s) => (OPT_IN_SCOPES as readonly string[]).includes(s))
+	);
+}
 
 export function isBotProfile(value: string): value is BotProfile {
 	return (BOT_PROFILES as readonly string[]).includes(value);

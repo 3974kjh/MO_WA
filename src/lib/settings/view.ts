@@ -70,6 +70,20 @@ export function selectableScopes(profile: string, defaults: readonly string[]): 
 	return defaults.filter((s) => !(PROPOSE_SCOPES as readonly string[]).includes(s));
 }
 
+/**
+ * 기본 권한에 넣지 않고 발급할 때 직접 체크해야만 켜지는 권한(체크 상태로 시작하지 않는다).
+ * `market:feed` = 일일 시세 적재 전용(재무 관리 봇만). 서버 목록(botProfiles OPT_IN_SCOPES)과 같아야 한다.
+ */
+export const OPT_IN_SCOPES = ['market:feed'] as const;
+export const OPT_IN_SCOPE_LABEL: Record<string, string> = {
+	'market:feed': '일일 시세 적재 전용 (market:feed)'
+};
+
+/** 해당 프로필에서 직접 골라야만 켜지는 권한. 기본값에는 절대 들어가지 않는다. */
+export function optInScopes(profile: string): string[] {
+	return profile === FINANCE_MANAGER_PROFILE ? [...OPT_IN_SCOPES] : [];
+}
+
 /** 서버가 주는 영문 안내를 한글로 바꾼다. 규칙 ID 태그(`[R-XXX-00]`)는 지운다. */
 const MESSAGE_MAP: Array<[RegExp, string]> = [
 	[/name is required/i, '이름을 입력해 주세요.'],
@@ -82,6 +96,8 @@ const MESSAGE_MAP: Array<[RegExp, string]> = [
 		/positions:propose and principles:propose require/i,
 		'제안 권한(포지션·원칙)은 재무 관리 봇에만 줄 수 있어요.'
 	],
+	[/unknown scope/i, '알 수 없는 권한 범위예요.'],
+	[/market:feed requires finance-manager/i, '시세 적재 권한은 재무 관리 봇에만 줄 수 있어요.'],
 	[/finance-manager must not receive/i, '재무 관리 봇에는 평가·원칙 쓰기 권한을 줄 수 없어요.'],
 	[/not found or already revoked/i, '이미 사용 중지됐거나 찾을 수 없는 키예요.'],
 	[/bot client not found/i, '키를 찾을 수 없어요.'],

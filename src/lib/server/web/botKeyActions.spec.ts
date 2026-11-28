@@ -197,6 +197,80 @@ describe('handleIssueBotKey', () => {
 		expect(issueBotClientRpc).not.toHaveBeenCalled();
 	});
 
+	describe('market:feed (opt-in scope)', () => {
+		const issue = (over: Record<string, string>) =>
+			handleIssueBotKey(
+				{} as never,
+				ownerId,
+				fd({ name: 'feed-key', profile: 'finance-manager', ...over })
+			);
+
+		it('explicit ["market:feed"] on finance-manager issues exactly that scope list', async () => {
+			issueBotClientRpc.mockResolvedValue({
+				data: publicBot({ scopes: ['market:feed'] }),
+				error: null
+			});
+			const result = await issue({ scopes: JSON.stringify(['market:feed']) });
+			expect(result).toMatchObject({ ok: true });
+			expect(issueBotClientRpc).toHaveBeenCalledTimes(1);
+			expect(issueBotClientRpc.mock.calls[0]![1].scopes).toEqual(['market:feed']);
+		});
+
+		it('is never added implicitly: empty scopes → profile defaults without market:feed', async () => {
+			for (const profile of [
+				'finance-manager',
+				'equity-analyst',
+				'house-signal',
+				'importer',
+				'custom'
+			]) {
+				issueBotClientRpc.mockClear();
+				await handleIssueBotKey(
+					{} as never,
+					ownerId,
+					fd({ name: `p-${profile}`, profile, scopes: '', expires_at: '2027-01-01T00:00:00.000Z' })
+				);
+				const args = issueBotClientRpc.mock.calls[0]![1] as { scopes: string[] };
+				expect(args.scopes).not.toContain('market:feed');
+			}
+		});
+
+		it('is rejected for every non-finance-manager profile', async () => {
+			for (const profile of ['equity-analyst', 'house-signal', 'importer', 'custom']) {
+				issueBotClientRpc.mockClear();
+				const result = await handleIssueBotKey(
+					{} as never,
+					ownerId,
+					fd({
+						name: `p-${profile}`,
+						profile,
+						scopes: JSON.stringify(['market:feed']),
+						expires_at: '2027-01-01T00:00:00.000Z'
+					})
+				);
+				expect(result).toMatchObject({
+					status: 400,
+					data: expect.objectContaining({ ok: false, ruleIds: ['R-PERM-10'] })
+				});
+				expect(issueBotClientRpc).not.toHaveBeenCalled();
+			}
+		});
+
+		it.each([
+			['typo', ['market:feeds']],
+			['wildcard', ['market:*']],
+			['invented', ['read', 'admin:all']],
+			['case', ['Market:Feed']]
+		])('rejects unknown scope (%s) and issues nothing', async (_n, scopes) => {
+			const result = await issue({ scopes: JSON.stringify(scopes) });
+			expect(result).toMatchObject({
+				status: 400,
+				data: expect.objectContaining({ ok: false, ruleIds: ['R-PERM-10'] })
+			});
+			expect(issueBotClientRpc).not.toHaveBeenCalled();
+		});
+	});
+
 	it('rejects propose scopes for non-finance-manager profiles', async () => {
 		const result = await handleIssueBotKey(
 			{} as never,

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { OPT_IN_SCOPES as VIEW_OPT_IN_SCOPES } from '$lib/settings/view';
 import {
+	BOT_PROFILES,
 	DEFAULT_SCOPES_BY_PROFILE,
+	OPT_IN_SCOPES,
+	scopesViolateOptIn,
 	defaultScopesForProfile,
 	FINANCE_MANAGER_ONLY_SCOPES,
 	isBotProfile,
@@ -41,6 +45,18 @@ describe('botProfiles (BE-12 / design §5-2)', () => {
 	it('no default profile includes market:feed (granted explicitly at key issue only)', () => {
 		for (const scopes of Object.values(DEFAULT_SCOPES_BY_PROFILE)) {
 			expect(scopes).not.toContain('market:feed');
+		}
+		for (const p of BOT_PROFILES) {
+			for (const opt of OPT_IN_SCOPES) expect(defaultScopesForProfile(p)).not.toContain(opt);
+		}
+	});
+
+	it('opt-in list matches the settings screen and is finance-manager only', () => {
+		expect([...OPT_IN_SCOPES]).toEqual([...VIEW_OPT_IN_SCOPES]);
+		expect(scopesViolateOptIn(['market:feed'], 'finance-manager')).toBe(false);
+		for (const p of ['equity-analyst', 'house-signal', 'importer', 'custom'] as const) {
+			expect(scopesViolateOptIn(['market:feed'], p)).toBe(true);
+			expect(scopesViolateOptIn(['read'], p)).toBe(false);
 		}
 	});
 });
