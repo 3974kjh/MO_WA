@@ -21,10 +21,13 @@
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import StatusBadge from '$lib/components/ui/StatusBadge.svelte';
 	import Tag from '$lib/components/ui/Tag.svelte';
-	import ChartPending from '$lib/components/charts/ChartPending.svelte';
-	import DonutPending from '$lib/components/charts/DonutPending.svelte';
-	const DonutChart = import('$lib/components/charts/DonutChart.svelte');
-	const LineChart = import('$lib/components/charts/LineChart.svelte');
+	import LazyChart from '$lib/components/charts/LazyChart.svelte';
+	import LazyDonut from '$lib/components/charts/LazyDonut.svelte';
+	import { lazyImport } from '$lib/lazyImport';
+	const donutChunk = lazyImport(() => import('$lib/components/charts/DonutChart.svelte'));
+	const lineChunk = lazyImport(() => import('$lib/components/charts/LineChart.svelte'));
+	const loadDonut = () => donutChunk.load();
+	const loadLine = () => lineChunk.load();
 	import TriggerGauge from '$lib/components/dashboard/TriggerGauge.svelte';
 	import {
 		CHANGE_FIELD_LABEL,
@@ -284,17 +287,14 @@
 		{:else if weights.length === 0}
 			<EmptyState icon="◔" title="비중을 낼 평가금액이 없어요" />
 		{:else}
-			{#await DonutChart}
-				<DonutPending items={weights} ariaLabel="보유 종목 비중" valueKind="KRW" />
-			{:then { default: Comp }}
-				<Comp
-					items={weights}
-					ariaLabel="보유 종목 비중"
-					total={summary.totalKrw ?? undefined}
-					sub="총 평가금액"
-					valueKind="KRW"
-				/>
-			{/await}
+			<LazyDonut
+				load={loadDonut}
+				items={weights}
+				ariaLabel="보유 종목 비중"
+				total={summary.totalKrw ?? undefined}
+				sub="총 평가금액"
+				valueKind="KRW"
+			/>
 		{/if}
 	</Card>
 
@@ -308,19 +308,19 @@
 		{:else if series.length < 2}
 			<EmptyState icon="📈" title="추이를 그릴 기록이 아직 부족해요" />
 		{:else}
-			{#await LineChart}
-				<ChartPending height={260} />
-			{:then { default: Comp }}
-				<Comp
-					labels={series.map((s) => shortDate(s.as_of) ?? s.as_of)}
-					series={[
+			<LazyChart
+				load={loadLine}
+				height={260}
+				props={{
+					labels: series.map((s) => shortDate(s.as_of) ?? s.as_of),
+					series: [
 						{ name: '코스피', values: series.map((s) => s.value), color: 'var(--color-chart-1)' }
-					]}
-					ariaLabel="코스피 종가 추이"
-					area
-					digits={2}
-				/>
-			{/await}
+					],
+					ariaLabel: '코스피 종가 추이',
+					area: true,
+					digits: 2
+				}}
+			/>
 		{/if}
 	</Card>
 

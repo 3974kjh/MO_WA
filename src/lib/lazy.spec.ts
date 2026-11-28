@@ -29,4 +29,21 @@ describe('idleImport', () => {
 		await vi.advanceTimersByTimeAsync(1);
 		expect(load).toHaveBeenCalledTimes(1);
 	});
+
+	it('미리 불러오기가 실패해도 처리되지 않은 거절이 나지 않는다', async () => {
+		vi.stubGlobal('requestIdleCallback', (cb: () => void) => {
+			cb();
+			return 1;
+		});
+		// 처리되지 않은 거절이 나면 vitest가 실행 전체를 실패로 처리한다
+		const rejecting = vi.fn(() => Promise.reject(new Error('chunk')));
+		const throwing = vi.fn(() => {
+			throw new Error('sync');
+		});
+		idleImport(rejecting);
+		idleImport(throwing as unknown as () => Promise<unknown>);
+		await new Promise((r) => setTimeout(r, 20));
+		expect(rejecting).toHaveBeenCalledTimes(1);
+		expect(throwing).toHaveBeenCalledTimes(1);
+	});
 });

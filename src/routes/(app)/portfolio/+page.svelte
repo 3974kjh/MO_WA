@@ -26,10 +26,13 @@
 	import Money from '$lib/components/ui/Money.svelte';
 	import StatusBadge from '$lib/components/ui/StatusBadge.svelte';
 	import type { Col } from '$lib/components/ui/types';
-	import ChartPending from '$lib/components/charts/ChartPending.svelte';
-	import DonutPending from '$lib/components/charts/DonutPending.svelte';
-	const BarChart = import('$lib/components/charts/BarChart.svelte');
-	const DonutChart = import('$lib/components/charts/DonutChart.svelte');
+	import LazyChart from '$lib/components/charts/LazyChart.svelte';
+	import LazyDonut from '$lib/components/charts/LazyDonut.svelte';
+	import { lazyImport } from '$lib/lazyImport';
+	const barChunk = lazyImport(() => import('$lib/components/charts/BarChart.svelte'));
+	const donutChunk = lazyImport(() => import('$lib/components/charts/DonutChart.svelte'));
+	const loadBar = () => barChunk.load();
+	const loadDonut = () => donutChunk.load();
 	import TriggerGauge from '$lib/components/dashboard/TriggerGauge.svelte';
 	import { holdingSummary, positionLabel, weightItems } from '$lib/dashboard/home';
 	import { DIRECTION_BADGE, distanceLabel, triggerState } from '$lib/dashboard/trigger';
@@ -694,17 +697,14 @@
 			{:else if weights.length === 0}
 				<EmptyState icon="◔" title="비중을 낼 평가금액이 없어요" />
 			{:else}
-				{#await DonutChart}
-					<DonutPending items={weights} ariaLabel="보유 종목 비중" valueKind="KRW" />
-				{:then { default: Comp }}
-					<Comp
-						items={weights}
-						ariaLabel="보유 종목 비중"
-						total={summary.totalKrw ?? undefined}
-						sub="총 평가금액"
-						valueKind="KRW"
-					/>
-				{/await}
+				<LazyDonut
+					load={loadDonut}
+					items={weights}
+					ariaLabel="보유 종목 비중"
+					total={summary.totalKrw ?? undefined}
+					sub="총 평가금액"
+					valueKind="KRW"
+				/>
 				<dl class="kv">
 					<dt>달러 자산</dt>
 					<dd class="num">{summary.usdSharePct != null ? pct1(summary.usdSharePct) : '—'}</dd>
@@ -718,11 +718,11 @@
 			{:else if bars.length === 0}
 				<EmptyState icon="📊" title="수익률을 낼 보유 종목이 없어요" />
 			{:else}
-				{#await BarChart}
-					<ChartPending height={200} />
-				{:then { default: Comp }}
-					<Comp items={bars} ariaLabel="종목별 평균 단가 대비 수익률" digits={1} />
-				{/await}
+				<LazyChart
+					load={loadBar}
+					height={200}
+					props={{ items: bars, ariaLabel: '종목별 평균 단가 대비 수익률', digits: 1 }}
+				/>
 			{/if}
 		</Card>
 

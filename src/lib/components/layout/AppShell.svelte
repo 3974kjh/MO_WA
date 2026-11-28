@@ -8,6 +8,7 @@
 	 */
 	import { onMount, type Component, type Snippet } from 'svelte';
 	import { idleImport } from '$lib/lazy';
+	import { lazyImport, notifyChunkFailed } from '$lib/lazyImport';
 	import { resolve } from '$app/paths';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import MoWaLogo from '$lib/components/brand/MoWaLogo.svelte';
@@ -31,6 +32,7 @@
 		title,
 		backHref = null,
 		userEmail = null,
+		loadMore = () => import('./MoreSheet.svelte'),
 		children
 	}: {
 		current: SectionId | null;
@@ -39,6 +41,8 @@
 		title?: string;
 		backHref?: string | null;
 		userEmail?: string | null;
+		/** 테스트용: 더보기 시트 청크 로더 */
+		loadMore?: () => Promise<{ default: Component<any> }>; // eslint-disable-line @typescript-eslint/no-explicit-any
 		children: Snippet;
 	} = $props();
 
@@ -49,14 +53,22 @@
 		onclose: () => void;
 	}> | null>(null);
 
-	async function ensureMore() {
-		if (!MoreSheet) MoreSheet = (await import('./MoreSheet.svelte')).default;
+	// svelte-ignore state_referenced_locally
+	const moreChunk = lazyImport(loadMore);
+	async function ensureMore(silent = false) {
+		if (!MoreSheet) MoreSheet = (await moreChunk.load({ silent })).default;
 	}
 	async function openMore() {
-		await ensureMore();
+		try {
+			await ensureMore();
+		} catch {
+			// 청크가 끝내 안 오면(옛 배포는 lazyImport가 한 번 새로고침) 조용히 죽지 않고 안내한다
+			notifyChunkFailed('더보기 메뉴를 불러오지 못했어요');
+			return;
+		}
 		moreOpen = true;
 	}
-	onMount(() => idleImport(ensureMore));
+	onMount(() => idleImport(() => ensureMore(true)));
 
 	const hrefOf = (n: NavEntry) => (n.href ? resolve(n.href) : undefined);
 	const badgeOf = (n: NavEntry) => (n.pendingBadge ? pendingCount : 0);
