@@ -50,3 +50,4 @@ export * from './webLoads.repo';
 export * from './journalWeb.repo';
 export * from './archiveWeb.repo';
 export * from './stocks.repo';
+export * from './realestate.repo';
