@@ -73,6 +73,20 @@ function fakeSdk(
 		setSize: 0
 	};
 	const holder: { current: FakeMap | null } = { current: null };
+	const roCbs: ResizeObserverCallback[] = [];
+	const NativeRO = globalThis.ResizeObserver;
+	let restoreRO = () => {};
+	if (flags.setSizeMutates) {
+		globalThis.ResizeObserver = class extends NativeRO {
+			constructor(cb: ResizeObserverCallback) {
+				super(cb);
+				roCbs.push(cb);
+			}
+		} as typeof ResizeObserver;
+		restoreRO = () => {
+			globalThis.ResizeObserver = NativeRO;
+		};
+	}
 	class LatLng {
 		constructor(
 			public lat: number,
@@ -121,10 +135,19 @@ function fakeSdk(
 			this.lastSize = s;
 			calls.setSize++;
 			if (flags.setSizeMutates) {
-				this.el.style.width = `${s.width}px`;
-				this.el.style.height = `${s.height}px`;
+				// 다른 크기를 써서 네이버 SDK처럼 박스를 바꾸고, 이후에는 같은 픽셀을 다시 쓴다.
+				// Chromium은 같은 콘텐츠 박스면 RO를 안 띄우므로, 가드가 없을 때의 루프는
+				// 아래에서 관찰자 콜백을 한 번 더 불러 재현한다.
+				const bump = this._mutatedOnce ? 0 : 3;
+				this._mutatedOnce = true;
+				this.el.style.width = `${s.width + bump}px`;
+				this.el.style.height = `${s.height + bump}px`;
+				queueMicrotask(() => {
+					for (const cb of roCbs) cb([], this as unknown as ResizeObserver);
+				});
 			}
 		}
+		_mutatedOnce = false;
 		getZoom() {
 			return this.zoom;
 		}
@@ -198,7 +221,7 @@ function fakeSdk(
 		Event,
 		Position: { TOP_RIGHT: 3, BOTTOM_RIGHT: 5, BOTTOM_LEFT: 4 }
 	};
-	return { ns, fire, calls, map: () => holder.current! };
+	return { ns, fire, calls, map: () => holder.current!, restore: restoreRO };
 }
 
 function fakeLoader(result: () => Promise<unknown>) {
@@ -853,14 +876,19 @@ describe('ComplexMap 크기 변경', () => {
 
 	it('setSize가 캔버스 박스를 바꿔도 같은 픽셀이면 다시 부르지 않는다', async () => {
 		const { r, sdk } = await ready({ noAutoResize: true, setSizeMutates: true });
-		r.container.style.height = '420px';
-		await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
-		const mid = sdk.calls.setSize;
-		expect(mid).toBeGreaterThan(0);
-		expect(mid).toBeLessThan(8);
-		await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
-		await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
-		expect(sdk.calls.setSize).toBe(mid);
-		r.unmount();
+		try {
+			r.container.style.height = '420px';
+			await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+			const mid = sdk.calls.setSize;
+			expect(mid).toBeGreaterThan(0);
+			expect(mid).toBeLessThan(8);
+			await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+			await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+			await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+			expect(sdk.calls.setSize).toBe(mid);
+		} finally {
+			r.unmount();
+			sdk.restore();
+		}
 	});
 });
