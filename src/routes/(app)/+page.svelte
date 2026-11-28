@@ -616,6 +616,12 @@
 	.more {
 		margin-top: 10px;
 	}
+	/* ≥640은 onMount에서 펼친다. SSR 첫 페인트도 같은 높이로 보이게 해 하이드레이션 때 카드가 커지며 아래가 밀리는 것을 막는다(::details-content 미지원 브라우저는 예전 동작) */
+	@media (min-width: 640px) {
+		.more::details-content {
+			content-visibility: visible;
+		}
+	}
 	.more summary {
 		cursor: pointer;
 		min-height: var(--size-touch);
