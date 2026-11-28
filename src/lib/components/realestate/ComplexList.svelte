@@ -25,6 +25,7 @@
 	} = $props();
 
 	const nf = new Intl.NumberFormat('ko-KR');
+	const sep = ' · ';
 	const score = (it: ComplexItem) => nf.format(Math.round((it.score ?? 0) * 10) / 10);
 	function label(it: ComplexItem): string {
 		const parts = [
@@ -56,8 +57,8 @@
 				<span class="grow" aria-hidden="true">
 					<span class="nm">{it.name}</span>
 					<span class="sub"
-						>{it.region} · {TIER_LABEL[it.tier]}{#if it.households != null}<span class="hh">
-								· {nf.format(it.households)}세대</span
+						>{it.region}{sep}{TIER_LABEL[it.tier]}{#if it.households != null}<span class="hh"
+								>{sep}{nf.format(it.households)}세대</span
 							>{/if}</span
 					>
 				</span>
@@ -142,6 +143,7 @@
 	}
 	.hh {
 		display: inline;
+		white-space: nowrap;
 	}
 	.r {
 		margin-left: auto;

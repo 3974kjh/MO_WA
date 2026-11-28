@@ -22,6 +22,7 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import Sheet from '$lib/components/ui/Sheet.svelte';
 	import { lazyImport } from '$lib/lazyImport';
+	import { LOAD_TIMEOUT_MS } from '$lib/maps/naverLoader';
 	import {
 		TIER_LABEL,
 		TIER_ORDER,
@@ -36,24 +37,31 @@
 	import MapLegend from './MapLegend.svelte';
 	import NoGeoList from './NoGeoList.svelte';
 
+	const mapChunk = lazyImport(() => import('./ComplexMap.svelte'));
+	type MapComponent = typeof import('./ComplexMap.svelte').default;
+	type MapApi = ReturnType<typeof import('./ComplexMap.svelte').default>;
+
 	let {
 		items,
 		mapKeyId,
 		asOfText = '',
 		initialId = null,
-		watchHref
+		watchHref,
+		loadMapChunk,
+		chunkTimeoutMs = LOAD_TIMEOUT_MS
 	}: {
 		items: ComplexItem[];
 		mapKeyId: string | null;
 		asOfText?: string;
 		initialId?: string | null;
 		watchHref: (id: string) => string;
+		/** 시험용. 기본은 ComplexMap 청크를 lazyImport로 받는다 */
+		loadMapChunk?: () => Promise<{ default: MapComponent }>;
+		/** 청크 import() 한도(기본 8초). 넘기면 기존 로드 실패 폴백 */
+		chunkTimeoutMs?: number;
 	} = $props();
 
-	const mapChunk = lazyImport(() => import('./ComplexMap.svelte'));
-	type MapComponent = typeof import('./ComplexMap.svelte').default;
-	type MapApi = ReturnType<typeof import('./ComplexMap.svelte').default>;
-
+	const sep = ' · ';
 	const FAIL: ReadonlySet<string> = new Set([
 		'auth-failed',
 		'load-failed',
@@ -108,7 +116,9 @@
 	let selected = $derived(items.find((i) => i.id === picked) ?? null);
 	let stackItems = $derived(
 		stack
-			? (stack.map((id) => items.find((i) => i.id === id)).filter(Boolean) as ComplexItem[])
+			? stack
+					.map((id) => items.find((i) => i.id === id))
+					.filter((it): it is ComplexItem => !!it && !hidden.includes(it.tier))
 			: []
 	);
 
@@ -117,21 +127,48 @@
 		live = live === msg ? `${msg}\u200b` : msg;
 	}
 
-	// 지도 칸 코드는 지도 탭이 열려 있고(이 컴포넌트가 마운트됨) 키·좌표가 있을 때만 받는다
+	// 지도 칸 코드는 지도 탭이 열려 있고(이 컴포넌트가 마운트됨) 키·좌표가 있을 때만 받는다.
+	// import()가 멈추면 8초 뒤 기존 로드 실패 폴백('지도를 불러오지 못했어요')으로 넘긴다.
 	$effect(() => {
 		if (!hasMap) return;
 		void attempt;
 		chunkFailed = false;
 		chunk = null;
-		mapChunk.load().then(
-			(m) => (chunk = m.default),
-			() => (chunkFailed = true)
+		let cancelled = false;
+		const timer = setTimeout(() => {
+			if (!cancelled) chunkFailed = true;
+		}, chunkTimeoutMs);
+		const load = loadMapChunk ?? (() => mapChunk.load());
+		void load().then(
+			(m) => {
+				clearTimeout(timer);
+				if (!cancelled) {
+					chunkFailed = false;
+					chunk = m.default;
+				}
+			},
+			() => {
+				clearTimeout(timer);
+				if (!cancelled) chunkFailed = true;
+			}
 		);
+		return () => {
+			cancelled = true;
+			clearTimeout(timer);
+		};
 	});
 
 	function toggleTier(t: ComplexTier) {
 		hidden = hidden.includes(t) ? hidden.filter((x) => x !== t) : [...hidden, t];
 		if (selected && hidden.includes(selected.tier)) picked = null;
+		// 겹친 단지 목록이 열린 채 등급을 끄면 숨긴 단지를 걸러 내고, 남은 곳이 2곳 미만이면 닫는다
+		if (stack) {
+			const next = stack.filter((id) => {
+				const it = items.find((i) => i.id === id);
+				return !!it && !hidden.includes(it.tier);
+			});
+			stack = next.length >= 2 ? next : null;
+		}
 		const on = !hidden.includes(t);
 		const n = located.filter((i) => !hidden.includes(i.tier)).length;
 		say(`${TIER_LABEL[t]} 단지 ${on ? '표시' : '숨김'}. 지금 ${n}곳이 보여요.`);
@@ -289,8 +326,8 @@
 	<div class="re-top">
 		<p class="asof" data-testid="re-asof" aria-label="데이터 기준 시각">
 			<b>단지 위치</b> 지도 {located.length}곳{#if nogeo.length}
-				· 위치 정보 없음 {nogeo.length}곳{/if}{#if asOfText}
-				<span class="sep">·</span> <b>가격</b> {asOfText}{/if}
+				{sep}위치 정보 없음 {nogeo.length}곳{/if}{#if asOfText}
+				{sep}<b>가격</b> {asOfText}{/if}
 		</p>
 	</div>
 
@@ -478,9 +515,6 @@
 	.asof b {
 		color: var(--color-text);
 		font-weight: 600;
-	}
-	.sep {
-		color: var(--color-subtle);
 	}
 	.rm-bar {
 		display: flex;

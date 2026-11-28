@@ -139,7 +139,7 @@ async function open(items: ComplexItem[]) {
 		asOfText: '',
 		watchHref: (id: string) => `/realestate?tab=watch&c=${id}`
 	});
-	await sleep(250); // 지도 청크 + 가짜 SDK 첫 타일
+	await sleep(400); // 지도 청크 + 가짜 SDK 첫 타일(전체 스위트에서 250ms는 빠듯함)
 	flushSync();
 	return r;
 }
@@ -227,6 +227,34 @@ describe('겹친 단지 목록 — PC 앵커 카드', () => {
 		expect(cl.dataset.stack).toBeUndefined();
 		expect(cl.getAttribute('aria-label')).toContain('누르면 확대해요');
 		cl.click();
+		await sleep(60);
+		flushSync();
+		expect(document.querySelector('[data-testid="stack-card"]')).toBeNull();
+		r.unmount();
+	});
+
+	it('겹친 목록이 열린 채 등급을 끄면 숨긴 단지가 빠지고, 2곳 미만이면 닫힌다', async () => {
+		await page.viewport(1280, 800);
+		const r = await open(STACKED.slice(0, 3));
+		cluster().click();
+		await sleep(60);
+		flushSync();
+		const card = document.querySelector('[data-testid="stack-card"]') as HTMLElement;
+		expect(card.querySelector('h3')?.textContent).toBe('겹친 단지 3곳');
+		expect(card.querySelectorAll('button.rm-row')).toHaveLength(3);
+		const sub = card.querySelector('.sub')?.textContent ?? '';
+		expect(sub).toMatch(/ · /);
+		expect(sub).not.toMatch(/최우선·|일반·|참고·|후보·/);
+
+		(document.querySelector('.rm-lc[data-g="ref"]') as HTMLButtonElement).click();
+		await sleep(60);
+		flushSync();
+		const card2 = document.querySelector('[data-testid="stack-card"]') as HTMLElement;
+		expect(card2.querySelector('h3')?.textContent).toBe('겹친 단지 2곳');
+		expect(card2.querySelectorAll('button.rm-row')).toHaveLength(2);
+		expect(card2.textContent).not.toContain('정자역 상가주택');
+
+		(document.querySelector('.rm-lc[data-g="target"]') as HTMLButtonElement).click();
 		await sleep(60);
 		flushSync();
 		expect(document.querySelector('[data-testid="stack-card"]')).toBeNull();
