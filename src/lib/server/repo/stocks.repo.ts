@@ -250,8 +250,8 @@ export type AnalysisMeta = EquityReportLite & {
 };
 
 /**
- * 분석 리포트 하나(kind=equity_analysis, 보관 제외). slug는 날짜가 달라 겹칠 수 있어(Q-T1 미정)
- * 같은 slug면 report_date가 가장 최신인 1건을 쓴다. 본문은 받지 않는다(렌더 캐시는 따로 읽음).
+ * 분석 리포트 하나(kind=equity_analysis, 보관 제외). slug는 날짜가 달라 겹칠 수 있다.
+ * 같은 slug면 report_date가 가장 최신인 1건을 쓴다(PM 결정 2026-11-28 확정). 본문은 받지 않는다(렌더 캐시는 따로 읽음).
  */
 export async function getEquityReportBySlug(
 	repo: RepoClient,

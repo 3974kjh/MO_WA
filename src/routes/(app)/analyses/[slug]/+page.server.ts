@@ -11,7 +11,7 @@ const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 /**
  * FE-11 `/analyses/[slug]?mode=&from=` 분석 리포트(읽기 전용, 게시·장 접기 없음).
- * - kind=equity_analysis만, 보관 제외. slug가 겹치면 report_date 최신 1건(Q-T1 결정 전 임시).
+ * - kind=equity_analysis만, 보관 제외. slug가 겹치면 report_date 최신 1건(PM 결정으로 확정).
  * - 본문은 렌더하지 않는다: 상세 모드에서만 저장된 렌더 캐시를 브리핑 상세와 같은 함수로 읽는다(ReportView·캐시 변경 없음).
  * - '← 종목'(결정 1): `?from=`이 리포트 tickers 안이면 그 종목, 아니면 tickers 1개 → 그 종목, 여러 개 → /stocks.
  *   모바일 상단 '뒤로'도 같은 곳(backHref).

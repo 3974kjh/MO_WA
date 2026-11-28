@@ -130,7 +130,7 @@ describe('FE-11 stocks.repo', () => {
 		expect(all.requests[0].params.get('tickers')).toBeNull();
 		expect(all.requests[0].params.get('select')).not.toContain('meta');
 	});
-	it('slug가 겹치면 report_date 최신 1건(Q-T1 결정 전 임시)', async () => {
+	it('slug가 겹치면 report_date 최신 1건(확정 규칙)', async () => {
 		const { repo, requests } = stubClient({
 			reports: [{ slug: 'googl', report_date: '2026-11-21' }]
 		});
