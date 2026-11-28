@@ -7,7 +7,6 @@
 	import FileText from '@lucide/svelte/icons/file-text';
 	import House from '@lucide/svelte/icons/house';
 	import Notebook from '@lucide/svelte/icons/notebook';
-	import Search from '@lucide/svelte/icons/search';
 	import Settings from '@lucide/svelte/icons/settings';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
 	import type { NavIcon } from './nav';
@@ -20,7 +19,6 @@
 		'chart-pie': ChartPie,
 		notebook: Notebook,
 		'chart-line': ChartLine,
-		search: Search,
 		building: Building2,
 		shield: ShieldCheck,
 		archive: Archive,

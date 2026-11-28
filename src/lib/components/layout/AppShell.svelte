@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
 	 * 앱 셸 (FE-01, H §2·§3·§5, DS §5·§6, 시안 shared/shell.js)
-	 * - ≥1024: 240px 사이드바(1차/이후/관리 그룹, 하단 로그아웃·계정)
+	 * - ≥1024: 240px 사이드바(1차 · '투자' 접기 · 곧 열려요 · 관리, 하단 로그아웃·계정)
 	 * - 640~1023: 72px 아이콘 레일(라벨 숨김, pill 유지)
 	 * - <640: 상단바 52px + 하단 탭 4 + 더보기(52px + safe-area)
 	 * pendingCount는 확인 대기 pending 건수(보류 제외, G-1). 포트폴리오 항목에 pill로 붙는다.
@@ -12,13 +12,15 @@
 	import MoWaLogo from '$lib/components/brand/MoWaLogo.svelte';
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import MoreSheet from './MoreSheet.svelte';
+	import NavInvest from './NavInvest.svelte';
 	import NavItem from './NavItem.svelte';
 	import TopBar from './TopBar.svelte';
 	import {
 		ACCOUNT_NAV,
-		LATER_NAV,
+		ALL_NAV,
 		LOGOUT_PATH,
 		PRIMARY_NAV,
+		SOON_NAV,
 		type NavEntry,
 		type SectionId
 	} from './nav';
@@ -44,11 +46,9 @@
 
 	const hrefOf = (n: NavEntry) => (n.href ? resolve(n.href) : undefined);
 	const badgeOf = (n: NavEntry) => (n.pendingBadge ? pendingCount : 0);
-	let pageTitle = $derived(
-		title ??
-			[...PRIMARY_NAV, ...LATER_NAV, ...ACCOUNT_NAV].find((n) => n.id === current)?.label ??
-			'MO_WA'
-	);
+	let pageTitle = $derived(title ?? ALL_NAV.find((n) => n.id === current)?.label ?? 'MO_WA');
+	// 더보기 안 화면(종목·보관함·설정 등)에 있으면 하단 '더보기'에 현재 표시
+	let moreCurrent = $derived(current !== null && !PRIMARY_NAV.some((n) => n.id === current));
 </script>
 
 <a class="skip" href="#main">본문으로 건너뛰기</a>
@@ -67,11 +67,11 @@
 				badge={badgeOf(n)}
 			/>
 		{/each}
-		<div class="nav-label">이후 출시</div>
-		{#each LATER_NAV as n (n.id)}
+		<NavInvest {current} />
+		<div class="nav-label">곧 열려요</div>
+		{#each SOON_NAV as n (n.id)}
 			<NavItem icon={n.icon} label={n.label} disabled />
 		{/each}
-		<!-- 디자인 v1.1: '관리' 그룹(보관함·설정). href가 없는 항목(설정, FE-09 전)은 disabled -->
 		<div class="nav-label">관리</div>
 		{#each ACCOUNT_NAV as n (n.id)}
 			<NavItem
@@ -116,13 +116,14 @@
 		class="more-btn"
 		aria-haspopup="dialog"
 		aria-expanded={moreOpen}
+		aria-current={moreCurrent ? 'page' : undefined}
 		onclick={() => (moreOpen = true)}
 	>
 		<Ellipsis size={22} strokeWidth={1.8} aria-hidden="true" />더보기
 	</button>
 </nav>
 
-<MoreSheet open={moreOpen} onclose={() => (moreOpen = false)} />
+<MoreSheet open={moreOpen} {current} onclose={() => (moreOpen = false)} />
 
 <style>
 	.skip {
@@ -305,6 +306,10 @@
 			min-width: 0;
 			white-space: nowrap;
 			overflow: hidden;
+		}
+		.more-btn[aria-current='page'] {
+			color: var(--color-accent);
+			font-weight: 700;
 		}
 	}
 	@media print {

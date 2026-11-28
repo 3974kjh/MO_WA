@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
 	ACCOUNT_NAV,
 	backHrefFromPath,
-	LATER_NAV,
+	INVEST_NAV,
 	LOGOUT_PATH,
 	PRIMARY_NAV,
-	sectionFromPath
+	sectionFromPath,
+	SOON_NAV
 } from './nav';
 
 describe('FE-01 내비 정의', () => {
@@ -13,9 +14,15 @@ describe('FE-01 내비 정의', () => {
 		expect(PRIMARY_NAV.map((n) => n.label)).toEqual(['홈', '브리핑', '포트폴리오', '매매일지']);
 		expect(PRIMARY_NAV.filter((n) => n.pendingBadge).map((n) => n.id)).toEqual(['portfolio']);
 	});
-	it('이후 섹션은 모두 disabled(href 없음)', () => {
-		expect(LATER_NAV.map((n) => n.label)).toEqual(['종목', '기업분석', '부동산', '투자 원칙']);
-		expect(LATER_NAV.every((n) => !n.href)).toBe(true);
+	it("FE-11 '투자' 묶음: 종목 열림, 부동산은 FE-12 전까지 준비 중(href 없음), 기업분석 메뉴 없음", () => {
+		expect(INVEST_NAV.map((n) => [n.label, n.href])).toEqual([
+			['종목', '/stocks'],
+			['부동산', undefined]
+		]);
+		expect(SOON_NAV.map((n) => [n.label, n.href])).toEqual([['투자 원칙', undefined]]);
+		expect(sectionFromPath('/stocks')).toBe('stocks');
+		expect(sectionFromPath('/stocks/005930')).toBe('stocks');
+		expect(sectionFromPath('/analyses/plan-108490')).toBe('stocks');
 	});
 	it('경로 → 현재 섹션', () => {
 		expect(sectionFromPath('/')).toBe('dashboard');
@@ -34,10 +41,11 @@ describe('FE-01 내비 정의', () => {
 	});
 });
 
-describe('FE-08 관리 그룹', () => {
-	it('보관함은 /archive로 열리고, 설정은 아직 준비 중', () => {
+describe('FE-08·FE-11 관리 그룹', () => {
+	it('보관함 /archive, 설정 /settings 모두 열림', () => {
 		expect(ACCOUNT_NAV.find((n) => n.id === 'archive')?.href).toBe('/archive');
-		expect(ACCOUNT_NAV.find((n) => n.id === 'settings')?.href).toBeUndefined();
+		expect(ACCOUNT_NAV.find((n) => n.id === 'settings')?.href).toBe('/settings');
 		expect(sectionFromPath('/archive')).toBe('archive');
+		expect(sectionFromPath('/settings')).toBe('settings');
 	});
 });
