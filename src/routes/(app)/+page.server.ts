@@ -86,6 +86,7 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 			instrument_id: p.instrument_id,
 			name: l?.name ?? null,
 			ticker: l?.ticker ?? null,
+			asset_type: l?.asset_type ?? null,
 			status: p.status,
 			currency: p.currency,
 			qty: p.qty,

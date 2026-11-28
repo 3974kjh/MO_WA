@@ -229,7 +229,7 @@ describe('FE-03 홈 보조 load', () => {
 		expect(requests).toHaveLength(1);
 		expectOwnerOnly(requests[0].params);
 		expect(requests[0].params.get('id')).toBe('in.(a,b)');
-		expect(requests[0].params.get('select')).toBe('id,name,ticker');
+		expect(requests[0].params.get('select')).toBe('id,name,ticker,asset_type');
 	});
 });
 

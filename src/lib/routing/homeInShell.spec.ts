@@ -296,7 +296,7 @@ describe('홈(`/`)은 (app) 셸 안 (#12 Low 1, 사용자 결정 21:27)', () => 
 		repoMock.countPendingProposals.mockResolvedValueOnce({ data: 4, error: null });
 		repoMock.listInstrumentLabels.mockResolvedValueOnce({
 			data: [
-				{ id: 'ins1', name: '종목 하나', ticker: 'AAA' },
+				{ id: 'ins1', name: '종목 하나', ticker: 'AAA', asset_type: 'stock' },
 				{ id: 'ins2', name: '종목 둘', ticker: 'BBB' }
 			],
 			error: null
@@ -331,6 +331,7 @@ describe('홈(`/`)은 (app) 셸 안 (#12 Low 1, 사용자 결정 21:27)', () => 
 				instrument_id: 'ins1',
 				name: '종목 하나',
 				ticker: 'AAA',
+				asset_type: 'stock',
 				status: 'holding',
 				currency: 'USD',
 				qty: 2,

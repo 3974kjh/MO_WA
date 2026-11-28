@@ -6,6 +6,7 @@
 	 * - 값이 없거나 못 읽으면 빈/오류 상태만 보인다. 시안 샘플 수치·샘플 안내 문구는 쓰지 않는다.
 	 * - 감시 가격·방향은 바꿀 수 없다(표시만). 변경 요청 반영은 포트폴리오에서(FE-07).
 	 */
+	import StockNameLink from '$lib/components/stocks/StockNameLink.svelte';
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import type { PageData } from './$types';
@@ -328,7 +329,14 @@
 							aria-hidden="true"
 						></span>
 						<div class="grow">
-							<b>{positionLabel(p)}</b>
+							<b
+								><StockNameLink
+									name={positionLabel(p)}
+									ticker={p.ticker}
+									assetType={p.asset_type ?? null}
+									srText="종목 화면"
+								/></b
+							>
 							{#if t.state !== 'watch'}
 								{@const d = DIRECTION_BADGE[t.direction]}
 								<Badge
@@ -425,7 +433,14 @@
 							{@const r = returnPct(p)}
 							<tr>
 								<td data-label="종목">
-									<div class="t-name">{positionLabel(p)}</div>
+									<div class="t-name">
+										<StockNameLink
+											name={positionLabel(p)}
+											ticker={p.ticker}
+											assetType={p.asset_type ?? null}
+											srText="종목 화면"
+										/>
+									</div>
 									<div class="t-sub">
 										{#if p.ticker}{p.ticker} ·
 										{/if}<span class="num">{formatQty(p.qty ?? 0)}주</span>

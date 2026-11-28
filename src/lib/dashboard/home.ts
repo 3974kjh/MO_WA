@@ -29,6 +29,8 @@ export type HomePosition = {
 	instrument_id: string;
 	name: string | null;
 	ticker: string | null;
+	/** FE-11: stock·etf면 이름이 종목 화면 링크. 모르면 null(링크 없음) */
+	asset_type?: string | null;
 	status: string;
 	currency: 'KRW' | 'USD';
 	qty: number | null;

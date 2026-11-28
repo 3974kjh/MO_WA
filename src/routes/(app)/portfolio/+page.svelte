@@ -13,6 +13,7 @@
 	 * - 서버가 반영 안 됨(보유가 달라짐)을 돌려주면 '확인 필요'로 옮긴다(일반 오류 토스트 아님).
 	 *   미리 막힌 카드(approval_version ≠ base_version)는 배지 그대로, 반영 버튼만 aria-disabled.
 	 */
+	import StockNameLink from '$lib/components/stocks/StockNameLink.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { beforeNavigate, invalidateAll } from '$app/navigation';
 	import { deserialize } from '$app/forms';
@@ -478,7 +479,12 @@
 
 {#snippet nameCell(r: PortfolioRow)}
 	<div class="t-name">
-		{positionLabel(r)}
+		<StockNameLink
+			name={positionLabel(r)}
+			ticker={r.ticker}
+			assetType={r.asset_type ?? null}
+			srText="종목 화면"
+		/>
 		{#if r.status === 'planned'}
 			<Badge tone="info">{r.watch_only ? '관심' : STATUS_LABEL.planned}</Badge>
 		{:else if r.status === 'closed'}

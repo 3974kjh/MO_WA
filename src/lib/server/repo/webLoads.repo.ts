@@ -686,7 +686,13 @@ export async function loadDashboardValuation(
 	return { data: valuation, error: null };
 }
 
-export type InstrumentLabel = { id: string; name: string; ticker: string };
+export type InstrumentLabel = {
+	id: string;
+	name: string;
+	ticker: string;
+	/** FE-11 종목명 링크(stock·etf만) 판단용. 테스트 목·옛 호출은 없을 수 있다 */
+	asset_type?: string | null;
+};
 
 /** FE-03 홈 카드용 종목 이름·코드(id → label). 보관된 종목도 이름은 보여 준다. */
 export async function listInstrumentLabels(
@@ -696,14 +702,14 @@ export async function listInstrumentLabels(
 	const ids = [...new Set(instrumentIds.filter(Boolean))];
 	if (ids.length === 0) return { data: [], error: null };
 	const ownerId = requireOwnerId(repo);
-	let q = fromRepo(repo, 'instruments').select('id, name, ticker').in('id', ids);
+	let q = fromRepo(repo, 'instruments').select('id, name, ticker, asset_type').in('id', ids);
 	q = withOwnerFilter(q, ownerId);
 	const { data, error } = await q;
 	if (error) return { data: [], error: error as Error };
 	return { data: (data ?? []) as InstrumentLabel[], error: null };
 }
 
-export type InstrumentMeta = InstrumentLabel & { asset_type: string | null };
+export type InstrumentMeta = Omit<InstrumentLabel, 'asset_type'> & { asset_type: string | null };
 
 /** FE-07 변경 요청·기록 수정용 종목 이름·코드·자산 유형(수량 단위 확인용). 읽기 전용. */
 export async function listInstrumentMeta(
