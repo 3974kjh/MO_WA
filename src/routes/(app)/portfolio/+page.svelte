@@ -26,8 +26,8 @@
 	import Money from '$lib/components/ui/Money.svelte';
 	import StatusBadge from '$lib/components/ui/StatusBadge.svelte';
 	import type { Col } from '$lib/components/ui/types';
-	import BarChart from '$lib/components/charts/BarChart.svelte';
-	import DonutChart from '$lib/components/charts/DonutChart.svelte';
+	const BarChart = import('$lib/components/charts/BarChart.svelte');
+	const DonutChart = import('$lib/components/charts/DonutChart.svelte');
 	import TriggerGauge from '$lib/components/dashboard/TriggerGauge.svelte';
 	import { holdingSummary, positionLabel, weightItems } from '$lib/dashboard/home';
 	import { DIRECTION_BADGE, distanceLabel, triggerState } from '$lib/dashboard/trigger';
@@ -692,13 +692,17 @@
 			{:else if weights.length === 0}
 				<EmptyState icon="◔" title="비중을 낼 평가금액이 없어요" />
 			{:else}
-				<DonutChart
-					items={weights}
-					ariaLabel="보유 종목 비중"
-					total={summary.totalKrw ?? undefined}
-					sub="총 평가금액"
-					valueKind="KRW"
-				/>
+				{#await DonutChart}
+					<div style="min-height:180px" aria-hidden="true"></div>
+				{:then { default: Comp }}
+					<Comp
+						items={weights}
+						ariaLabel="보유 종목 비중"
+						total={summary.totalKrw ?? undefined}
+						sub="총 평가금액"
+						valueKind="KRW"
+					/>
+				{/await}
 				<dl class="kv">
 					<dt>달러 자산</dt>
 					<dd class="num">{summary.usdSharePct != null ? pct1(summary.usdSharePct) : '—'}</dd>
@@ -712,7 +716,11 @@
 			{:else if bars.length === 0}
 				<EmptyState icon="📊" title="수익률을 낼 보유 종목이 없어요" />
 			{:else}
-				<BarChart items={bars} ariaLabel="종목별 평균 단가 대비 수익률" digits={1} />
+				{#await BarChart}
+					<div style="min-height:200px" aria-hidden="true"></div>
+				{:then { default: Comp }}
+					<Comp items={bars} ariaLabel="종목별 평균 단가 대비 수익률" digits={1} />
+				{/await}
 			{/if}
 		</Card>
 

@@ -14,8 +14,8 @@
 	import ErrorState from '$lib/components/ui/ErrorState.svelte';
 	import Money from '$lib/components/ui/Money.svelte';
 	import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
-	import BarChart from '$lib/components/charts/BarChart.svelte';
-	import LineChart from '$lib/components/charts/LineChart.svelte';
+	const BarChart = import('$lib/components/charts/BarChart.svelte');
+	const LineChart = import('$lib/components/charts/LineChart.svelte');
 	import StockTrigger from '$lib/components/stocks/StockTrigger.svelte';
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import ChartColumn from '@lucide/svelte/icons/chart-column';
@@ -466,15 +466,19 @@
 			onchange={(v) => (range = v)}
 		/>
 	</div>
-	<LineChart
-		labels={pts.map((s) => shortDate(s.as_of) ?? s.as_of)}
-		series={[{ name: '종가', values: pts.map((s) => s.close), color: 'var(--color-chart-1)' }]}
-		ariaLabel="{data.instrument.name} 종가 추이"
-		area
-		digits={ccy === 'USD' ? 2 : 0}
-		mobileGrid={3}
-		refLine={ref}
-	/>
+	{#await LineChart}
+		<div style="min-height:260px" aria-hidden="true"></div>
+	{:then { default: Comp }}
+		<Comp
+			labels={pts.map((s) => shortDate(s.as_of) ?? s.as_of)}
+			series={[{ name: '종가', values: pts.map((s) => s.close), color: 'var(--color-chart-1)' }]}
+			ariaLabel="{data.instrument.name} 종가 추이"
+			area
+			digits={ccy === 'USD' ? 2 : 0}
+			mobileGrid={3}
+			refLine={ref}
+		/>
+	{/await}
 	<p class="hint">
 		기록된 날의 종가만 표시({shortDate(pts[0].as_of)}~{shortDate(pts.at(-1)!.as_of)}). 단위: {ccy ===
 		'USD'
@@ -530,13 +534,17 @@
 				onchange={(v) => (who = v)}
 			/>
 		</div>
-		<BarChart
-			items={pts.map((s) => ({ label: shortDate(s.as_of) ?? s.as_of, value: s[key] ?? 0 }))}
-			ariaLabel="{who === 'f' ? '외국인' : '기관'} 일별 순매수"
-			digits={0}
-			unit=""
-			compact
-		/>
+		{#await BarChart}
+			<div style="min-height:200px" aria-hidden="true"></div>
+		{:then { default: Comp }}
+			<Comp
+				items={pts.map((s) => ({ label: shortDate(s.as_of) ?? s.as_of, value: s[key] ?? 0 }))}
+				ariaLabel="{who === 'f' ? '외국인' : '기관'} 일별 순매수"
+				digits={0}
+				unit=""
+				compact
+			/>
+		{/await}
 		<p class="hint">
 			최근 {pts.length}거래일 · 순매수(+) 빨강 ▲ / 순매도(−) 파랑 ▼ · 단위는 기록된 값 그대로 ·
 			{shortDate(pts.at(-1)!.as_of)}까지 기록

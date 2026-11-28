@@ -6,12 +6,12 @@
 	 * - <640: 상단바 52px + 하단 탭 4 + 더보기(52px + safe-area)
 	 * pendingCount는 확인 대기 pending 건수(보류 제외, G-1). 포트폴리오 항목에 pill로 붙는다.
 	 */
-	import type { Snippet } from 'svelte';
+	import { onMount, type Component, type Snippet } from 'svelte';
+	import { idleImport } from '$lib/lazy';
 	import { resolve } from '$app/paths';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import MoWaLogo from '$lib/components/brand/MoWaLogo.svelte';
 	import LogOut from '@lucide/svelte/icons/log-out';
-	import MoreSheet from './MoreSheet.svelte';
 	import NavInvest from './NavInvest.svelte';
 	import NavItem from './NavItem.svelte';
 	import TopBar from './TopBar.svelte';
@@ -43,6 +43,20 @@
 	} = $props();
 
 	let moreOpen = $state(false);
+	let MoreSheet = $state<Component<{
+		open: boolean;
+		current: SectionId | null;
+		onclose: () => void;
+	}> | null>(null);
+
+	async function ensureMore() {
+		if (!MoreSheet) MoreSheet = (await import('./MoreSheet.svelte')).default;
+	}
+	async function openMore() {
+		await ensureMore();
+		moreOpen = true;
+	}
+	onMount(() => idleImport(ensureMore));
 
 	const hrefOf = (n: NavEntry) => (n.href ? resolve(n.href) : undefined);
 	const badgeOf = (n: NavEntry) => (n.pendingBadge ? pendingCount : 0);
@@ -117,13 +131,15 @@
 		aria-haspopup="dialog"
 		aria-expanded={moreOpen}
 		aria-current={moreCurrent ? 'page' : undefined}
-		onclick={() => (moreOpen = true)}
+		onclick={openMore}
 	>
 		<Ellipsis size={22} strokeWidth={1.8} aria-hidden="true" />더보기
 	</button>
 </nav>
 
-<MoreSheet open={moreOpen} {current} onclose={() => (moreOpen = false)} />
+{#if MoreSheet}
+	<MoreSheet open={moreOpen} {current} onclose={() => (moreOpen = false)} />
+{/if}
 
 <style>
 	.skip {
