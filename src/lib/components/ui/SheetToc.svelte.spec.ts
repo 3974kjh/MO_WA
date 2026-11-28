@@ -4,7 +4,7 @@
 import '../../../app.css';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import { flushSync } from 'svelte';
 import Harness from '../../../../tests/ui/SheetTocHarness.svelte';
 import { resetOpenSheets } from './sheetStack';
@@ -337,7 +337,7 @@ describe('목차 점 동작 (합격 기준 5·6)', () => {
 });
 
 describe('닫기 X (아이콘만)', () => {
-	it('평소는 배경·테두리 없고 누름 44, 이름은 닫기, 포커스 링은 유지', async () => {
+	it('평소는 배경·테두리 없고 누름 44, 이름은 닫기, 키보드 Tab으로 포커스 링이 보인다', async () => {
 		await openSheet({ sections: 2 }, [1280, 800]);
 		const btn = q<HTMLButtonElement>('.close')!;
 		expect(btn.getAttribute('aria-label')).toBe('닫기');
@@ -352,14 +352,16 @@ describe('닫기 X (아이콘만)', () => {
 		expect(
 			cs.outlineStyle === 'none' || cs.outlineStyle === '' || parseFloat(cs.outlineWidth) === 0
 		).toBe(true);
-		btn.focus();
-		btn.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-		// :focus-visible 은 키보드 포커스 뒤에만. 기존 전역 규칙 유지 여부
-		const focused = document.activeElement === btn;
-		expect(focused).toBe(true);
+
+		// 실제 키보드 Tab으로 닫기 버튼에 포커스를 옮긴다(.focus()는 :focus-visible을 켜지 않음)
+		const items = focusableIn(sheet());
+		expect(items[0]).toBe(btn);
+		items[items.length - 1].focus();
+		await userEvent.keyboard('{Tab}');
+		expect(document.activeElement).toBe(btn);
 		const on = getComputedStyle(btn);
-		// 클래스에 포커스 링 규칙이 남아 있음(.btn-icon:focus-visible)
-		expect(on.outlineColor.length).toBeGreaterThan(0);
+		expect(on.outlineStyle).not.toBe('none');
+		expect(parseFloat(on.outlineWidth)).toBeGreaterThan(0);
 	});
 });
 
