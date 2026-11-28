@@ -45,8 +45,14 @@
 	// svelte-ignore state_referenced_locally
 	let sort = $state<StockSort>(data.query.sort);
 
+	// 주소는 사용자가 바꿀 때만 맞춘다(첫 실행은 건너뜀 — 하이드레이션 중엔 라우터가 아직 준비 전)
+	let first = true;
 	$effect(() => {
 		const search = stocksSearch({ q, f, sort });
+		if (first) {
+			first = false;
+			return;
+		}
 		// eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve 결과 + 검색어
 		if (search !== page.url.search) replaceState(resolve('/(app)/stocks') + search, page.state);
 	});
@@ -115,8 +121,8 @@
 		<Badge tone={r.report.subtype === 'buy_plan' ? 'info' : 'default'}
 			>{reportKindLabel(r.report)}</Badge
 		>
-		<span class="num sub">{shortDate(r.report.report_date)}</span>
-	{:else}<span class="sub">리포트 없음</span>{/if}
+		<span class="num hint">{shortDate(r.report.report_date)}</span>
+	{:else}<span class="hint">리포트 없음</span>{/if}
 {/snippet}
 
 <!-- 표 하나: ≥1024 표(행 클릭 + 이름 링크) / <1024 같은 표가 카드(2열·1열)로 바뀌고 이름 링크가 카드 전체를 덮는다 -->
@@ -151,7 +157,7 @@
 								<a class="nm" href={resolve('/(app)/stocks/[ticker]', { ticker: r.ticker })}
 									>{r.name}</a
 								>
-								<span class="sub"
+								<span class="hint"
 									>{r.ticker} · {hold ? `보유${r.qty != null ? ` ${r.qty}주` : ''}` : '관심'}{r.memo
 										? ` · ${r.memo}`
 										: ''}</span
@@ -160,7 +166,7 @@
 							<td class="r num px">
 								<b>{unitPrice(r.price, r.currency)}</b>
 								{#if r.change_pct != null}<Delta value={r.change_pct} />{:else}<span
-										class="sub"
+										class="hint"
 										aria-label="등락 없음">—</span
 									>{/if}
 							</td>
@@ -178,7 +184,7 @@
 											r.trigger_price,
 											r.currency
 										)}
-										<span class="sub"
+										<span class="hint"
 											>{r.trigger_direction === 'above'
 												? '▲ 이상으로 오르면'
 												: '▼ 이하로 내려가면'}</span
@@ -186,7 +192,7 @@
 								>
 							{/if}
 							<td class="tg" class:none={r.t.state === 'watch'}
-								>{#if r.t.state === 'watch'}<span class="sub">—</span>{:else}<StockTrigger
+								>{#if r.t.state === 'watch'}<span class="hint">—</span>{:else}<StockTrigger
 										t={r.t}
 									/>{/if}</td
 							>
@@ -285,7 +291,7 @@
 			<option value="trig">감시 가격 가까운 순</option>
 		</select>
 	</div>
-	{#if data.reportsError}<p class="gap sub">리포트 정보를 불러오지 못했어요.</p>{/if}
+	{#if data.reportsError}<p class="gap hint">리포트 정보를 불러오지 못했어요.</p>{/if}
 
 	{#if f !== 'watch'}
 		<Card flush title="보유 종목 {shownHeld.length}종목" class="gap">
@@ -297,7 +303,7 @@
 	{#if f !== 'hold'}
 		<Card flush title="관심 종목 {shownWatch.length}종목" sub="감시 가격은 봇이 기록한 값">
 			{@render board(shownWatch, false)}
-			<p class="pad sub">
+			<p class="pad hint">
 				관심 종목은 투자 관리 봇이 매매일지·매수 계획서에 기록하면 여기에 추가돼요. ‘관심만’은 감시
 				가격 없이 지켜보는 종목이에요.
 			</p>
@@ -324,11 +330,11 @@
 	}
 	.lead,
 	.asof,
-	.sub {
+	.hint {
 		color: var(--color-muted);
 		font-size: var(--text-sm);
 	}
-	.sub {
+	.hint {
 		display: block;
 		color: var(--color-subtle);
 		font-size: var(--text-xs);

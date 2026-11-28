@@ -85,7 +85,7 @@
 	<div
 		bind:this={menu}
 		id="inv-menu"
-		class="sub"
+		class="isub"
 		role="group"
 		aria-label="투자"
 		hidden={!open}
@@ -136,20 +136,20 @@
 	[aria-expanded='true'] .chev {
 		transform: rotate(180deg);
 	}
-	.sub {
+	.isub {
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
 		margin-top: 2px;
 	}
-	.sub[hidden] {
+	.isub[hidden] {
 		display: none;
 	}
 	@media (min-width: 1024px) {
-		.sub :global(.item) {
+		.isub :global(.item) {
 			padding-left: 40px;
 		}
-		.sub {
+		.isub {
 			top: auto !important;
 		}
 	}
@@ -170,7 +170,7 @@
 		.cur .disc {
 			background: var(--color-accent-soft);
 		}
-		.sub {
+		.isub {
 			position: fixed;
 			left: calc(var(--size-sidebar-rail) + 8px);
 			z-index: 80;
@@ -182,7 +182,7 @@
 			border-radius: var(--radius-md);
 			box-shadow: var(--shadow-pop);
 		}
-		.inv:not(.ready) .sub {
+		.inv:not(.ready) .isub {
 			display: none;
 		}
 	}

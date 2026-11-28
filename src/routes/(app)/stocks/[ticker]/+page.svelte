@@ -143,7 +143,7 @@
 		</div>
 	{/if}
 
-	<header class="quote">
+	<header class="qhead">
 		<div>
 			<span class="chips">
 				<Badge>{marketLabel(i.market)}</Badge>
@@ -293,12 +293,12 @@
 								</p>
 								<StockTrigger {t} />
 							{/if}
-							{#if pos?.memo}<p class="sub">{pos.memo}</p>{/if}
-							{#if pos}<p class="sub" data-testid="hold-basis">
+							{#if pos?.memo}<p class="hint">{pos.memo}</p>{/if}
+							{#if pos}<p class="hint" data-testid="hold-basis">
 									{formatAsOf(pos.base_at) ? `기준 시각 ${formatAsOf(pos.base_at)}` : NO_BASIS}
 								</p>{/if}
 						</div>
-						<p class="sub">
+						<p class="hint">
 							이 화면에서는 보유 기록을 고칠 수 없어요. 수량·평균 단가는 포트폴리오의 ‘기록
 							수정’이나 봇의 변경 요청으로만 바뀌어요.
 						</p>
@@ -333,7 +333,7 @@
 								<div>
 									<dt>이유</dt>
 									<dd>
-										{m.reason}{#if m.reasonSource}<span class="sub">({m.reasonSource})</span>{/if}
+										{m.reason}{#if m.reasonSource}<span class="hint">({m.reasonSource})</span>{/if}
 									</dd>
 								</div>
 							{/if}
@@ -348,7 +348,7 @@
 								<div>
 									<dt>{LENS_LABEL[l.key]}</dt>
 									<dd>
-										{l.text}{#if l.source}<span class="sub">({l.source})</span>{/if}
+										{l.text}{#if l.source}<span class="hint">({l.source})</span>{/if}
 									</dd>
 								</div>
 							{/each}
@@ -406,7 +406,7 @@
 		digits={ccy === 'USD' ? 2 : 0}
 		refLine={avg != null ? { v: avg, label: `평균 단가 ${unitPrice(avg, ccy)}` } : undefined}
 	/>
-	<p class="sub">
+	<p class="hint">
 		기록된 날의 종가만 표시({shortDate(pts[0].as_of)}~{shortDate(pts.at(-1)!.as_of)}). 단위: {ccy ===
 		'USD'
 			? '달러'
@@ -429,7 +429,7 @@
 			>
 				<i style:left="{posPct}%"></i>
 			</div>
-			<p class="row sub">
+			<p class="row hint">
 				<span>최저 {unitPrice(lo, ccy)}</span><span>최고 {unitPrice(hi, ccy)}</span>
 			</p>
 		</div>
@@ -463,7 +463,7 @@
 			digits={0}
 			unit=""
 		/>
-		<p class="sub">
+		<p class="hint">
 			최근 {pts.length}거래일 · 순매수(+) 빨강 ▲ / 순매도(−) 파랑 ▼ · 단위는 기록된 값 그대로 ·
 			{shortDate(pts.at(-1)!.as_of)}까지 기록
 		</p>
@@ -486,7 +486,7 @@
 
 {#snippet related()}
 	{#if full.reportsError || full.relatedError}
-		<p class="sub" role="alert">일부 기록을 불러오지 못했어요.</p>
+		<p class="hint" role="alert">일부 기록을 불러오지 못했어요.</p>
 	{/if}
 	{#each relGroups as g (g.h)}
 		<h3 class="rel-h">
@@ -544,17 +544,17 @@
 							? ` · ${x.source_name}`
 							: ''}</Badge
 					>
-					{#if x.note}<span class="sub">{x.note}</span>{/if}
+					{#if x.note}<span class="hint">{x.note}</span>{/if}
 				</span>
 				<span class="r">
 					<b class="num">{unitPrice(x.target_price, x.currency)}</b>
 					{#if prev?.target_price != null && x.target_price != null && prev.target_price !== x.target_price}
-						<span class="num sub"
+						<span class="num hint"
 							>이전 {unitPrice(prev.target_price, x.currency)}
 							{x.target_price < prev.target_price ? '▼ 하향' : '▲ 상향'}</span
 						>
 					{/if}
-					<span class="sub">의견 {OPINION[x.opinion]}</span>
+					<span class="hint">의견 {OPINION[x.opinion]}</span>
 					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- analysisHref: 앱 고정 경로(/analyses/[slug]) -->
 					{#if slug}<a class="text-xs" href={analysisHref(slug, data.instrument.ticker)}
 							>리포트 보기</a
@@ -563,7 +563,7 @@
 			</li>
 		{/each}
 	</ul>
-	<p class="sub">
+	<p class="hint">
 		‘공식’은 투자 분석 봇이 남긴 목표가 기록이에요. 의견 기준: 목표가까지 +20% 이상 매수 · −10%~+20%
 		중립 · −10% 미만 매도.
 	</p>
@@ -572,10 +572,10 @@
 <style>
 	.mb,
 	.acts,
-	.quote {
+	.qhead {
 		margin-bottom: 14px;
 	}
-	.quote,
+	.qhead,
 	.row {
 		display: flex;
 		flex-wrap: wrap;
@@ -641,7 +641,7 @@
 	.seg {
 		margin-bottom: 8px;
 	}
-	.sub {
+	.hint {
 		display: block;
 		margin-top: 6px;
 		color: var(--color-subtle);
@@ -774,7 +774,7 @@
 		.o7 {
 			order: 7;
 		}
-		.quote {
+		.qhead {
 			align-items: flex-start;
 		}
 		.px {
