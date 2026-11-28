@@ -183,7 +183,8 @@ ID 형식: `R-<영역>-<번호>` (예: `R-VAL-R12`, `R-PERM-04`, `R-SYS-05`).
 - 설명: finance-manager-boot가 평일 브리핑 직후 하루치 종가·지표·수급을 보낸다. `dry_run`(필수)이 `true`면 검증과 바뀔 내용(`would_insert`/`would_update`/`unchanged`/`rejected`/`warnings`)만 돌려주고 아무것도 쓰지 않는다. `false`면 거부가 0건일 때만 쓰고, 하나라도 있으면 `VALIDATION`으로 거절하며 아무것도 쓰지 않는다.
 - 서버 게이트(`R-FEED-01`~`R-FEED-14`): strict 입력(모르는 키 거부)·ISO 실제 날짜, `feed_date`=오늘/어제(KST)·주말 거부, 시장별 기대 `as_of`(KR=feed_date, 미국·vix=직전 NYSE 거래일, ust10y=직전 SIFMA 거래일)와 휴장 달력(`marketCalendar.ts`, 2026–2027, 범위 밖은 dry_run만), 허용 8종목·기대 종목 중 최대 1개 결측, 직전 종가 대비 KRX ±30%·미국 ±50%, 직전 거래일 행이 있으면 등락률 0.3%p 교차 확인, 지표 범위(usdkrw는 `basis:"seoul_1530"` 필수·전일 ±25원), 수급 5종목(단위 주, 기존 가격 행의 수급 칸만, 확정→잠정 덮어쓰기 거부), 기존 행 source가 `notion:daily-brief`/`fm:daily-feed`일 때만 덮어씀, 정정은 직전 거래일 행만·feed_date당 1회(이전 값은 `extra.prev`), 같은 `feed_id`+다른 값 거부.
 - 서버가 정하는 값: owner(키), `instrument_id`, `currency`, `source='fm:daily-feed'`, `extra`, `source_bot_id`(트리거). 삭제 기능 없음.
-- 감사: `mcp_audit_log.warnings`에 `R-FEED-30` 요약(dry_run 여부·건수)을 남긴다(응답에는 안 나옴).
+- 감사: `mcp_audit_log.warnings`에 `R-FEED-30` 요약(dry_run 여부·건수)을 남긴다(응답에는 안 나옴). 라이브로 기존 행을 갱신하면 행마다 `R-FEED-30` `update <table> <key> before={이전 값·source}` 항목(최대 40건)도 남긴다 — 덮어쓴 행의 이전 값·source 출처 추적용. 쓰기마다 `source_bot_id`가 실리고 DB 트리거가 키의 봇으로 확정한다. 수급만 갱신한 행은 `source`를 바꾸지 않고(`extra.flows`에 feed_id 기록) `source_bot_id`만 갱신된다.
+- 키 발급: 설정 화면 '직접 켜야 하는 권한'에서 체크해야만 켜진다(기본·사전 선택 없음, 재무 관리 봇만). 서버는 알 수 없는 scope와 다른 프로필의 `market:feed`를 거부한다(`R-PERM-10`).
 - 입력·출력 스키마: `docs/mcp-tools.generated.md`.
 
 각 툴 절은 스키마를 채울 때 다음 형식으로 적는다.

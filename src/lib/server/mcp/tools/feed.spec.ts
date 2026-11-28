@@ -728,6 +728,33 @@ describe('corrections — previous trading day only, once per feed_date', () => 
 		expect((r.extra as Row).prev).toMatchObject({ close: 160200, source: 'notion:daily-brief' });
 	});
 
+	it('provenance: an updated row keeps the old value+source in the audit log, writes source_bot_id, never leaks to the response', async () => {
+		const h = harness();
+		const out = ok(
+			await h.call(
+				'submit_daily_market_feed',
+				validPayload({
+					corrections: [fix, { key: 'kospi', as_of: '2026-11-27', value: 4700 }]
+				})
+			)
+		);
+		const notes = h.sink.rows.at(-1)!.warnings.filter((w) => /^update /.test(w.message));
+		expect(notes.length).toBeGreaterThanOrEqual(2);
+		const priceNote = notes.find((n) => n.message.includes('price_snapshots'))!;
+		expect(priceNote.message).toContain('notion:daily-brief');
+		expect(priceNote.message).toContain('160200');
+		expect(notes.find((n) => n.message.includes('market_indicators'))?.message).toContain(
+			'notion:daily-brief'
+		);
+		expect(JSON.stringify(out)).not.toMatch(/"rule":"R-FEED-30"/);
+		// every update/insert/upsert payload carries source_bot_id (value stamped by the repo/DB trigger)
+		const writes = db.writes.filter((w) => w.op !== 'delete');
+		for (const w of writes.filter((x) => x.op === 'update' || x.op === 'upsert')) {
+			for (const row of w.payload as Row[]) expect(row).toHaveProperty('source_bot_id');
+		}
+		expect(priceRow(OWNER_A, '035420', '2026-11-27')!.source).toBe(FEED_SOURCE);
+	});
+
 	it('a second correction for the same feed_date (new feed_id) is rejected', async () => {
 		ok(await feed(validPayload({ corrections: [fix] })));
 		const again = await feed(

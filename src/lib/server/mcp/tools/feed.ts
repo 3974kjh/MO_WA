@@ -1036,6 +1036,18 @@ function requireRepo(repo: RepoClient | null): RepoClient {
 /** Injectable clock for tests. */
 export const feedClock = { now: () => Date.now() };
 
+const MAX_PROVENANCE_NOTES = 40;
+
+function updateProvenanceNotes(
+	updates: ReadonlyArray<{ table: string; key: string; field: string; before: unknown }>
+): McpRuleIssue[] {
+	return updates.slice(0, MAX_PROVENANCE_NOTES).map((u) => ({
+		rule: FEED_RULES.auditSummary,
+		field: u.field,
+		message: `update ${u.table} ${u.key} before=${JSON.stringify(u.before)}`.slice(0, 300)
+	}));
+}
+
 export async function submitDailyMarketFeedHandler(
 	input: ToolHandlerInput
 ): Promise<ToolHandlerOutcome> {
@@ -1193,7 +1205,9 @@ export async function submitDailyMarketFeedHandler(
 			warnings: plan.warnings
 		},
 		affectedIds: affected,
-		auditNotes: [summary(false, true)]
+		// Provenance (code_review Info): a live update overwrites source/source_bot_id on the row, so
+		// the audit log keeps what each updated row held before (value + source), audit-only.
+		auditNotes: [summary(false, true), ...updateProvenanceNotes(updates)]
 	};
 }
 
