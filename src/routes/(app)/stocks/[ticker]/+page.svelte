@@ -139,12 +139,17 @@
 	{#if stale}
 		<div class="mb" data-testid="stock-stale">
 			<Banner>
-				<b>최신 시세가 아니에요.</b> 마지막으로 받은 시세는
-				<b class="num">{quoteBasis(last?.as_of, i.market)}</b>예요. 아래 등락·수익률·감시 가격
-				거리는 이 시각 기준이에요.
-				<button type="button" class="rl btn preset-outlined-surface-500" onclick={reload}
-					>다시 불러오기</button
-				>
+				<!-- 문장과 버튼이 한 줄에 안 들어가면 버튼이 문장 아래 줄로(문장 기본 폭 = 내용 폭) -->
+				<div class="bn">
+					<span class="st"
+						><b>최신 시세가 아니에요.</b> 마지막으로 받은 시세는
+						<b class="num">{quoteBasis(last?.as_of, i.market)}</b>예요. 아래 등락·수익률·감시 가격
+						거리는 이 시각 기준이에요.</span
+					>
+					<button type="button" class="rl btn preset-outlined-surface-500" onclick={reload}
+						>다시 불러오기</button
+					>
+				</div>
 			</Banner>
 		</div>
 	{/if}
@@ -797,9 +802,18 @@
 		color: var(--color-text);
 		font-size: var(--text-sm);
 	}
+	.bn {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px 12px;
+	}
+	.st {
+		flex: 1 1 auto;
+		min-width: 0;
+	}
 	.rl {
 		min-height: 40px;
-		margin-left: 8px;
 	}
 	.tp-now {
 		justify-content: flex-start;
@@ -832,10 +846,6 @@
 		.rel .go,
 		.rl {
 			min-height: 44px;
-		}
-		.rl {
-			display: flex;
-			margin: 8px 0 0;
 		}
 		.col {
 			display: contents;

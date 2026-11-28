@@ -238,14 +238,19 @@
 	{#if stale}
 		<div class="gap" data-testid="stocks-stale">
 			<Banner>
-				<b>최신 시세가 아니에요.</b> 마지막으로 받은 시세는
-				<b class="num">{quoteBasis(asOf.last, asOf.last === asOf.kr ? 'KRX' : 'NASDAQ')}</b>예요.
-				등락·수익률·감시 가격 거리는 이 시각 기준이에요.
-				<button
-					type="button"
-					class="rl btn preset-outlined-surface-500"
-					onclick={() => location.reload()}>다시 불러오기</button
-				>
+				<!-- 문장과 버튼이 한 줄에 안 들어가면 버튼이 문장 아래 줄로(문장 기본 폭 = 내용 폭) -->
+				<div class="bn">
+					<span class="st"
+						><b>최신 시세가 아니에요.</b> 마지막으로 받은 시세는
+						<b class="num">{quoteBasis(asOf.last, asOf.last === asOf.kr ? 'KRX' : 'NASDAQ')}</b
+						>예요. 등락·수익률·감시 가격 거리는 이 시각 기준이에요.</span
+					>
+					<button
+						type="button"
+						class="rl btn preset-outlined-surface-500"
+						onclick={() => location.reload()}>다시 불러오기</button
+					>
+				</div>
 			</Banner>
 		</div>
 	{/if}
@@ -346,9 +351,18 @@
 		color: var(--color-muted);
 		font-size: var(--text-xs);
 	}
+	.bn {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px 12px;
+	}
+	.st {
+		flex: 1 1 auto;
+		min-width: 0;
+	}
 	.rl {
 		min-height: 40px;
-		margin-left: 8px;
 	}
 	.lead,
 	.asof,
@@ -481,9 +495,7 @@
 			margin-bottom: 12px;
 		}
 		.rl {
-			display: flex;
 			min-height: 44px;
-			margin: 8px 0 0;
 		}
 		tbody {
 			grid-template-columns: 1fr;
