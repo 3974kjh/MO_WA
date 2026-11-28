@@ -211,12 +211,7 @@
 				</button>
 			{/if}
 			<h2 id="{uid}-title" class="title">{title}</h2>
-			<button
-				type="button"
-				class="close btn-icon preset-outlined-surface-500"
-				aria-label="닫기"
-				onclick={onclose}
-			>
+			<button type="button" class="close btn-icon" aria-label="닫기" onclick={onclose}>
 				<X size={20} strokeWidth={1.8} aria-hidden="true" />
 			</button>
 		</div>
@@ -351,6 +346,35 @@
 		}
 		.sheet.bottom .close {
 			display: none; /* X 없음 — 닫기: 손잡이(버튼)·끌기·스크림·Esc·'취소' */
+		}
+	}
+	/* 닫기 X: 평소는 아이콘만(배경·테두리 없음), hover·active 만 면.
+	   라이트 --color-surface-2, 다크 --color-surface-3(시트 면 위에서 2가 거의 안 보임). 누름 44 */
+	.close {
+		--close-hover: var(--color-surface-2);
+		width: 2.75rem;
+		height: 2.75rem;
+		background: transparent;
+		border: 0;
+	}
+	.close:not(:disabled):is(:hover, :active) {
+		background: var(--close-hover);
+	}
+	:global(:root[data-theme='dark']) .close {
+		--close-hover: var(--color-surface-3);
+	}
+	@media (prefers-color-scheme: dark) {
+		:global(:root:not([data-theme='light']):not([data-theme='dark'])) .close {
+			--close-hover: var(--color-surface-3);
+		}
+	}
+	@media (forced-colors: active) {
+		.close {
+			color: ButtonText;
+		}
+		.close:is(:hover, :active, :focus-visible) {
+			outline: 2px solid Highlight;
+			outline-offset: 2px;
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {

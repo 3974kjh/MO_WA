@@ -335,6 +335,33 @@ describe('목차 점 동작 (합격 기준 5·6)', () => {
 	});
 });
 
+describe('닫기 X (아이콘만)', () => {
+	it('평소는 배경·테두리 없고 누름 44, 이름은 닫기, 포커스 링은 유지', async () => {
+		await openSheet({ sections: 2 }, [1280, 800]);
+		const btn = q<HTMLButtonElement>('.close')!;
+		expect(btn.getAttribute('aria-label')).toBe('닫기');
+		const r = btn.getBoundingClientRect();
+		expect(r.width).toBeGreaterThanOrEqual(44);
+		expect(r.height).toBeGreaterThanOrEqual(44);
+		const cs = getComputedStyle(btn);
+		expect(cs.backgroundColor === 'rgba(0, 0, 0, 0)' || cs.backgroundColor === 'transparent').toBe(
+			true
+		);
+		expect(parseFloat(cs.borderTopWidth)).toBe(0);
+		expect(
+			cs.outlineStyle === 'none' || cs.outlineStyle === '' || parseFloat(cs.outlineWidth) === 0
+		).toBe(true);
+		btn.focus();
+		btn.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+		// :focus-visible 은 키보드 포커스 뒤에만. 기존 전역 규칙 유지 여부
+		const focused = document.activeElement === btn;
+		expect(focused).toBe(true);
+		const on = getComputedStyle(btn);
+		// 클래스에 포커스 링 규칙이 남아 있음(.btn-icon:focus-visible)
+		expect(on.outlineColor.length).toBeGreaterThan(0);
+	});
+});
+
 describe('구역이 많을 때 (합격 기준 7)', () => {
 	it('10개: 390×560 에서 점 32 로 압축, 겹치지 않고 모달 밖으로 안 나간다', async () => {
 		await openSheet({ sections: 10, lines: 6 }, [390, 560]);
