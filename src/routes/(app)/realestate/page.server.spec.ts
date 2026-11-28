@@ -44,7 +44,7 @@ type Out = {
 	missing: number;
 	query: { tab: string };
 };
-const run = async (search = '') =>
+const run = async (search = '?tab=map') =>
 	(await (load as unknown as (e: unknown) => Promise<Out>)({
 		locals: { user: { id: 'u' }, supabase: {} },
 		url: new URL('http://x/realestate' + search)
@@ -59,13 +59,13 @@ describe('FE-12 /realestate load', () => {
 	it('키가 없으면 null, 있으면 다듬어 그대로(모양이 이상하면 null)', async () => {
 		repo.listReComplexesForMap.mockResolvedValue({ data: [ROW, NOGEO], error: null });
 		repo.listRecentComplexSnapshots.mockResolvedValue({ data: [], error: null });
-		expect((await run()).mapKeyId).toBeNull();
+		expect((await run('?tab=map')).mapKeyId).toBeNull();
 		env.env = { PUBLIC_NAVER_MAP_KEY_ID: '  placeholderKey01 ' };
-		expect((await run()).mapKeyId).toBe('placeholderKey01');
+		expect((await run('?tab=map')).mapKeyId).toBe('placeholderKey01');
 		env.env = { PUBLIC_NAVER_MAP_KEY_ID: 'bad key"><script>' };
-		expect((await run()).mapKeyId).toBeNull();
+		expect((await run('?tab=map')).mapKeyId).toBeNull();
 		env.env = { PUBLIC_NAVER_MAP_KEY_ID: '' };
-		expect((await run()).mapKeyId).toBeNull();
+		expect((await run('?tab=map')).mapKeyId).toBeNull();
 	});
 
 	it('좌표 없는 단지는 목록에 남고 수가 따로 잡힌다 · 스냅샷은 단지 id로만', async () => {
@@ -74,13 +74,42 @@ describe('FE-12 /realestate load', () => {
 			data: [{ complex_id: ROW.id, as_of: '2026-11-04', med_price: 59600 }],
 			error: null
 		});
-		const out = await run('?tab=brief');
+		const out = await run('?tab=map');
 		expect(out.query.tab).toBe('map');
 		expect(out.located).toBe(1);
 		expect(out.missing).toBe(1);
 		expect(out.items.map((i) => i.id)).toEqual([ROW.id, NOGEO.id]);
 		expect(out.items[0].medPrice).toBe(59600);
 		expect(repo.listRecentComplexSnapshots).toHaveBeenCalledWith({}, [ROW.id, NOGEO.id]);
+	});
+
+	it('브리핑·시세·청약 탭(기본 탭 포함)은 단지 자료와 지도 키를 읽지도 내려주지도 않는다', async () => {
+		env.env = { PUBLIC_NAVER_MAP_KEY_ID: 'placeholderKey01' };
+		const want: Record<string, string> = {
+			'': 'brief',
+			'?tab=brief': 'brief',
+			'?tab=trend': 'trend',
+			'?tab=subs': 'subs',
+			'?tab=zzz': 'brief'
+		};
+		for (const [q, tab] of Object.entries(want)) {
+			const out = await run(q);
+			expect(out.query.tab).toBe(tab);
+			expect(out.items).toEqual([]);
+			expect(out.mapKeyId).toBeNull();
+		}
+		expect(repo.listReComplexesForMap).not.toHaveBeenCalled();
+		expect(repo.listRecentComplexSnapshots).not.toHaveBeenCalled();
+	});
+
+	it('관심 단지 탭은 단지를 읽지만 지도 키는 지도 탭에만 내려준다', async () => {
+		repo.listReComplexesForMap.mockResolvedValue({ data: [ROW], error: null });
+		repo.listRecentComplexSnapshots.mockResolvedValue({ data: [], error: null });
+		env.env = { PUBLIC_NAVER_MAP_KEY_ID: 'placeholderKey01' };
+		const w = await run('?tab=watch');
+		expect(w.items).toHaveLength(1);
+		expect(w.mapKeyId).toBeNull();
+		expect((await run('?tab=map')).mapKeyId).toBe('placeholderKey01');
 	});
 
 	it('단지를 못 읽으면 일반 문구만(원문 숨김), 스냅샷은 읽지 않는다', async () => {

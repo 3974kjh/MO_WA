@@ -1,17 +1,19 @@
 /**
- * FE-12 `/realestate` 주소 규칙(순수). `?tab=brief|trend|subs|watch|map`(확정 5탭) · `?c=<단지 id>`.
- * 지금 열린 탭은 지도 하나라 모르는 값·준비 중 탭은 지도로 그린다(주소는 그대로 둔다 — 303 정리는
- * 다른 탭이 열릴 때 함께 정한다).
+ * FE-12 `/realestate` 주소 규칙(순수). `?tab=brief|trend|subs|watch|map`(확정 5탭, 시안 realestate.html과 같은 순서) ·
+ * `?c=<단지 id>`. 탭이 없거나 모르는 값이면 첫 탭(오늘 브리핑)이다. 지도 코드는 map 탭일 때만 불러온다.
  */
 export type RealestateTab = 'brief' | 'trend' | 'subs' | 'watch' | 'map';
 
-export const RE_TABS: ReadonlyArray<{ id: RealestateTab; label: string; ready: boolean }> = [
-	{ id: 'brief', label: '오늘 브리핑', ready: false },
-	{ id: 'trend', label: '시세 동향', ready: false },
-	{ id: 'subs', label: '청약', ready: false },
-	{ id: 'watch', label: '관심 단지', ready: false },
-	{ id: 'map', label: '지도', ready: true }
+export const RE_TABS: ReadonlyArray<{ id: RealestateTab; label: string }> = [
+	{ id: 'brief', label: '오늘 브리핑' },
+	{ id: 'trend', label: '시세 동향' },
+	{ id: 'subs', label: '청약' },
+	{ id: 'watch', label: '관심 단지' },
+	{ id: 'map', label: '지도' }
 ];
+
+/** 단지 자료(지도·관심 단지)를 읽는 탭 */
+export const COMPLEX_TABS: ReadonlySet<RealestateTab> = new Set(['watch', 'map']);
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -23,7 +25,7 @@ export interface RealestateQuery {
 
 export function parseRealestateQuery(sp: URLSearchParams): RealestateQuery {
 	const raw = sp.get('tab');
-	const t = RE_TABS.find((x) => x.id === raw && x.ready);
+	const t = RE_TABS.find((x) => x.id === raw);
 	const c = sp.get('c');
-	return { tab: t?.id ?? 'map', c: c && UUID_RE.test(c) ? c.toLowerCase() : null };
+	return { tab: t?.id ?? 'brief', c: c && UUID_RE.test(c) ? c.toLowerCase() : null };
 }
