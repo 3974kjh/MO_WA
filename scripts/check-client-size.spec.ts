@@ -1,4 +1,6 @@
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
@@ -27,6 +29,10 @@ function fakeRepo(opts?: {
 	menuJs?: string | Buffer;
 	extraAllCss?: string | Buffer;
 	dynamicHeavy?: boolean;
+	/** (app)/qa-nest 중첩 레이아웃 + 페이지. 레이아웃이 큰 정적 import를 가진다 */
+	nestedLayoutJs?: Buffer;
+	/** 이 노드 번호의 manifest 키를 지운다 */
+	dropManifestNode?: number;
 }) {
 	const root = mkdtempSync(join(tmpdir(), 'client-size-'));
 	const client = join(root, '.svelte-kit/output/client');
@@ -44,7 +50,9 @@ function fakeRepo(opts?: {
 		n20: '_app/immutable/nodes/20.js',
 		n20css: '_app/immutable/assets/20.css',
 		heavy: '_app/immutable/chunks/heavy.js',
-		dyn: '_app/immutable/chunks/dyn.js'
+		dyn: '_app/immutable/chunks/dyn.js',
+		shared: '_app/immutable/chunks/entry-a.js',
+		shared2: '_app/immutable/chunks/entry-b.js'
 	};
 	const blob = (n: number, ch = 'a') => Buffer.alloc(n, ch);
 	write(join(client, files.start), blob(40, 's'));
@@ -59,6 +67,8 @@ function fakeRepo(opts?: {
 	write(join(client, files.n20), blob(60, 'L'));
 	write(join(client, files.n20css), blob(50, 'l'));
 	write(join(client, files.heavy), blob(200, 'H'));
+	write(join(client, files.shared), noisy(3_000, 5)); // 서버 manifest의 entry imports(실제 형식)
+	write(join(client, files.shared2), noisy(2_000, 6));
 	write(join(client, files.dyn), blob(500_000, 'D')); // huge — must not enter sync closures
 	if (opts?.extraAllCss) write(join(client, '_app/immutable/assets/orphan.css'), opts.extraAllCss);
 
@@ -88,10 +98,23 @@ function fakeRepo(opts?: {
 		manifest['src/lib/heavy-dyn.js'] = { file: files.dyn };
 		manifest['client-optimized/nodes/5.js'].dynamicImports = ['src/lib/heavy-dyn.js'];
 	}
+	if (opts?.nestedLayoutJs) {
+		write(join(client, '_app/immutable/nodes/30.js'), blob(60, 'N'));
+		write(join(client, '_app/immutable/chunks/nest.js'), opts.nestedLayoutJs);
+		write(join(client, '_app/immutable/nodes/31.js'), blob(60, 'P'));
+		manifest['client-optimized/nodes/30.js'] = {
+			file: '_app/immutable/nodes/30.js',
+			imports: ['chunks/nest.js']
+		};
+		manifest['chunks/nest.js'] = { file: '_app/immutable/chunks/nest.js' };
+		manifest['client-optimized/nodes/31.js'] = { file: '_app/immutable/nodes/31.js' };
+	}
+	if (opts?.dropManifestNode !== undefined)
+		delete manifest[`client-optimized/nodes/${opts.dropManifestNode}.js`];
 	write(join(client, '.vite/manifest.json'), JSON.stringify(manifest, null, 2));
 	write(
 		join(root, '.svelte-kit/output/server/manifest.js'),
-		`export const manifest = { client: {start:"${files.start}",app:"${files.app}",imports:[]}, };\n`
+		`export const manifest = { client: {start:"${files.start}",app:"${files.app}",imports:["${files.shared}","${files.shared2}"],stylesheets:[],fonts:[],uses_env_dynamic_public:false}, };\n`
 	);
 	const nodeSrc: Record<string, string> = {
 		'0': 'export { default as component } from "../../../../src/routes/+layout.svelte";',
@@ -100,6 +123,12 @@ function fakeRepo(opts?: {
 		'12': 'export { default as component } from "../../../../src/routes/(app)/portfolio/+page.svelte";',
 		'20': 'export { default as component } from "../../../../src/routes/login/+page.svelte";'
 	};
+	if (opts?.nestedLayoutJs) {
+		nodeSrc['30'] =
+			'export { default as component } from "../../../../src/routes/(app)/qa-nest/+layout.svelte";';
+		nodeSrc['31'] =
+			'export { default as component } from "../../../../src/routes/(app)/qa-nest/+page.svelte";';
+	}
 	for (const [id, src] of Object.entries(nodeSrc)) write(join(nodes, `${id}.js`), src);
 	return root;
 }
@@ -121,6 +150,9 @@ describe('check-client-size', () => {
 		// huge dyn chunk is only in the all-files inventory
 		expect(a.all.js).toBeGreaterThan(a.home.js);
 		expect(a.home.sum).toBeLessThan(10_000);
+		// 실제 형식의 server manifest(imports 여러 개·뒤따르는 필드)에서 entry 청크가 로그인·홈에 들어간다
+		expect(a.login.js).toBeGreaterThan(5_000);
+		expect(a.home.js).toBeGreaterThan(5_000);
 		const ev = evaluate(a);
 		expect(passed(ev)).toBe(true);
 		expect(ev.hard.every((r) => r.ok)).toBe(true);
@@ -170,5 +202,69 @@ describe('check-client-size', () => {
 		expect(doc).toMatch(/참고/);
 		expect(doc).toMatch(/250,000/);
 		expect(doc).toMatch(/45,056/);
+	});
+
+	it('중첩 +layout.svelte의 큰 정적 import도 메뉴 증분에 들어가 실패한다 (M2)', () => {
+		const ok = measure(fakeRepo({ nestedLayoutJs: Buffer.alloc(100, 'n') }));
+		expect(ok.routes.map((r) => r.route)).toContain('qa-nest');
+		expect(passed(evaluate(ok))).toBe(true);
+
+		const repo = fakeRepo({ nestedLayoutJs: noisy(150_000) });
+		const report = measure(repo);
+		const nest = report.routes.find((r) => r.route === 'qa-nest')!;
+		expect(nest.inc).toBeGreaterThan(LIMITS.menuIncrement);
+		const ev = evaluate(report);
+		expect(ev.hard.find((r) => r.id === 'menuIncrement')?.ok).toBe(false);
+		expect(passed(ev)).toBe(false);
+		// 다른 라우트(포트폴리오)의 증분은 중첩 레이아웃의 영향을 받지 않는다
+		const base = measure(fakeRepo());
+		expect(report.routes.find((r) => r.route === 'portfolio')!.inc).toBe(
+			base.routes.find((r) => r.route === 'portfolio')!.inc
+		);
+	});
+
+	it('manifest에 키가 없는 페이지·레이아웃 노드는 건너뛰지 않고 실패한다 (L1)', () => {
+		expect(() => measure(fakeRepo({ dropManifestNode: 12 }))).toThrow(/missing page node 12/);
+		expect(() =>
+			measure(fakeRepo({ nestedLayoutJs: Buffer.alloc(10, 'n'), dropManifestNode: 30 }))
+		).toThrow(/missing layout node 30/);
+		expect(() => measure(fakeRepo({ dropManifestNode: 20 }))).toThrow(/missing/);
+	});
+});
+
+describe('check-client-size CLI (L2)', () => {
+	const script = fileURLToPath(new URL('./check-client-size.mjs', import.meta.url));
+	const run = (entry: string, repo: string, extra: string[] = []) =>
+		spawnSync(process.execPath, [entry, repo, ...extra], { encoding: 'utf8' });
+
+	it('심볼릭 링크 경로로 실행해도 측정·출력하고 종료 코드를 낸다', () => {
+		const dir = mkdtempSync(join(tmpdir(), 'client-size-link-'));
+		const link = join(dir, 'scripts-link');
+		symlinkSync(fileURLToPath(new URL('.', import.meta.url)), link);
+		const viaLink = join(link, 'check-client-size.mjs');
+
+		const okRun = run(viaLink, fakeRepo());
+		expect(okRun.status).toBe(0);
+		expect(okRun.stdout).toContain('크기 가드');
+		expect(okRun.stdout).toContain('PASS');
+
+		const failRun = run(viaLink, fakeRepo({ homeCss: noisy(130_000) }));
+		expect(failRun.status).toBe(1);
+		expect(failRun.stdout).toContain('FAIL');
+
+		const noBuild = run(viaLink, mkdtempSync(join(tmpdir(), 'client-size-empty-')));
+		expect(noBuild.status).toBe(2);
+		expect(noBuild.stderr).toContain('build output missing');
+	});
+
+	it('실제 경로로 실행한 결과와 링크로 실행한 결과가 같다', () => {
+		const repo = fakeRepo();
+		const dir = mkdtempSync(join(tmpdir(), 'client-size-link-'));
+		const link = join(dir, 'scripts-link');
+		symlinkSync(fileURLToPath(new URL('.', import.meta.url)), link);
+		const a = run(script, repo);
+		const b = run(join(link, 'check-client-size.mjs'), repo);
+		expect(b.stdout).toBe(a.stdout);
+		expect(b.status).toBe(a.status);
 	});
 });

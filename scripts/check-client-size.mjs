@@ -7,11 +7,15 @@
  * 첫 화면 CSS(홈·로그인) 32,000 · 메뉴 증분(셸 대비) 60,000 · 메뉴 전체 140,000.
  * 전체 JS+CSS 합 250,000 · 전체 CSS 합 45,056 은 참고치만 출력하고 차단하지 않는다.
  *
+ * 동기 import 경로만 잰다: 실제 첫 로드 전송량에는 유휴 시간에 미리 받는 dynamic import
+ * (토스트·더보기·정확한 금액 시트 등)와 차트 청크가 더해진다. 라우트마다 루트 레이아웃부터 그 라우트의
+ * 모든 조상 +layout.svelte(중첩 포함)를 동기 클로저에 넣고, manifest에 없는 노드는 실패로 본다.
+ *
  * Usage: node scripts/check-client-size.mjs [repoRoot]
  * Default repoRoot: cwd. Needs a completed client build under .svelte-kit/output.
  * Fail-closed if manifests are missing.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { pathToFileURL } from 'node:url';
@@ -84,6 +88,7 @@ export function measure(repoRoot) {
 		return hits[0];
 	};
 
+	const idOf = new Map([...nodeOf.entries()].map(([i, r]) => [r, i]));
 	const root = nid('+layout.svelte');
 	const appn = nid('(app)/+layout.svelte');
 	const login = nid('login/+page.svelte');
@@ -98,6 +103,25 @@ export function measure(repoRoot) {
 	for (const id of [root, appn, login, home]) {
 		if (!nk.has(id)) throw new Error(`client-size: manifest missing node ${id}`);
 	}
+
+	/** 라우트(+page) 노드 경로의 모든 조상 레이아웃 노드 경로(루트부터). 중첩·그룹 레이아웃 포함. */
+	const layoutChain = (pagePath) => {
+		const dirs = pagePath.split('/').slice(0, -1);
+		const out = [];
+		for (let n = 0; n <= dirs.length; n++) {
+			const prefix = dirs.slice(0, n).join('/');
+			const base = prefix ? `${prefix}/` : '';
+			for (const [r] of idOf) {
+				// +layout.svelte, +layout@.svelte, +layout@(app).svelte 모두 조상으로 센다(보수적)
+				if (
+					r.startsWith(`${base}+layout`) &&
+					/^\+layout(@[^/]*)?\.svelte$/.test(r.slice(base.length))
+				)
+					out.push(r);
+			}
+		}
+		return out;
+	};
 
 	const sz = (rel) => {
 		const buf = readFileSync(join(client, rel));
@@ -140,20 +164,39 @@ export function measure(repoRoot) {
 		return { js: j.gzip, css: c.gzip, sum: j.gzip + c.gzip, jsRaw: j.raw, cssRaw: c.raw };
 	};
 
-	const loginM = pack(closure(entry, [nk.get(root), nk.get(login)]));
+	/** 라우트 페이지 노드 경로 → 조상 레이아웃 전부 + 페이지의 동기 클로저(fail closed) */
+	const fullFor = (r) => {
+		const id = idOf.get(r);
+		if (!nk.has(id)) throw new Error(`client-size: manifest missing page node ${id} (${r})`);
+		const chain = layoutChain(r);
+		for (const l of chain) {
+			if (!nk.has(idOf.get(l)))
+				throw new Error(`client-size: manifest missing layout node ${idOf.get(l)} (${l})`);
+		}
+		const keys = [...chain.map((l) => nk.get(idOf.get(l))), nk.get(id)];
+		return { chain, full: pack(closure(entry, keys)) };
+	};
 	const shellM = pack(closure(entry, [nk.get(root), nk.get(appn)]));
-	const homeM = pack(closure(entry, [nk.get(root), nk.get(appn), nk.get(home)]));
-	const rootM = pack(closure(entry, [nk.get(root)]));
+	const loginM = fullFor('login/+page.svelte').full;
+	const homeM = fullFor('(app)/+page.svelte').full;
 
 	const routes = [];
-	for (const [i, r] of [...nodeOf.entries()].sort((a, b) => a[1].localeCompare(b[1]))) {
+	for (const r of [...nodeOf.values()].sort((a, b) => a.localeCompare(b))) {
 		if (!r.endsWith('+page.svelte')) continue;
 		if (r.startsWith('dev/') || r.startsWith('demo/')) continue;
-		if (!nk.has(i)) continue;
+		// 빌드에 나온 페이지 노드가 manifest에 없으면 조용히 건너뛰지 않고 실패(fail closed, fullFor)
 		const isLogin = r === 'login/+page.svelte';
-		const baseKeys = isLogin ? [nk.get(root)] : [nk.get(root), nk.get(appn)];
-		const fullM = pack(closure(entry, [...baseKeys, nk.get(i)]));
-		const baseM = isLogin ? rootM : shellM;
+		const { chain, full: fullM } = fullFor(r);
+		// 증분의 기준 = 알려진 셸(루트, (app)). 중첩 레이아웃·페이지가 더한 양은 모두 메뉴 증분에 든다
+		const shellLayouts = chain.filter(
+			(l) => l === '+layout.svelte' || l === '(app)/+layout.svelte'
+		);
+		const baseM = pack(
+			closure(
+				entry,
+				shellLayouts.map((l) => nk.get(idOf.get(l)))
+			)
+		);
 		const rel = isLogin
 			? '/login'
 			: r === '(app)/+page.svelte'
@@ -169,6 +212,8 @@ export function measure(repoRoot) {
 			full: fullM.sum
 		});
 	}
+
+	if (routes.length === 0) throw new Error('client-size: no page routes found in build output');
 
 	let aj = 0;
 	let ac = 0;
@@ -278,6 +323,7 @@ export function formatReport(report, ev = evaluate(report)) {
 	};
 	const rows = [
 		'크기 가드 gzip (동기 클로저, dynamic import 제외)',
+		'※ 동기 경로만 측정: 유휴 미리 받기·차트 등 dynamic import 바이트는 첫 로드 전송량에 더해지지만 여기엔 없다',
 		'[하드]',
 		...ev.hard.map((r) => line(r, 'hard')),
 		'[참고 — 차단 안 함]',
@@ -295,7 +341,17 @@ export function passed(ev) {
 	return ev.hard.every((r) => r.ok);
 }
 
-const isCli = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
+/** 심볼릭 링크·상대 경로로 실행해도 CLI로 인식한다(import.meta.url은 실제 경로). 인식 못 하면 조용히 통과하지 않는다. */
+export function isMainModule(argv1 = process.argv[1], metaUrl = import.meta.url) {
+	if (!argv1) return false;
+	try {
+		return pathToFileURL(realpathSync(argv1)).href === metaUrl;
+	} catch {
+		return false;
+	}
+}
+
+const isCli = isMainModule();
 
 if (isCli) {
 	const root = process.argv.slice(2).find((a) => !a.startsWith('--')) ?? process.cwd();
