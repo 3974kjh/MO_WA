@@ -26,6 +26,8 @@
 	import Money from '$lib/components/ui/Money.svelte';
 	import StatusBadge from '$lib/components/ui/StatusBadge.svelte';
 	import type { Col } from '$lib/components/ui/types';
+	import ChartPending from '$lib/components/charts/ChartPending.svelte';
+	import DonutPending from '$lib/components/charts/DonutPending.svelte';
 	const BarChart = import('$lib/components/charts/BarChart.svelte');
 	const DonutChart = import('$lib/components/charts/DonutChart.svelte');
 	import TriggerGauge from '$lib/components/dashboard/TriggerGauge.svelte';
@@ -693,7 +695,7 @@
 				<EmptyState icon="◔" title="비중을 낼 평가금액이 없어요" />
 			{:else}
 				{#await DonutChart}
-					<div style="min-height:180px" aria-hidden="true"></div>
+					<DonutPending items={weights} ariaLabel="보유 종목 비중" valueKind="KRW" />
 				{:then { default: Comp }}
 					<Comp
 						items={weights}
@@ -717,7 +719,7 @@
 				<EmptyState icon="📊" title="수익률을 낼 보유 종목이 없어요" />
 			{:else}
 				{#await BarChart}
-					<div style="min-height:200px" aria-hidden="true"></div>
+					<ChartPending height={200} />
 				{:then { default: Comp }}
 					<Comp items={bars} ariaLabel="종목별 평균 단가 대비 수익률" digits={1} />
 				{/await}

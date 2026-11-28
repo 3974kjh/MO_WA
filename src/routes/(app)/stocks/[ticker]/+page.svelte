@@ -14,6 +14,7 @@
 	import ErrorState from '$lib/components/ui/ErrorState.svelte';
 	import Money from '$lib/components/ui/Money.svelte';
 	import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
+	import ChartPending from '$lib/components/charts/ChartPending.svelte';
 	const BarChart = import('$lib/components/charts/BarChart.svelte');
 	const LineChart = import('$lib/components/charts/LineChart.svelte');
 	import StockTrigger from '$lib/components/stocks/StockTrigger.svelte';
@@ -467,7 +468,7 @@
 		/>
 	</div>
 	{#await LineChart}
-		<div style="min-height:260px" aria-hidden="true"></div>
+		<ChartPending height={260} />
 	{:then { default: Comp }}
 		<Comp
 			labels={pts.map((s) => shortDate(s.as_of) ?? s.as_of)}
@@ -535,7 +536,7 @@
 			/>
 		</div>
 		{#await BarChart}
-			<div style="min-height:200px" aria-hidden="true"></div>
+			<ChartPending height={200} />
 		{:then { default: Comp }}
 			<Comp
 				items={pts.map((s) => ({ label: shortDate(s.as_of) ?? s.as_of, value: s[key] ?? 0 }))}

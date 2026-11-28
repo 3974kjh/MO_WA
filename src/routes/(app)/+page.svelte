@@ -21,6 +21,8 @@
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import StatusBadge from '$lib/components/ui/StatusBadge.svelte';
 	import Tag from '$lib/components/ui/Tag.svelte';
+	import ChartPending from '$lib/components/charts/ChartPending.svelte';
+	import DonutPending from '$lib/components/charts/DonutPending.svelte';
 	const DonutChart = import('$lib/components/charts/DonutChart.svelte');
 	const LineChart = import('$lib/components/charts/LineChart.svelte');
 	import TriggerGauge from '$lib/components/dashboard/TriggerGauge.svelte';
@@ -283,7 +285,7 @@
 			<EmptyState icon="◔" title="비중을 낼 평가금액이 없어요" />
 		{:else}
 			{#await DonutChart}
-				<div style="min-height:180px" aria-hidden="true"></div>
+				<DonutPending items={weights} ariaLabel="보유 종목 비중" valueKind="KRW" />
 			{:then { default: Comp }}
 				<Comp
 					items={weights}
@@ -307,7 +309,7 @@
 			<EmptyState icon="📈" title="추이를 그릴 기록이 아직 부족해요" />
 		{:else}
 			{#await LineChart}
-				<div style="min-height:260px" aria-hidden="true"></div>
+				<ChartPending height={260} />
 			{:then { default: Comp }}
 				<Comp
 					labels={series.map((s) => shortDate(s.as_of) ?? s.as_of)}

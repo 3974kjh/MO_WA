@@ -6,8 +6,8 @@
 	 * 이 컴포넌트를 다른 화면으로 늘리지 않는다(포트폴리오 비중 전용, 원형 게이지 금지).
 	 */
 	import { arc as d3arc, pie as d3pie } from 'd3';
-	import { donutSummary, groupDonut, isMobileChart, type DonutInput } from '$lib/charts/layout';
-	import { observeWidth } from '$lib/charts/observeWidth';
+	import { donutSummary, groupDonut, type DonutInput } from '$lib/charts/layout';
+	import DonutShell from './DonutShell.svelte';
 	import type { Currency } from '$lib/format/money';
 	import Money from '$lib/components/ui/Money.svelte';
 
@@ -40,8 +40,6 @@
 	const R = 70;
 	const r = 46;
 
-	let width = $state(600);
-	let stacked = $derived(isMobileChart(width));
 	let slices = $derived(groupDonut(items));
 	let arcs = $derived.by(() => {
 		const pie = d3pie<(typeof slices)[number]>()
@@ -56,8 +54,8 @@
 	let summary = $derived(donutSummary(ariaLabel, slices));
 </script>
 
-<div class="donut-wrap {className}" class:stacked {@attach observeWidth((w) => (width = w || 600))}>
-	<div class="donut">
+<div class="donut-chart {className}">
+	<DonutShell {items} {ariaLabel} {valueKind}>
 		<svg viewBox="0 0 {SIZE} {SIZE}" width={SIZE} height={SIZE} role="img" aria-label={summary}>
 			<g transform="translate({SIZE / 2} {SIZE / 2})">
 				{#each arcs as a, ai (ai)}
@@ -75,46 +73,14 @@
 				{#if sub}<span class="center-sub">{sub}</span>{/if}
 			</div>
 		{/if}
-	</div>
-	<table class="leg-table">
-		<caption class="sr-only">{ariaLabel} 범례</caption>
-		<tbody>
-			{#each slices as s, si (si)}
-				<tr>
-					<th scope="row">
-						<i style:background={s.color} aria-hidden="true"></i>{s.label}
-						{#if s.members}<span class="members">{s.members.join(', ')}</span>{/if}
-					</th>
-					{#if valueKind !== 'pct'}
-						<td class="num"><Money value={s.value} currency={valueKind} label={s.label} /></td>
-					{/if}
-					<td class="num pct">{s.pct.toFixed(1)}%</td>
-				</tr>
-			{:else}
-				<tr><td class="empty" colspan="3">표시할 비중이 없습니다</td></tr>
-			{/each}
-		</tbody>
-	</table>
+	</DonutShell>
 </div>
 
 <style>
-	.donut-wrap {
-		display: flex;
-		align-items: center;
-		gap: 20px;
+	.donut-chart {
+		width: 100%;
 	}
-	.donut-wrap.stacked {
-		flex-direction: column;
-		align-items: stretch;
-	}
-	.donut {
-		position: relative;
-		flex: none;
-		width: 180px;
-		height: 180px;
-		margin: 0 auto;
-	}
-	.donut svg {
+	.donut-chart :global(svg) {
 		display: block;
 	}
 	.center {
@@ -137,42 +103,5 @@
 	.center-sub {
 		font-size: 11px;
 		color: var(--color-subtle);
-	}
-	.leg-table {
-		flex: 1 1 auto;
-		width: 100%;
-		font-size: var(--text-sm);
-		border-collapse: collapse;
-	}
-	.leg-table th,
-	.leg-table td {
-		padding: 5px 0;
-		font-weight: 400;
-		text-align: left;
-		vertical-align: top;
-	}
-	.leg-table td.num {
-		text-align: right;
-		font-family: var(--font-num);
-		font-variant-numeric: tabular-nums;
-		font-weight: 600;
-		padding-left: 12px;
-		white-space: nowrap;
-	}
-	.leg-table i {
-		width: 10px;
-		height: 10px;
-		border-radius: 2px;
-		display: inline-block;
-		margin-right: 8px;
-	}
-	.members {
-		display: block;
-		margin-left: 18px;
-		font-size: var(--text-xs);
-		color: var(--color-subtle);
-	}
-	.empty {
-		color: var(--color-muted);
 	}
 </style>
