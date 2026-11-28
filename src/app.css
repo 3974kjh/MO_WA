@@ -307,6 +307,17 @@ html {
 	--font-display: 'SF Pro Display', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 	--font-text: 'SF Pro Text', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
+/* 레거시 ink/body는 라이트 고정값이라 다크 설정 제목·라벨 대비가 깨짐. 테마 본문색을 따른다. */
+:root[data-theme='dark'] {
+	--color-ink: var(--color-text);
+	--color-body: var(--color-text);
+}
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme='light']):not([data-theme='dark']) {
+		--color-ink: var(--color-text);
+		--color-body: var(--color-text);
+	}
+}
 :root {
 	--field-padding-inline: 20px;
 	--field-select-padding-inline-end: 36px;
