@@ -77,6 +77,7 @@
 <Sheet open={!!target && step === 'edit'} {onclose} title="기록 수정">
 	{#if target}
 		<div class="form" data-testid="correction-edit">
+			<h4 class="sheet-sec" data-toc="수정할 값">수정할 값</h4>
 			<Banner tone="info"
 				>표에서 직접 고치지 않고 이 시트에서 기록을 수정해요. 확인하면 <b>바로 반영</b>되고 활동
 				기록에 남아요.</Banner
@@ -131,7 +132,7 @@
 				/><span class="hint">최대 {OVERRIDE_REASON_MAX}자</span></label
 			>
 			<div>
-				<p class="mw-sub">바뀌는 내용 미리보기</p>
+				<h4 class="sheet-sec" data-toc="바뀌는 내용 미리보기">바뀌는 내용 미리보기</h4>
 				{#if check && check.rows.length > 0}
 					<DiffTable rows={check.rows} />
 				{:else}

@@ -5,6 +5,8 @@
 	 * - ≥640: center 520px 모달 (variant=center는 모든 폭에서 중앙)
 	 * - 포커스 트랩, 스크림 클릭·Esc·닫기 버튼으로 닫힘, 열릴 때 포커스 이동·닫힐 때 트리거로 복귀
 	 * - v1.7.3(DS §7-11-1): bottom <640 은 X 없음. 손잡이 = '닫기' 버튼(누름 120×44) + 아래로 끌어 닫기(sheetDrag)
+	 * - v1.7.6(DS §7-11-0): .sheet > 손잡이 · .sheet-head(고정) · .sheet-main > (.sheet-body(유일한 스크롤) + 목차 점) · .sheet-foot(고정, 선택).
+	 *   스크롤바는 모달 안에서 숨기고, 위·아래로 더 있으면 머리 아래·꼬리 위에 선·그림자. 목차 = 본문 넘침 AND [data-toc] ≥ 2.
 	 */
 	import type { Snippet } from 'svelte';
 	import { tick } from 'svelte';
@@ -15,6 +17,8 @@
 	import { sheetDrag } from '$lib/actions/sheetDrag';
 	import type { SheetVariant } from './types';
 	import { isTopEntry, registerOpenSheet, type OpenSheet } from './sheetStack';
+	import { currentSection, dotHeight, moreEdges, overflows } from './sheetScroll';
+	import SheetToc from './SheetToc.svelte';
 
 	let {
 		open,
@@ -38,6 +42,18 @@
 	const uid = $props.id();
 	let panel = $state<HTMLDivElement>();
 	let scrimEl = $state<HTMLDivElement>();
+	let bodyEl = $state<HTMLDivElement>();
+	// 본문 스크롤 상태: 가장자리 단서·키보드 영역·목차(점 이름·현재·높이)
+	let view = $state({
+		up: false,
+		down: false,
+		over: false,
+		names: [] as string[],
+		cur: 0,
+		h: 40,
+		avail: 0
+	});
+	let pin: number | null = null; // 목차를 누른 직후 그 구역을 현재로 고정(사용자가 다시 스크롤하면 해제)
 	let returnTo: HTMLElement | null = null;
 	let stackEntry: OpenSheet | undefined;
 
@@ -52,7 +68,11 @@
 			if (el.contains(document.activeElement)) return;
 			const items = focusableIn(el);
 			// 손잡이·X·뒤로 다음의 첫 내용 요소로, 없으면 보이는 닫기 컨트롤(<640 손잡이, ≥640 X)
-			(items.find((n) => !n.matches('.grab, .close, .back')) ?? items[0] ?? el).focus();
+			(
+				items.find((n) => !n.matches('.grab, .close, .back, .sheet-body')) ??
+				items[0] ??
+				el
+			).focus();
 		};
 		tick().then(focusFirst);
 		// 포커스가 시트 밖에 남아 있어도 Esc로 닫히게. 맨 위 시트만 처리(겹친 시트를 한 번에 닫지 않음).
@@ -67,6 +87,80 @@
 			if (target && document.contains(target)) target.focus();
 		};
 	});
+
+	const tocSecs = () =>
+		[...(bodyEl?.querySelectorAll<HTMLElement>('[data-toc]') ?? [])].filter(
+			(e) => e.getClientRects().length > 0
+		);
+	function measure() {
+		const b = bodyEl;
+		if (!b) return;
+		const { scrollTop: top, clientHeight: ch, scrollHeight: sh } = b;
+		const over = overflows(ch, sh);
+		const S = over ? tocSecs() : [];
+		const names = S.length >= 2 ? S.map((e) => (e.dataset.toc || e.textContent || '').trim()) : [];
+		const y0 = b.getBoundingClientRect().top;
+		const avail = Math.max(0, ch - 16);
+		const e = moreEdges(top, ch, sh);
+		view.up = e.up;
+		view.down = e.down;
+		view.over = over;
+		if (names.join('\u0001') !== view.names.join('\u0001')) view.names = names;
+		view.cur = names.length
+			? pin != null
+				? Math.min(pin, names.length - 1)
+				: currentSection(
+						top,
+						ch,
+						sh,
+						S.map((x) => x.getBoundingClientRect().top - y0)
+					)
+			: 0;
+		view.h = dotHeight(
+			avail,
+			names.length || 1,
+			matchMedia('(min-width: 640px)').matches ? 40 : 44
+		);
+		view.avail = avail;
+	}
+	$effect(() => {
+		const b = bodyEl;
+		if (!open || !b) return;
+		b.scrollTop = 0;
+		pin = null;
+		let raf = 0;
+		const sched = () => (raf ||= requestAnimationFrame(() => ((raf = 0), measure())));
+		const unpin = () => (pin = null);
+		const ev = ['wheel', 'touchstart', 'keydown'] as const;
+		b.addEventListener('scroll', sched, { passive: true });
+		ev.forEach((t) => b.addEventListener(t, unpin, { passive: true }));
+		const ro = new ResizeObserver(sched);
+		ro.observe(b);
+		const mo = new MutationObserver(sched);
+		mo.observe(b, { childList: true, subtree: true, characterData: true });
+		sched();
+		return () => {
+			cancelAnimationFrame(raf);
+			b.removeEventListener('scroll', sched);
+			ev.forEach((t) => b.removeEventListener(t, unpin));
+			ro.disconnect();
+			mo.disconnect();
+		};
+	});
+	function goToc(i: number) {
+		const b = bodyEl;
+		const e = tocSecs()[i];
+		if (!b || !e) return;
+		pin = i;
+		view.cur = i;
+		const y = b.scrollTop + e.getBoundingClientRect().top - b.getBoundingClientRect().top - 8;
+		b.scrollTo({
+			top: Math.max(0, y),
+			behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+		});
+		if (!e.hasAttribute('tabindex')) e.setAttribute('tabindex', '-1');
+		e.focus({ preventScroll: true });
+	}
 
 	function onkeydown(e: KeyboardEvent) {
 		if (!open || !panel) return;
@@ -87,6 +181,8 @@
 		bind:this={panel}
 		class="sheet {variant}"
 		class:open
+		class:more-up={view.up}
+		class:more-down={view.down}
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="{uid}-title"
@@ -104,7 +200,7 @@
 				onclick={onclose}
 			></button>
 		{/if}
-		<div class="head">
+		<div class="sheet-head">
 			{#if variant === 'full'}
 				<button
 					type="button"
@@ -124,8 +220,29 @@
 				<X size={20} strokeWidth={1.8} aria-hidden="true" />
 			</button>
 		</div>
-		<div class="body">{@render children()}</div>
-		{#if footer}<div class="foot">{@render footer()}</div>{/if}
+		<div class="sheet-main">
+			<!-- 넘칠 때만 키보드로 스크롤할 수 있는 영역(region)으로 -->
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+			<div
+				bind:this={bodyEl}
+				class="sheet-body"
+				class:has-toc={view.names.length >= 2}
+				tabindex={view.over ? 0 : undefined}
+				role={view.over ? 'region' : undefined}
+				aria-labelledby={view.over ? `${uid}-title` : undefined}
+			>
+				{@render children()}
+			</div>
+			<SheetToc
+				names={view.names}
+				cur={view.cur}
+				h={view.h}
+				avail={view.avail}
+				scrolls={view.names.length * view.h > view.avail}
+				onpick={goToc}
+			/>
+		</div>
+		{#if footer}<div class="sheet-foot">{@render footer()}</div>{/if}
 	</div>
 </div>
 
@@ -149,8 +266,9 @@
 		right: 0;
 		bottom: 0;
 		max-height: var(--sheet-max-h);
-		overflow: auto;
-		overscroll-behavior: contain;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
 		background: var(--color-surface);
 		color: var(--color-text);
 		border-radius: var(--radius-lg) var(--radius-lg) 0 0;
@@ -161,7 +279,6 @@
 		transition:
 			transform 0.25s var(--ease-out),
 			visibility 0s 0.25s;
-		padding: 8px 16px calc(20px + var(--inset-b));
 		outline: none;
 	}
 	.sheet.open {
@@ -179,7 +296,9 @@
 		top: 0;
 		max-height: none;
 		border-radius: 0;
-		padding-top: calc(8px + var(--safe-top));
+	}
+	.sheet.full .sheet-head {
+		padding-top: calc(12px + var(--safe-top));
 	}
 	/* 손잡이 = 버튼: 보이는 막대 40×4(위 12px), 누름 120×44. 자리는 예전 그랩과 같음(시트 위 8 패딩을 -8로 상쇄, 아래 -12) */
 	.grab {
@@ -188,7 +307,8 @@
 		z-index: 2;
 		width: 120px;
 		height: 44px;
-		margin: -8px auto -12px;
+		flex: none;
+		margin: 0 auto -12px;
 		padding: 0;
 		border: 0;
 		border-radius: var(--radius-base);
@@ -225,7 +345,7 @@
 		user-select: none;
 	}
 	@media (max-width: 639px) {
-		.sheet.bottom .head {
+		.sheet.bottom .sheet-head {
 			padding-top: 8px; /* 손잡이 누름 영역 아래 12px 이 제목 글자에 닿지 않게 */
 			touch-action: none;
 		}
@@ -235,19 +355,21 @@
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.sheet,
-		.scrim {
+		.scrim,
+		.sheet-head::after,
+		.sheet-foot::before {
 			transition-duration: 0.01ms;
 		}
 	}
-	.head {
+	.sheet-head {
+		flex: none;
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		padding: 4px 0 12px;
-		position: sticky;
-		top: 0;
+		padding: 12px 16px;
+		position: relative;
 		background: var(--color-surface);
-		z-index: 1;
+		z-index: 2;
 	}
 	.title {
 		flex: 1;
@@ -258,14 +380,108 @@
 	.back {
 		margin-left: -8px;
 	}
-	.foot {
+	.sheet-main {
+		position: relative;
+		flex: 1 1 auto;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+	}
+	.sheet-body {
+		flex: 1 1 auto;
+		min-height: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		padding: 4px 16px 16px;
+	}
+	.sheet-main:last-child .sheet-body {
+		padding-bottom: max(20px, var(--inset-b));
+	}
+	.sheet-body.has-toc {
+		padding-right: 44px;
+	}
+	.sheet-body:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: -2px;
+	}
+	.sheet-foot {
+		flex: none;
+		position: relative;
+		z-index: 2;
 		display: flex;
 		gap: 8px;
-		padding-top: 16px;
 		flex-wrap: wrap;
+		background: var(--color-surface);
+		padding: 12px 16px max(16px, var(--inset-b));
 	}
-	.foot :global(.btn) {
+	.sheet-foot :global(.btn) {
 		flex: 1 1 0;
+	}
+	/* 스크롤바는 모달 안에서 모두 숨김(본문·표·코드·목차) — 대신 위·아래로 더 있을 때만 머리 아래·꼬리 위에 선·그림자 */
+	.sheet,
+	.sheet :global(*) {
+		scrollbar-width: none;
+	}
+	.sheet::-webkit-scrollbar,
+	.sheet :global(*::-webkit-scrollbar) {
+		display: none;
+	}
+	.sheet-head::after,
+	.sheet-foot::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		right: 0;
+		height: 14px;
+		pointer-events: none;
+		opacity: 0;
+		transition: opacity 0.15s;
+	}
+	.sheet-head::after {
+		top: 100%;
+		border-top: 1px solid var(--color-line);
+		background: linear-gradient(var(--sheet-edge), transparent);
+	}
+	.sheet-foot::before {
+		bottom: 100%;
+		border-bottom: 1px solid var(--color-line);
+		background: linear-gradient(to top, var(--sheet-edge), transparent);
+	}
+	.more-up .sheet-head::after,
+	.more-down .sheet-foot::before {
+		opacity: 1;
+	}
+	/* 안쪽 가로 스크롤(표·코드)은 스크롤바 대신 가장자리 그늘(JS 없음). 특이도 0 — 자기 배경을 가진 요소는 그대로 둔다 */
+	:global(:where(.sheet) :where(.tbl-wrap, pre)) {
+		background:
+			linear-gradient(to right, var(--color-surface) 30%, transparent) 0 0 / 32px 100% no-repeat
+				local,
+			linear-gradient(to left, var(--color-surface) 30%, transparent) 100% 0 / 32px 100% no-repeat
+				local,
+			linear-gradient(to right, var(--sheet-edge), transparent) 0 0 / 10px 100% no-repeat scroll,
+			linear-gradient(to left, var(--sheet-edge), transparent) 100% 0 / 10px 100% no-repeat scroll;
+	}
+	/* 목차 머리글(<h4 class="sheet-sec" data-toc="이름">) — 이동·포커스 대상은 머리글 자신 */
+	.sheet-body :global(.sheet-sec) {
+		margin: 0;
+		font-size: var(--text-sm);
+		line-height: 1.25rem;
+		font-weight: 700;
+		color: var(--color-muted);
+	}
+	.sheet-body :global(.sheet-sec:not(:first-child)) {
+		margin-top: 8px;
+	}
+	.sheet-body :global(:is(.form, .stack) > .sheet-sec) {
+		margin-bottom: -6px;
+	}
+	.sheet-body :global([data-toc]:focus) {
+		outline: none;
+	}
+	.sheet-body :global([data-toc]:focus-visible) {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 3px;
+		border-radius: 4px;
 	}
 	/* 중앙 모달: center는 모든 폭, bottom·full은 640 이상 */
 	.sheet.center {
@@ -282,7 +498,6 @@
 			transform 0.2s var(--ease-out),
 			opacity 0.2s,
 			visibility 0s 0.2s;
-		padding: 16px 20px 20px;
 	}
 	.sheet.center.open {
 		transform: translate(-50%, -50%);
@@ -305,7 +520,6 @@
 				transform 0.2s var(--ease-out),
 				opacity 0.2s,
 				visibility 0s 0.2s;
-			padding: 16px 20px 20px;
 		}
 		.sheet.bottom.open,
 		.sheet.full.open {

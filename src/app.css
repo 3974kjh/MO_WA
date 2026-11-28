@@ -343,6 +343,19 @@ input[type='datetime-local'].field-control--plain::-webkit-calendar-picker-indic
 	opacity: 0.55;
 }
 
+/* 모달 '더 있음' 가장자리 단서 색(DS v1.7.6 §7-11-0, 새 토큰 아님 — tokens.css 는 건드리지 않음) */
+:root {
+	--sheet-edge: rgb(16 24 40 / 0.1);
+}
+:root[data-theme='dark'] {
+	--sheet-edge: rgb(0 0 0 / 0.5);
+}
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme='light']):not([data-theme='dark']) {
+		--sheet-edge: rgb(0 0 0 / 0.5);
+	}
+}
+
 /* 모바일 시트 안 버튼은 44 (DS §7-0 '모바일 주 행동 44', 기존 .sheet .btn 규칙). 레이어 밖 + 특이도 0,2,0 → overrides 의 .btn 보다 우선 */
 @media (max-width: 639px) {
 	.sheet .btn:not(.btn-sm) {

@@ -180,7 +180,7 @@
 
 <Sheet open={detail != null} onclose={() => (detail = null)} variant="center" title="활동 상세">
 	{#if detail}
-		<dl class="dl" data-testid="audit-detail">
+		<dl class="dl" data-testid="audit-detail" data-toc="요약">
 			<dt>시각</dt>
 			<dd>{formatKstShort(detail.created_at)}</dd>
 			<dt>봇</dt>
@@ -199,7 +199,7 @@
 			{/if}
 		</dl>
 		{#if preview?.text}
-			<p class="lbl">보낸 내용 미리보기</p>
+			<p class="lbl" data-toc="보낸 내용">보낸 내용 미리보기</p>
 			<pre class="args" data-testid="audit-args">{preview.text}</pre>
 			{#if preview.truncated}
 				<p class="cut" data-testid="audit-args-cut">내용이 길어 앞부분만 보여 줘요.</p>
@@ -207,7 +207,7 @@
 		{/if}
 	{/if}
 	{#snippet footer()}
-		<Button variant="secondary-pill" compact label="닫기" onclick={() => (detail = null)} />
+		<Button variant="secondary-pill" label="닫기" onclick={() => (detail = null)} />
 	{/snippet}
 </Sheet>
 

@@ -70,7 +70,7 @@
 		>
 	</div>
 	<JournalKindBadges {item} state={false} />
-	<h2 class="dp-title" id={headingId}>{item.title}</h2>
+	<h2 class="dp-title" id={headingId} data-toc="요약">{item.title}</h2>
 	<dl class="kv">
 		<dt>날짜</dt>
 		<dd class="num">{dotDate(item.entry_date)}</dd>
@@ -99,13 +99,13 @@
 		<dt>상태</dt>
 		<dd>{item.kind === 'review' ? '—' : JOURNAL_STATE_LABEL[item.state]}</dd>
 	</dl>
-	<h3 class="mw-sub">메모</h3>
+	<h3 class="mw-sub" data-toc="메모">메모</h3>
 	{#if item.memo_md && item.memo_md.trim()}
 		<p class="memo">{item.memo_md}</p>
 	{:else}
 		<p class="memo muted">메모 없음</p>
 	{/if}
-	<h3 class="mw-sub">근거·출처</h3>
+	<h3 class="mw-sub" data-toc="근거·출처">근거·출처</h3>
 	<div class="links">
 		{#if item.source_url}
 			<!-- 외부 주소는 사용자가 입력한 http(s) 주소만(DB CHECK R-VAL-S04). -->

@@ -106,6 +106,7 @@
 >
 	{#if item}
 		<div class="form" data-testid="override-edit">
+			<h4 class="sheet-sec" data-toc="요청 내용">요청 내용</h4>
 			<p class="ov-meta">
 				<span class="ctype">{changeTypeLabel(item.change_type)}</span>
 				<span>{itemTitle(item)}</span>
@@ -131,6 +132,7 @@
 				>
 			{/if}
 
+			<h4 class="sheet-sec" data-toc="바뀌는 값">바뀌는 값</h4>
 			<div class="d3" role="table" aria-label="지금 · 봇 요청 값 · 내가 고친 값(입력)">
 				<div role="row" class="row head">
 					<span role="columnheader">항목</span>
@@ -197,8 +199,9 @@
 					? ' 달러 평균 단가는 화면에서 소수 2자리로 보여요(저장은 4자리).'
 					: ''} 감시 가격·방향·손익분기 가격·관심만은 봇이 직접 기록하는 값이라 여기서 고칠 수 없어요.
 			</p>
+			<h4 class="sheet-sec" data-toc="고친 이유">고친 이유</h4>
 			<label class="field" for="{uid}-why">
-				고친 이유 (한 줄, 필수)
+				한 줄, 필수
 				<input
 					id="{uid}-why"
 					class="input"

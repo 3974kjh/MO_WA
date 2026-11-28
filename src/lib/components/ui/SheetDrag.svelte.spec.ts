@@ -125,7 +125,7 @@ describe('바텀시트 끌어 닫기 (v1.7.3)', () => {
 		openSheet();
 		await waitOpen();
 		const sheet = dlg()!;
-		const head = sheet.querySelector('.head')!;
+		const head = sheet.querySelector('.sheet-head')!;
 		const r = head.getBoundingClientRect();
 		const x = r.x + r.width / 2;
 		const y = r.y + r.height / 2;
@@ -142,7 +142,7 @@ describe('바텀시트 끌어 닫기 (v1.7.3)', () => {
 		openSheet();
 		await waitOpen();
 		const sheet = dlg()!;
-		const body = sheet.querySelector('.body')!;
+		const body = sheet.querySelector('.sheet-body')!;
 		const r = body.getBoundingClientRect();
 		const x = r.x + r.width / 2;
 		const y = r.y + 10;
@@ -160,8 +160,8 @@ describe('바텀시트 끌어 닫기 (v1.7.3)', () => {
 		openSheet();
 		await waitOpen();
 		const sheet = dlg()!;
-		sheet.scrollTop = 0;
-		const body = sheet.querySelector('.body')!;
+		const body = sheet.querySelector('.sheet-body')!;
+		body.scrollTop = 0;
 		const r = body.getBoundingClientRect();
 		const x = r.x + r.width / 2;
 		const y = r.y + 12;
@@ -178,9 +178,9 @@ describe('바텀시트 끌어 닫기 (v1.7.3)', () => {
 		openSheet();
 		await waitOpen();
 		const sheet = dlg()!;
-		sheet.scrollTop = 80;
-		expect(sheet.scrollTop).toBeGreaterThan(0);
-		const body = sheet.querySelector('.body')!;
+		const body = sheet.querySelector('.sheet-body')!;
+		body.scrollTop = 80;
+		expect(body.scrollTop).toBeGreaterThan(0);
 		const r = body.getBoundingClientRect();
 		const x = r.x + r.width / 2;
 		const y = r.y + 12;
@@ -261,7 +261,7 @@ describe('바텀시트 끌어 닫기 (v1.7.3)', () => {
 		const close = sheet.querySelector<HTMLElement>('.close')!;
 		expect(getComputedStyle(grab).display).toBe('none');
 		expect(getComputedStyle(close).display).not.toBe('none');
-		const head = sheet.querySelector('.head')!;
+		const head = sheet.querySelector('.sheet-head')!;
 		const r = head.getBoundingClientRect();
 		const x = r.x + r.width / 2;
 		const y = r.y + r.height / 2;

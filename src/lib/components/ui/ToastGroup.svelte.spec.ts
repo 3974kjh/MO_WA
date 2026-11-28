@@ -85,7 +85,7 @@ describe('ToastGroup 시트 위 12px', () => {
 		await expect.poll(gapToSheet, { timeout: 3000 }).toBe(12);
 		const h0 = dialog()!.getBoundingClientRect().height;
 		// style 만 바꾼다 → MutationObserver(class·childList)는 못 보고 크기만 달라진다
-		dialog()!.querySelector<HTMLElement>('.body')!.style.paddingBottom = '120px';
+		dialog()!.querySelector<HTMLElement>('.sheet-body')!.style.paddingBottom = '220px';
 		await expect
 			.poll(() => dialog()!.getBoundingClientRect().height, { timeout: 3000 })
 			.toBeGreaterThan(h0 + 100);

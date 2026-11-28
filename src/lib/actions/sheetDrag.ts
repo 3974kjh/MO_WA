@@ -1,7 +1,8 @@
 /**
  * 바텀시트 아래로 끌어 닫기 (DS v1.7.3 §7-11-1, handoff §20-3)
- * - 끄는 곳: 손잡이(.grab)·머리(.head) = 포인터(터치·마우스·펜, CSS touch-action:none)
- *            본문 = 터치로만, 시트가 맨 위(scrollTop 0)이고 아래로 끌 때만(위로·옆으로면 스크롤에 양보)
+ * - 끄는 곳: 손잡이(.grab)·머리(.sheet-head) = 포인터(터치·마우스·펜, CSS touch-action:none)
+ *            본문(.sheet-body) = 터치로만, 본문이 맨 위(scrollTop 0)이고 아래로 끌 때만(위로·옆으로면 스크롤에 양보)
+ *            꼬리(.sheet-foot)·목차(.sheet-toc)에서 시작한 터치는 끌기가 아님(v1.7.6)
  * - 놓을 때 끈 거리 > 시트 높이 25% 또는 속도 > 0.5px/ms 이면 onclose(), 아니면 제자리로(CSS 전환)
  * - 스크림은 끈 비율만큼 옅어진다. <640 && enabled 일 때만 동작(≥640 중앙 모달은 끌기 없음)
  */
@@ -30,8 +31,10 @@ export function decideDragIntent(dx: number, dy: number): 'wait' | 'arm' | 'abor
 }
 
 type Params = { enabled: boolean; onclose: () => void; scrim: () => HTMLElement | undefined };
-const NO_BODY_DRAG = 'input,textarea,select,[contenteditable],.table-wrap,.mw-table-wrap';
-const NO_HEAD_DRAG = '.head button:not(.grab),.head a,.head input';
+const NO_BODY_DRAG = 'input,textarea,select,[contenteditable],.table-wrap,.mw-table-wrap,pre';
+const NO_HEAD_DRAG = '.sheet-head button:not(.grab),.sheet-head a,.sheet-head input';
+const NO_BODY_ZONE = '.grab,.sheet-head,.sheet-foot,.sheet-toc';
+const bodyTop = (n: HTMLElement) => n.querySelector('.sheet-body')?.scrollTop ?? 0;
 
 export function sheetDrag(node: HTMLElement, params: Params) {
 	let p = params;
@@ -113,7 +116,7 @@ export function sheetDrag(node: HTMLElement, params: Params) {
 	function onpointerdown(e: PointerEvent) {
 		if (!active() || e.button > 0) return;
 		const t = e.target as Element;
-		const zone = t.closest('.grab,.head');
+		const zone = t.closest('.grab,.sheet-head');
 		if (!zone || !node.contains(zone) || t.closest(NO_HEAD_DRAG)) return;
 		d = begin(e.clientX, e.clientY, e.timeStamp);
 		d.pid = e.pointerId;
@@ -137,7 +140,7 @@ export function sheetDrag(node: HTMLElement, params: Params) {
 	function ontouchstart(e: TouchEvent) {
 		if (!active() || d || e.touches.length !== 1) return;
 		const t = e.target as Element;
-		if (t.closest('.grab,.head') || t.closest(NO_BODY_DRAG) || !canBeginBodyDrag(node.scrollTop))
+		if (t.closest(NO_BODY_ZONE) || t.closest(NO_BODY_DRAG) || !canBeginBodyDrag(bodyTop(node)))
 			return;
 		const pt = e.touches[0];
 		d = begin(pt.clientX, pt.clientY, e.timeStamp);
@@ -145,7 +148,7 @@ export function sheetDrag(node: HTMLElement, params: Params) {
 	}
 	function ontouchmove(e: TouchEvent) {
 		if (!d?.touch) return;
-		if (!d.on && !canBeginBodyDrag(node.scrollTop)) {
+		if (!d.on && !canBeginBodyDrag(bodyTop(node))) {
 			d = null;
 			return;
 		}
