@@ -233,7 +233,7 @@ describe('겹친 단지 목록 — PC 앵커 카드', () => {
 		r.unmount();
 	});
 
-	it('겹친 목록이 열린 채 등급을 끄면 숨긴 단지가 빠지고, 2곳 미만이면 닫힌다', async () => {
+	it('겹친 목록이 열린 채 등급을 끄면 숨긴 단지가 빠지고, 다시 켜면 복원된다', async () => {
 		await page.viewport(1280, 800);
 		const r = await open(STACKED.slice(0, 3));
 		cluster().click();
@@ -257,7 +257,26 @@ describe('겹친 단지 목록 — PC 앵커 카드', () => {
 		(document.querySelector('.rm-lc[data-g="target"]') as HTMLButtonElement).click();
 		await sleep(60);
 		flushSync();
+		// 보이는 곳이 2곳 미만이면 목록은 그리지 않지만, 원래 id는 유지한다
 		expect(document.querySelector('[data-testid="stack-card"]')).toBeNull();
+
+		(document.querySelector('.rm-lc[data-g="target"]') as HTMLButtonElement).click();
+		await sleep(60);
+		flushSync();
+		const card3 = document.querySelector('[data-testid="stack-card"]') as HTMLElement;
+		expect(card3).not.toBeNull();
+		expect(card3.querySelector('h3')?.textContent).toBe('겹친 단지 2곳');
+		expect(card3.querySelectorAll('button.rm-row')).toHaveLength(2);
+		expect(card3.textContent).toContain('정자역 2단지');
+		expect(card3.textContent).not.toContain('정자역 상가주택');
+
+		(document.querySelector('.rm-lc[data-g="ref"]') as HTMLButtonElement).click();
+		await sleep(60);
+		flushSync();
+		const card4 = document.querySelector('[data-testid="stack-card"]') as HTMLElement;
+		expect(card4.querySelector('h3')?.textContent).toBe('겹친 단지 3곳');
+		expect(card4.querySelectorAll('button.rm-row')).toHaveLength(3);
+		expect(card4.textContent).toContain('정자역 상가주택');
 		r.unmount();
 	});
 });

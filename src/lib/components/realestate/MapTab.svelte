@@ -136,7 +136,10 @@
 		chunk = null;
 		let cancelled = false;
 		const timer = setTimeout(() => {
-			if (!cancelled) chunkFailed = true;
+			if (!cancelled) {
+				cancelled = true;
+				chunkFailed = true;
+			}
 		}, chunkTimeoutMs);
 		const load = loadMapChunk ?? (() => mapChunk.load());
 		void load().then(
@@ -161,14 +164,7 @@
 	function toggleTier(t: ComplexTier) {
 		hidden = hidden.includes(t) ? hidden.filter((x) => x !== t) : [...hidden, t];
 		if (selected && hidden.includes(selected.tier)) picked = null;
-		// 겹친 단지 목록이 열린 채 등급을 끄면 숨긴 단지를 걸러 내고, 남은 곳이 2곳 미만이면 닫는다
-		if (stack) {
-			const next = stack.filter((id) => {
-				const it = items.find((i) => i.id === id);
-				return !!it && !hidden.includes(it.tier);
-			});
-			stack = next.length >= 2 ? next : null;
-		}
+		// 겹친 목록의 id는 그대로 두고, 표시·개수만 hidden으로 거른다(다시 켜면 복원).
 		const on = !hidden.includes(t);
 		const n = located.filter((i) => !hidden.includes(i.tier)).length;
 		say(`${TIER_LABEL[t]} 단지 ${on ? '표시' : '숨김'}. 지금 ${n}곳이 보여요.`);
@@ -199,7 +195,7 @@
 	function backToStack() {
 		picked = null;
 		sheetOpen = false;
-		if (stack) say(`겹친 단지 ${stack.length}곳 목록으로 돌아왔어요.`);
+		if (stackItems.length > 1) say(`겹친 단지 ${stackItems.length}곳 목록으로 돌아왔어요.`);
 	}
 	/** 모바일 시트의 겹친 단지 목록에서 행을 고름 */
 	function onStackRow(id: string) {
@@ -446,7 +442,7 @@
 			<a class="pri btn" href={watchHref(openSheetItem.id)}>점수 근거 보기</a>
 			{#if stack && !sheetFromList}
 				<button type="button" class="btn" data-testid="stack-back" onclick={backToStack}
-					>겹친 단지 {stack.length}곳으로</button
+					>겹친 단지 {stackItems.length}곳으로</button
 				>
 			{/if}
 			{#if sheetFromList && isLocated(openSheetItem) && !fallback}

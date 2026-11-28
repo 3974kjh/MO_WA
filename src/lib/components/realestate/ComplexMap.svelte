@@ -139,6 +139,8 @@
 	let stopKey: string | null = null;
 	let tileTimer: ReturnType<typeof setTimeout> | undefined;
 	let hintTimer: ReturnType<typeof setTimeout> | undefined;
+	let sizeObs: ResizeObserver | undefined;
+	let sizeRaf = 0;
 	let offAuth: (() => void) | undefined;
 	let lastWheel = 0;
 
@@ -167,7 +169,42 @@
 		onstatus?.(s);
 	}
 
+	function stopSizeWatch() {
+		sizeObs?.disconnect();
+		sizeObs = undefined;
+		if (sizeRaf) cancelAnimationFrame(sizeRaf);
+		sizeRaf = 0;
+	}
+
+	/** 컨테이너 CSS 크기에 지도를 맞춘다. autoResize를 쓰고, 없으면 setSize. 0 크기는 건너뛴다. */
+	function syncMapSize() {
+		if (!map || !canvas) return;
+		const w = canvas.clientWidth;
+		const h = canvas.clientHeight;
+		if (w <= 0 || h <= 0) return;
+		try {
+			if (typeof map.autoResize === 'function') map.autoResize();
+			else if (typeof map.setSize === 'function' && ns) map.setSize(new ns.Size(w, h));
+		} catch {
+			/* SDK 없거나 미지원 */
+		}
+	}
+
+	function startSizeWatch() {
+		stopSizeWatch();
+		if (typeof ResizeObserver === 'undefined' || !canvas) return;
+		sizeObs = new ResizeObserver(() => {
+			if (sizeRaf) cancelAnimationFrame(sizeRaf);
+			sizeRaf = requestAnimationFrame(() => {
+				sizeRaf = 0;
+				syncMapSize();
+			});
+		});
+		sizeObs.observe(canvas);
+	}
+
 	function teardown() {
+		stopSizeWatch();
 		clearTimeout(tileTimer);
 		clearMarkers();
 		if (ns && listeners.length) ns.Event.removeListener(listeners);
@@ -256,6 +293,7 @@
 			});
 			zoomLevel = map.getZoom();
 			fitAll();
+			startSizeWatch();
 			listeners.push(
 				n.Event.once(map, 'tilesloaded', () => {
 					clearTimeout(tileTimer);
@@ -422,7 +460,10 @@
 		for (const e of ents.values()) {
 			if (!e.el.dataset.stack) continue;
 			const first = e.el.dataset.ids?.split(',')[0] ?? '';
-			e.el.setAttribute('aria-expanded', String(!!stackIds && stackIds.includes(first)));
+			e.el.setAttribute(
+				'aria-expanded',
+				String(stackItems.length > 1 && !!stackIds && stackIds.includes(first))
+			);
 		}
 	}
 
@@ -687,6 +728,7 @@
 	/** 숨겨 둔 지도가 다시 보일 때(모바일 목록→지도) 크기를 다시 재게 한다 */
 	export function refresh() {
 		if (!map || !ns) return;
+		syncMapSize();
 		ns.Event.trigger?.(map, 'resize');
 		render();
 		placeCardSoon();
@@ -818,7 +860,7 @@
 						{/if}
 						{#if stackIds && onbackstack}
 							<button type="button" class="back btn" data-testid="stack-back" onclick={onbackstack}
-								>겹친 단지 {stackIds.length}곳으로</button
+								>겹친 단지 {stackItems.length}곳으로</button
 							>
 						{/if}
 					</div>

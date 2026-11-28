@@ -57,11 +57,19 @@ const ITEMS: LocatedItem[] = [
 
 type L = { t: unknown; n: string; f: () => void };
 
-function fakeSdk(flags: { naverContainerStyle?: boolean } = {}) {
+function fakeSdk(flags: { naverContainerStyle?: boolean; noAutoResize?: boolean } = {}) {
 	const ls: L[] = [];
 	const fire = (t: unknown, n: string) =>
 		ls.filter((l) => l.t === t && l.n === n).forEach((l) => l.f());
-	const calls = { fitBounds: 0, panTo: 0, panBy: 0, destroy: 0, maps: 0 };
+	const calls = {
+		fitBounds: 0,
+		panTo: 0,
+		panBy: 0,
+		destroy: 0,
+		maps: 0,
+		autoResize: 0,
+		setSize: 0
+	};
 	const holder: { current: FakeMap | null } = { current: null };
 	class LatLng {
 		constructor(
@@ -81,8 +89,15 @@ function fakeSdk(flags: { naverContainerStyle?: boolean } = {}) {
 			public ne: LatLng
 		) {}
 	}
+	class Size {
+		constructor(
+			public width: number,
+			public height: number
+		) {}
+	}
 	class FakeMap {
 		zoom: number;
+		lastSize: Size | null = null;
 		constructor(
 			public el: HTMLElement,
 			opts: { zoom: number } & Record<string, unknown>
@@ -93,6 +108,16 @@ function fakeSdk(flags: { naverContainerStyle?: boolean } = {}) {
 			this.options = opts;
 			calls.maps++;
 			holder.current = this;
+			if (!flags.noAutoResize) {
+				this.autoResize = () => {
+					calls.autoResize++;
+				};
+			}
+		}
+		autoResize?: () => void;
+		setSize(s: Size) {
+			this.lastSize = s;
+			calls.setSize++;
 		}
 		getZoom() {
 			return this.zoom;
@@ -160,6 +185,7 @@ function fakeSdk(flags: { naverContainerStyle?: boolean } = {}) {
 	const ns = {
 		LatLng,
 		Point,
+		Size,
 		LatLngBounds,
 		Marker,
 		Map: FakeMap,
@@ -761,6 +787,61 @@ describe('ComplexMap 캔버스 크기', () => {
 		expect(cs.height).not.toBe('0px');
 		expect(cs.height).not.toBe('auto');
 
+		r.unmount();
+	});
+});
+
+describe('ComplexMap 크기 변경', () => {
+	async function ready(sdkFlags: { noAutoResize?: boolean } = {}) {
+		await page.viewport(1280, 800);
+		const sdk = fakeSdk({ naverContainerStyle: true, ...sdkFlags });
+		const loader = fakeLoader(() => Promise.resolve(sdk.ns));
+		const r = render(ComplexMap, {
+			items: ITEMS,
+			keyId: KEY,
+			selectedId: null,
+			onselect: () => {},
+			loader,
+			observe: false
+		});
+		r.container.style.cssText = 'width:960px;height:640px;position:relative;';
+		await tick();
+		sdk.fire(sdk.map(), 'tilesloaded');
+		flushSync();
+		await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+		return { r, sdk };
+	}
+
+	it('부모 크기가 바뀌면 autoResize로 지도를 다시 맞추고, 0 크기·해제는 호출하지 않는다', async () => {
+		const { r, sdk } = await ready();
+		const before = sdk.calls.autoResize;
+		expect(before).toBeGreaterThanOrEqual(0);
+		r.container.style.height = '400px';
+		await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+		expect(sdk.calls.autoResize).toBeGreaterThan(before);
+		expect(sdk.calls.setSize).toBe(0);
+		const mid = sdk.calls.autoResize;
+		r.container.style.width = '0px';
+		r.container.style.height = '0px';
+		await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+		expect(sdk.calls.autoResize).toBe(mid);
+		r.unmount();
+		r.container.style.width = '800px';
+		r.container.style.height = '500px';
+		await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+		expect(sdk.calls.autoResize).toBe(mid);
+	});
+
+	it('autoResize가 없으면 컨테이너 크기로 setSize를 부른다', async () => {
+		const { r, sdk } = await ready({ noAutoResize: true });
+		r.container.style.height = '420px';
+		await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+		expect(sdk.calls.autoResize).toBe(0);
+		expect(sdk.calls.setSize).toBeGreaterThan(0);
+		const last = sdk.map().lastSize;
+		expect(last).not.toBeNull();
+		expect(last!.width).toBeGreaterThan(0);
+		expect(last!.height).toBeGreaterThan(0);
 		r.unmount();
 	});
 });
