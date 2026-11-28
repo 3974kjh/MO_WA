@@ -141,21 +141,3 @@ export async function setBotClientRateLimit(
 	if (error) return { data: null, error: error as Error };
 	return { data: (data as BotClientPublic | null) ?? null, error: null };
 }
-
-/**
- * Server-side read of one key's `created_at` (feed warm-up gate, R-FEED-40).
- * `botClientId` must come from the authenticated context, never from client input. Owner-scoped via
- * the repo; no key_hash is selected. Returns null data when the row is missing.
- */
-export async function getBotClientCreatedAt(
-	repo: RepoClient,
-	botClientId: string
-): Promise<{ data: string | null; error: Error | null }> {
-	const ownerId = requireOwnerId(repo);
-	let q = fromRepo(repo, 'bot_clients').select('id, created_at').eq('id', botClientId);
-	q = withOwnerFilter(q, ownerId);
-	const { data, error } = await q.maybeSingle();
-	if (error) return { data: null, error: error as Error };
-	const createdAt = (data as { created_at?: unknown } | null)?.created_at;
-	return { data: typeof createdAt === 'string' ? createdAt : null, error: null };
-}

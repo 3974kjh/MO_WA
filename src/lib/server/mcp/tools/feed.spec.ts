@@ -12,7 +12,14 @@ import { handleMcp } from '../handler';
 import { createStubMcpContext } from '../testing';
 import { runAuditedToolCall } from '../tool-gate';
 import type { McpContext, McpToolResult } from '../types';
-import { feedClock, FEED_SOURCE, provenanceNotes, registerFeedTools, type FeedPlan } from './feed';
+import {
+	feedClock,
+	FEED_RULES,
+	FEED_SOURCE,
+	provenanceNotes,
+	registerFeedTools,
+	type FeedPlan
+} from './feed';
 import { registerMarketTools } from './market';
 
 type Row = Record<string, unknown>;
@@ -74,8 +81,7 @@ class FakeDb {
 	tables: Record<string, Row[]> = {
 		instruments: [],
 		price_snapshots: [],
-		market_indicators: [],
-		bot_clients: []
+		market_indicators: []
 	};
 	writes: Array<{ op: string; table: string; payload: unknown }> = [];
 	/** Test hook: runs before each write; may mutate rows (concurrent writer) or return an error. */
@@ -395,27 +401,12 @@ function validPayload(over: Row = {}): Row {
 
 type ToolCb = (args: unknown, extra?: unknown) => Promise<McpToolResult>;
 
-/** A key old enough that its warm-up is long over (default for every pre-existing test). */
-const OLD_KEY_CREATED_AT = '2026-01-05T00:00:00.000000+00:00';
-
 function harness(
 	scopes: string[] = ['market:feed'],
 	owner = OWNER_A,
-	opts: {
-		failSinkAfter?: number;
-		/** key row created_at; null = no key row at all */
-		createdAt?: string | null;
-		ctx?: Partial<McpContext>;
-	} = {}
+	opts: { failSinkAfter?: number; ctx?: Partial<McpContext> } = {}
 ) {
 	const ctx = createStubMcpContext({ scopes, ownerId: owner, ...opts.ctx });
-	const createdAt = opts.createdAt === undefined ? OLD_KEY_CREATED_AT : opts.createdAt;
-	if (db.tables.bot_clients) {
-		db.tables.bot_clients = db.tables.bot_clients.filter((r) => r.id !== ctx.botClientId);
-		if (createdAt !== null) {
-			db.tables.bot_clients.push({ id: ctx.botClientId, owner_id: owner, created_at: createdAt });
-		}
-	}
 	const tools = new Map<string, ToolCb>();
 	const server = {
 		registerTool: (name: string, _c: unknown, cb: ToolCb) => tools.set(name, cb)
@@ -490,10 +481,7 @@ function err(res: McpToolResult) {
 const rulesOf = (res: McpToolResult) => err(res).errors.map((e) => e.rule);
 
 function snapshot() {
-	// bot_clients is the key table the warm-up gate reads; the feed never writes it.
-	return JSON.stringify(
-		Object.fromEntries(Object.entries(db.tables).filter(([name]) => name !== 'bot_clients'))
-	);
+	return JSON.stringify(db.tables);
 }
 
 function priceRow(owner: string, ticker: string, as_of: string) {
@@ -1832,285 +1820,45 @@ describe('L5 — gap rejections list the missing date(s)', () => {
 });
 
 /* ------------------------------------------------------------------------------------------ */
-/* R-FEED-40 / R-FEED-41 — per-key warm-up (first 5 trading days: dry_run only)               */
+/* Warm-up gate removed (user decision 21:38 KST: live immediately, no per-key created_at)    */
 /* ------------------------------------------------------------------------------------------ */
 
-describe('R-FEED-40 — warm-up: live writes refused during a key’s first 5 trading days', () => {
-	// Key created Fri 2026-11-20: days 11-20, 23, 24, 25, 27 (11-26 US holiday) → 6th = Mon 11-30.
-	const CREATED = '2026-11-20T10:00:00.123456+09:00';
-	const KEY_X = '00000000-0000-4000-8000-0000000000a1';
-	const KEY_Y = '00000000-0000-4000-8000-0000000000b2';
-
-	const live = (createdAt: string | null = CREATED, over: Row = {}, hopts: Row = {}) =>
-		harness(['market:feed'], OWNER_A, { createdAt, ...hopts }).call(
-			'submit_daily_market_feed',
-			validPayload(over)
-		);
-	const auditRows = (h: ReturnType<typeof harness>) => h.sink.rows;
-
-	it('5th trading day (Fri 11-27) is refused with R-FEED-40, unlock date and count; nothing written', async () => {
-		setNow('2026-11-27T09:00:00Z'); // Fri 18:00 KST
-		const before = snapshot();
-		const h = harness(['market:feed'], OWNER_A, { createdAt: CREATED });
-		const res = await h.call(
-			'submit_daily_market_feed',
-			validPayload({ feed_date: '2026-11-27', feed_id: 'fm-20261127-1' })
-		);
-		const body = err(res);
-		expect(body.code).toBe('VALIDATION');
-		expect(body.errors).toHaveLength(1);
-		expect(body.errors[0]).toMatchObject({ rule: 'R-FEED-40', field: 'warmup' });
-		expect(body.errors[0]!.message).toContain('5 of 5');
-		expect(body.errors[0]!.message).toContain('unlock_date=2026-11-30');
-		expect(db.writes).toEqual([]);
-		expect(snapshot()).toBe(before);
-		// audit row: written as usual, error result, rule id recorded
-		expect(auditRows(h)).toHaveLength(1);
-		expect(auditRows(h)[0]).toMatchObject({
-			tool: 'submit_daily_market_feed',
-			result: 'error',
-			error_code: 'VALIDATION'
-		});
-		expect(auditRows(h)[0]!.rule_ids).toContain('R-FEED-40');
-	});
-
-	it('weekend between the 5th and 6th trading day stays refused; KST midnight of the 6th unlocks', async () => {
-		for (const iso of ['2026-11-28T03:00:00Z', '2026-11-29T05:00:00Z', '2026-11-29T14:59:59Z']) {
-			setNow(iso);
-			expect(rulesOf(await live())).toEqual(['R-FEED-40']);
-		}
-		expect(db.writes).toEqual([]);
-		setNow('2026-11-29T15:00:00Z'); // Mon 11-30 00:00 KST = 6th trading day
-		const out = ok(await live());
-		expect(out.dry_run).toBe(false);
-		expect(db.writes.length).toBeGreaterThan(0);
-	});
-
-	it('6th trading day (Mon 11-30) allows live writes', async () => {
-		setNow('2026-11-30T09:00:00Z');
-		const out = ok(await live());
+describe('warmup gate removed — live writes do not depend on key age', () => {
+	it('a live call succeeds for a key created today, on a weekend, or on a holiday', async () => {
+		// The handler no longer reads bot_clients.created_at (or any per-key age). A key issued
+		// today (Mon 11-30), last Saturday (11-28), or on Thanksgiving (Thu 11-26) is treated
+		// the same as any other key: only the feed_date / market gates apply.
+		const out = ok(await feed(validPayload({ dry_run: false })));
 		expect(out.dry_run).toBe(false);
 		expect(out.rejected).toEqual([]);
 		expect(priceRow(OWNER_A, '035420', '2026-11-30')).toBeTruthy();
+		expect(JSON.stringify(out)).not.toMatch(/R-FEED-40|R-FEED-41/);
 	});
 
-	it('elapsed count grows day by day and the unlock date never moves', async () => {
-		const seen: string[] = [];
-		for (const [iso, n] of [
-			['2026-11-20T03:00:00Z', 1],
-			['2026-11-23T03:00:00Z', 2],
-			['2026-11-24T03:00:00Z', 3],
-			['2026-11-25T03:00:00Z', 4],
-			['2026-11-27T03:00:00Z', 5]
-		] as const) {
-			setNow(iso);
-			const msg = err(await live()).errors[0]!.message;
-			expect(msg).toContain(`${n} of 5`);
-			expect(msg).toContain('unlock_date=2026-11-30');
-			seen.push(msg);
+	it('dry_run still works (full report, nothing written)', async () => {
+		const before = snapshot();
+		const out = ok(await feed(validPayload({ dry_run: true })));
+		expect(out.dry_run).toBe(true);
+		expect(out.rejected).toEqual([]);
+		expect(out.would_insert).toHaveLength(13);
+		expect(db.writes).toEqual([]);
+		expect(snapshot()).toBe(before);
+	});
+
+	it('env-mode or a context with no created_at no longer yields R-FEED-41', async () => {
+		for (const ctx of [{ mode: 'env' as const }, { mode: 'env' as const, ownerId: null }]) {
+			const h = harness(['market:feed'], OWNER_A, { ctx });
+			const res = await h.call('submit_daily_market_feed', validPayload({ dry_run: false }));
+			const out = ok(res);
+			expect(out.dry_run).toBe(false);
+			expect(JSON.stringify(res)).not.toMatch(/R-FEED-40|R-FEED-41/);
 		}
-		expect(seen).toHaveLength(5);
+		expect(priceRow(OWNER_A, '035420', '2026-11-30')).toBeTruthy();
 	});
 
-	it('holiday skipping: US holiday (11-26) is not a trading day — the unlock is 11-30, not 11-27', async () => {
-		setNow('2026-11-27T03:00:00Z');
-		expect(err(await live()).errors[0]!.message).toContain('unlock_date=2026-11-30');
-	});
-
-	it('a KRX holiday in the window pushes the unlock back (key created 2026-09-21 → 09-30)', async () => {
-		setNow('2026-09-29T03:00:00Z');
-		const body = err(await live('2026-09-21T09:00:00+09:00', { feed_date: '2026-09-29' }));
-		expect(body.errors[0]!.message).toContain('unlock_date=2026-09-30');
-	});
-
-	it('key created on a weekend, on a holiday, or after the close', async () => {
-		setNow('2026-11-30T09:00:00Z');
-		// Saturday 11-28 → days start Mon 11-30 → still warming on 11-30
-		expect(err(await live('2026-11-28T10:00:00+09:00')).errors[0]!.message).toContain(
-			'unlock_date=2026-12-07'
-		);
-		// US holiday Thu 11-26 → day 1 = Fri 11-27 → 6th = Fri 12-04
-		expect(err(await live('2026-11-26T10:00:00+09:00')).errors[0]!.message).toContain(
-			'unlock_date=2026-12-04'
-		);
-		// Created Fri 11-20 23:50 KST (after the close) still counts 11-20 as day 1 → unlocked 11-30
-		expect(ok(await live('2026-11-20T23:50:00+09:00')).dry_run).toBe(false);
-	});
-
-	it('timezones: created_at is judged by its KST date (UTC Friday evening = KST Saturday)', async () => {
-		setNow('2026-11-30T09:00:00Z');
-		// 2026-11-20T16:00Z is Sat 11-21 01:00 KST (UTC date: Fri 11-20) → day 1 = Mon 11-23 → 6th = 12-01
-		// (judging by the UTC date would wrongly unlock on 11-30)
-		expect(err(await live('2026-11-20T16:00:00+00:00')).errors[0]!.message).toContain(
-			'unlock_date=2026-12-01'
-		);
-		// 2026-11-23T16:00Z is Tue 11-24 01:00 KST → day 1 = 11-24 → 24,25,27,30,12-01 → 6th = 12-02
-		expect(err(await live('2026-11-23T16:00:00+00:00')).errors[0]!.message).toContain(
-			'unlock_date=2026-12-02'
-		);
-		// 2026-11-19T16:00Z is Fri 11-20 01:00 KST → day 1 = 11-20 → 6th = 11-30 → open today
-		expect(ok(await live('2026-11-19T16:00:00+00:00')).dry_run).toBe(false);
-	});
-
-	it('dry_run is unaffected during warm-up (same output, no lookup needed, no R-FEED-40)', async () => {
-		setNow('2026-11-30T09:00:00Z');
-		const baseline = ok(await live(OLD_KEY_CREATED_AT, { dry_run: true }));
-		db.writes = [];
-		const h = harness(['market:feed'], OWNER_A, { createdAt: '2026-11-27T10:00:00+09:00' });
-		const warm = ok(await h.call('submit_daily_market_feed', validPayload({ dry_run: true })));
-		expect(warm).toEqual(baseline);
-		expect(db.writes).toEqual([]);
-		expect(auditRows(h)[0]).toMatchObject({ result: 'ok' });
-		expect(auditRows(h)[0]!.rule_ids).not.toContain('R-FEED-40');
-		expect(auditRows(h)[0]!.rule_ids).not.toContain('R-FEED-41');
-		// even with no key row at all, dry_run works exactly as before
-		expect(ok(await live(null, { dry_run: true }))).toEqual(baseline);
-	});
-
-	it('client cannot bypass: extra args (created_at / now / warmup / owner) are rejected, never honoured', async () => {
-		setNow('2026-11-30T09:00:00Z');
-		for (const extra of [
-			{ created_at: '2020-01-01T00:00:00Z' },
-			{ key_created_at: '2020-01-01T00:00:00Z' },
-			{ now: '2030-01-01T00:00:00Z' },
-			{ warmup: false },
-			{ skip_warmup: true },
-			{ bot_client_id: KEY_Y },
-			{ owner_id: OWNER_B }
-		]) {
-			const rules = rulesOf(await live('2026-11-27T10:00:00+09:00', extra));
-			expect(rules.length).toBeGreaterThan(0);
-			expect(rules.every((r) => r === 'R-FEED-40' || r === 'R-FEED-01' || r === 'R-PERM-03')).toBe(
-				true
-			);
-		}
-		expect(db.writes).toEqual([]);
-	});
-
-	it('client-side dates cannot bypass: a future feed_date/feed_id does not move the server clock', async () => {
-		setNow('2026-11-27T09:00:00Z'); // 5th trading day
-		const res = await live(CREATED, { feed_date: '2026-12-14', feed_id: 'fm-20261214-1' });
-		expect(rulesOf(res)).toEqual(['R-FEED-40']);
-		const res2 = await live(CREATED, { feed_date: '2026-11-27', feed_id: 'fm-20261127-1' });
-		expect(rulesOf(res2)).toEqual(['R-FEED-40']);
-		expect(db.writes).toEqual([]);
-	});
-
-	it('dry_run must be a literal boolean (no coercion path around the live check)', async () => {
-		setNow('2026-11-27T09:00:00Z');
-		for (const dry_run of ['true', 0, null, 'false', undefined]) {
-			const res = await live(CREATED, { dry_run });
-			expect(res.isError).toBe(true);
-			expect(rulesOf(res)).toContain('R-FEED-01');
-		}
-		expect(db.writes).toEqual([]);
-	});
-
-	it('two keys are judged independently by their own created_at', async () => {
-		setNow('2026-11-30T09:00:00Z');
-		// Key Y created Mon 11-23 → 6th = 12-01 (refused today); key X created Fri 11-20 → 11-30 (open)
-		const y = harness(['market:feed'], OWNER_A, {
-			createdAt: '2026-11-23T10:00:00+09:00',
-			ctx: { botClientId: KEY_Y }
-		});
-		const x = harness(['market:feed'], OWNER_A, {
-			createdAt: CREATED,
-			ctx: { botClientId: KEY_X }
-		});
-		const resY = await y.call('submit_daily_market_feed', validPayload());
-		expect(rulesOf(resY)).toEqual(['R-FEED-40']);
-		expect(err(resY).errors[0]!.message).toContain('unlock_date=2026-12-01');
-		expect(db.writes).toEqual([]);
-		const resX = await x.call('submit_daily_market_feed', validPayload());
-		expect(ok(resX).dry_run).toBe(false);
-		expect(db.writes.length).toBeGreaterThan(0);
-		// and Y is still refused after X wrote
-		const resY2 = await y.call(
-			'submit_daily_market_feed',
-			validPayload({ feed_id: 'fm-20261130-2' })
-		);
-		expect(rulesOf(resY2)).toEqual(['R-FEED-40']);
-	});
-
-	it('a key row of another owner is invisible (owner filter) → fail closed', async () => {
-		setNow('2026-11-30T09:00:00Z');
-		const h = harness(['market:feed'], OWNER_A, { createdAt: OLD_KEY_CREATED_AT });
-		db.tables.bot_clients![0]!.owner_id = OWNER_B;
-		const res = await h.call('submit_daily_market_feed', validPayload());
-		expect(rulesOf(res)).toEqual(['R-FEED-41']);
-		expect(db.writes).toEqual([]);
-	});
-
-	describe('fail closed (R-FEED-41): key age unknown ⇒ live refused, dry_run still works', () => {
-		beforeEach(() => setNow('2026-11-30T09:00:00Z'));
-
-		it('no key row', async () => {
-			const res = await live(null);
-			expect(rulesOf(res)).toEqual(['R-FEED-41']);
-			expect(db.writes).toEqual([]);
-		});
-
-		it.each([
-			['garbage', 'not-a-date'],
-			['empty', ''],
-			['non-string', 12345]
-		])('unparsable created_at (%s)', async (_n, bad) => {
-			const h = harness(['market:feed'], OWNER_A, { createdAt: OLD_KEY_CREATED_AT });
-			db.tables.bot_clients![0]!.created_at = bad;
-			expect(rulesOf(await h.call('submit_daily_market_feed', validPayload()))).toEqual([
-				'R-FEED-41'
-			]);
-			expect(db.writes).toEqual([]);
-		});
-
-		it('missing created_at column value', async () => {
-			const h = harness(['market:feed'], OWNER_A, { createdAt: OLD_KEY_CREATED_AT });
-			delete db.tables.bot_clients![0]!.created_at;
-			expect(rulesOf(await h.call('submit_daily_market_feed', validPayload()))).toEqual([
-				'R-FEED-41'
-			]);
-		});
-
-		it('lookup error (table read throws)', async () => {
-			const h = harness(['market:feed'], OWNER_A, { createdAt: OLD_KEY_CREATED_AT });
-			delete (db.tables as Record<string, unknown>).bot_clients;
-			const res = await h.call('submit_daily_market_feed', validPayload());
-			expect(rulesOf(res)).toEqual(['R-FEED-41']);
-			expect(JSON.stringify(res)).not.toMatch(/TypeError|undefined|filter/);
-			expect(db.writes).toEqual([]);
-		});
-
-		it('env/spike mode (not a db-mode key)', async () => {
-			const h = harness(['market:feed'], OWNER_A, { ctx: { mode: 'env' } });
-			expect(rulesOf(await h.call('submit_daily_market_feed', validPayload()))).toEqual([
-				'R-FEED-41'
-			]);
-			expect(db.writes).toEqual([]);
-		});
-
-		it('calendar cannot establish the unlock day (key created at the end of 2027)', async () => {
-			expect(rulesOf(await live('2027-12-28T00:00:00Z'))).toEqual(['R-FEED-41']);
-		});
-
-		it('refusal is audited and the error carries no secrets or row data', async () => {
-			const h = harness(['market:feed'], OWNER_A, { createdAt: null });
-			const res = await h.call('submit_daily_market_feed', validPayload());
-			expect(err(res).errors[0]).toMatchObject({ rule: 'R-FEED-41', field: 'warmup' });
-			expect(auditRows(h)[0]).toMatchObject({ result: 'error', error_code: 'VALIDATION' });
-			expect(auditRows(h)[0]!.rule_ids).toContain('R-FEED-41');
-			expect(JSON.stringify(res)).not.toContain(OWNER_A);
-		});
-
-		it('dry_run still works with each failure mode', async () => {
-			expect(ok(await live(null, { dry_run: true })).dry_run).toBe(true);
-			const h = harness(['market:feed'], OWNER_A, { ctx: { mode: 'env' } });
-			expect(
-				ok(await h.call('submit_daily_market_feed', validPayload({ dry_run: true }))).dry_run
-			).toBe(true);
-		});
-	});
-
-	it('the tool description states the warm-up rule (R-FEED-40)', () => {
+	it('R-FEED-40/41 are gone from the rule table and the tool description', () => {
+		expect(Object.values(FEED_RULES)).not.toContain('R-FEED-40');
+		expect(Object.values(FEED_RULES)).not.toContain('R-FEED-41');
 		let description = '';
 		const server = {
 			registerTool: (_n: string, cfg: { description: string }) => {
@@ -2127,19 +1875,6 @@ describe('R-FEED-40 — warm-up: live writes refused during a key’s first 5 tr
 			}),
 			metaBase: {}
 		});
-		expect(description).toMatch(/첫 5거래일/);
-		expect(description).toContain('R-FEED-40');
-	});
-
-	it('warm-up refusal precedes data reads: no instrument/price read happens for a refused call', async () => {
-		setNow('2026-11-27T09:00:00Z');
-		const reads: string[] = [];
-		const orig = db.from.bind(db);
-		db.from = (t: string) => {
-			reads.push(t);
-			return orig(t);
-		};
-		await live();
-		expect(reads.filter((t) => t !== 'bot_clients')).toEqual([]);
+		expect(description).not.toMatch(/R-FEED-40|R-FEED-41|첫 5거래일/);
 	});
 });

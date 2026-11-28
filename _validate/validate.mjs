@@ -2260,24 +2260,6 @@ eq(
 	[au.rows.length, au.rows[0]?.profile, au.rows[0]?.allowed],
 	[1, 'finance-manager', true]
 );
-// R-FEED-40 warm-up gate: the feed reads the authenticated key's created_at with the same
-// service_role session (owner-scoped select by id; no key_hash column).
-{
-	const r = await asBot(FM)(
-		`select id, created_at from bot_clients where id='${FM}' and owner_id='${U}'`
-	);
-	eq(
-		'R-FEED-40 service_role가 키 행의 created_at을 id+owner로 읽는다',
-		[r.rows.length, Number.isFinite(Date.parse(String(r.rows[0]?.created_at)))],
-		[1, true]
-	);
-	eq(
-		'R-FEED-40 다른 소유자 필터에서는 키 행이 보이지 않는다(fail-closed 경로)',
-		(await asBot(FM)(`select id from bot_clients where id='${FM}' and owner_id='${X}'`)).rows
-			.length,
-		0
-	);
-}
 eq(
 	'오답 해시 → 빈 결과',
 	(await asBot(null)(`select * from mcp_authenticate('fmfmfmfm01','${'d'.repeat(64)}')`)).rows
