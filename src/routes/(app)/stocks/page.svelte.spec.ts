@@ -60,6 +60,15 @@ describe('FE-11 /stocks 화면', () => {
 		const t = document.body.textContent ?? '';
 		expect(t).toContain('리포트를 불러오지 못했어요');
 		expect(t).not.toContain('0건');
+		// 행·카드 리포트 칸: 실패면 '리포트 없음' 대신 —
+		expect(t).not.toContain('리포트 없음');
+		expect(q('[data-testid="report-failed"]')?.textContent).toContain('—');
+		r.unmount();
+	});
+	it('L2: 리포트를 정상으로 읽었고 없으면 행 리포트 칸은 그대로 리포트 없음', () => {
+		const r = render(Page, { data: data({ rows: [row()] }) });
+		expect(document.body.textContent).toContain('리포트 없음');
+		expect(q('[data-testid="report-failed"]')).toBeNull();
 		r.unmount();
 	});
 	it('결정 4: 마지막 시세가 3일 넘게 지나면 오래됨 배너, 최신이면 없음', () => {

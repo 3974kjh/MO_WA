@@ -123,6 +123,11 @@
 			>{reportKindLabel(r.report)}</Badge
 		>
 		<span class="num hint">{shortDate(r.report.report_date)}</span>
+	{:else if data.reportsError}
+		<!-- 불러오기 실패를 '없음'으로 보이지 않는다(DS §7-15). 계획 타일과 같은 톤 -->
+		<span class="hint" data-testid="report-failed"
+			>—<span class="sr-only">리포트를 불러오지 못했어요</span></span
+		>
 	{:else}<span class="hint">리포트 없음</span>{/if}
 {/snippet}
 
