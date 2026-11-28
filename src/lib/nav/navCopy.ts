@@ -2,6 +2,7 @@
  * 메뉴 이동 로딩 문구 (라우트별). 단계 0 → 1 → 2 순서로 바 위 문구가 바뀐다.
  *  0: 데이터 요청 중 / 1: 응답이 길어질 때 보조 확인 문구 / 2: 응답을 받고 화면을 구성하는 중.
  * 문구는 그 라우트 load가 실제로 읽는 것만 말한다(없는 일을 한다고 하지 않는다).
+ * 화면에 쓰는 말은 design-system.md §0-1 용어표를 따른다(봇 연결·활동 기록·평가금액 등. 봇 키·감사 로그 금지).
  * 라우트 id는 SvelteKit `to.route.id`에서 `/(app)` 그룹 접두를 뗀 값이다.
  */
 export type NavSteps = readonly [string, string, string];
@@ -58,11 +59,11 @@ const TABLE: Record<string, NavCopy> = {
 	},
 	'/settings': {
 		name: '설정',
-		steps: ['설정 불러오는 중', '봇 키·활동 기록 확인 중', BUILD]
+		steps: ['설정 불러오는 중', '봇 연결·활동 기록 확인 중', BUILD]
 	},
 	'/settings/audit': {
-		name: '감사 기록',
-		steps: ['감사 기록 불러오는 중', '봇·규칙 목록 확인 중', BUILD]
+		name: '활동 기록',
+		steps: ['활동 기록 불러오는 중', '봇 연결 확인 중', BUILD]
 	}
 };
 

@@ -12,7 +12,7 @@
  * 짧은 이동(SHOW_DELAY_MS 안에 끝남)은 아무것도 보이지 않는다(깜빡임 방지).
  */
 export const SHOW_DELAY_MS = 180;
-export const FINISH_HOLD_MS = 480;
+export const FINISH_HOLD_MS = 250;
 export const TICK_MS = 60;
 
 export const REQ_FLOOR = 4;

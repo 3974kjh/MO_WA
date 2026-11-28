@@ -75,6 +75,7 @@
 		margin: 0;
 	}
 	.pct {
+		font-weight: 700;
 		color: var(--color-accent);
 	}
 	.track {
@@ -104,12 +105,12 @@
 		transform: translateX(-100%);
 		animation: nl-sheen 1.6s ease-in-out infinite;
 	}
-	/* 완료: 게이지를 빠르게 100%까지 채운 뒤(220ms) 서서히 사라진다(총 FINISH_HOLD_MS 안) */
+	/* 완료: 막대와 숫자가 같은 프레임에 100%(전환 없음) → 120ms 두었다가 120ms 페이드(FINISH_HOLD_MS 안). 본문은 그 뒤에 보인다 */
 	.done {
-		animation: nl-out 200ms var(--ease-out) 260ms forwards;
+		animation: nl-out 120ms var(--ease-out) 120ms forwards;
 	}
 	.done .fill {
-		transition-duration: 220ms;
+		transition: none;
 	}
 	@keyframes nl-fade {
 		from {

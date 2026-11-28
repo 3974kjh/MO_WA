@@ -30,6 +30,18 @@ describe('라우트별 로딩 문구', () => {
 		}
 	});
 
+	it('용어표 §0-1: 활동 기록·봇 연결 (감사·봇 키·평가액 같은 옛말 금지)', () => {
+		expect(navCopyFor('/(app)/settings/audit').name).toBe('활동 기록');
+		expect(navCopyFor('/(app)/settings').steps[1]).toBe('봇 연결·활동 기록 확인 중');
+		const all = [...NAV_COPY_ROUTES, '/nope'].flatMap((id) => {
+			const c = navCopyFor(id);
+			return [c.name, ...c.steps];
+		});
+		for (const old of ['감사', '봇 키', '평가액', '대시보드', '승인', '충돌', '평단', '트리거']) {
+			expect(all.filter((t) => t.includes(old))).toEqual([]);
+		}
+	});
+
 	it('완료 문구는 단계 문구와 다르다', () => {
 		for (const id of NAV_COPY_ROUTES) expect(navCopyFor(id).steps).not.toContain(NAV_DONE_TEXT);
 	});

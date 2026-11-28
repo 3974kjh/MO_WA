@@ -30,6 +30,7 @@ const content = createRawSnippet(() => ({
 }));
 const panel = () => document.querySelector<HTMLElement>('[data-testid="nav-loading"]');
 const body = () => document.querySelector<HTMLElement>('[data-testid="page-body"]')!;
+const bodyShown = () => getComputedStyle(body()).visibility === 'visible';
 const bar = () => document.querySelector<HTMLElement>('[role="progressbar"]');
 const now = () => Number(bar()?.getAttribute('aria-valuenow'));
 const step = () => document.querySelector('.step')?.textContent;
@@ -54,7 +55,7 @@ describe('NavStage', () => {
 	it('이동이 없으면 본문만 보인다', () => {
 		mount();
 		expect(panel()).toBeNull();
-		expect(body().offsetParent).not.toBeNull();
+		expect(bodyShown()).toBe(true);
 	});
 
 	it('180ms 안에 끝나는 이동은 패널이 뜨지 않는다', async () => {
@@ -67,7 +68,7 @@ describe('NavStage', () => {
 		expect(panel()).toBeNull();
 		await advance(1000);
 		expect(panel()).toBeNull();
-		expect(body().offsetParent).not.toBeNull();
+		expect(bodyShown()).toBe(true);
 	});
 
 	it('느린 이동: 패널이 본문을 대신하고 라우트 문구·진행바가 보인다', async () => {
@@ -75,7 +76,8 @@ describe('NavStage', () => {
 		fakeNav.start('/', '/stocks', '/(app)/stocks');
 		await advance(SHOW_DELAY_MS + 80);
 		expect(panel()).not.toBeNull();
-		expect(body().offsetParent).toBeNull(); // 이전 화면은 가려진다(지우지 않음)
+		expect(bodyShown()).toBe(false); // 이전 화면은 가려진다(지우지 않음)
+		expect(body().getBoundingClientRect().height).toBeGreaterThan(0); // 자리는 그대로(높이가 튀지 않음)
 		expect(step()).toBe('보유 종목 불러오는 중');
 		expect(bar()!.getAttribute('aria-valuenow')).toBe(String(now()));
 		expect(now()).toBeGreaterThan(4);
@@ -109,10 +111,35 @@ describe('NavStage', () => {
 		await advance(10);
 		expect(now()).toBe(100);
 		expect(step()).toBe('준비됐어요');
-		expect(body().offsetParent).not.toBeNull(); // 새 화면은 바로 보이고, 패널은 위에서 사라진다
+		expect(bodyShown()).toBe(false); // 패널이 사라질 때까지 본문은 가려 둔다
 		await advance(FINISH_HOLD_MS + 20);
 		expect(panel()).toBeNull();
 		expect(document.querySelector('.stage')!.getAttribute('aria-busy')).toBe('false');
+	});
+
+	it('완료 연출 동안 카드와 본문이 한 프레임도 같이 보이지 않는다(카드가 첫 화면을 가리지 않음)', async () => {
+		mount();
+		fakeNav.start('/', '/portfolio', '/(app)/portfolio');
+		await advance(900);
+		hoisted.onData!();
+		await advance(50);
+		fakeNav.complete();
+		let overlap = 0;
+		let sawPanel = false;
+		let sawBodyAfter = false;
+		for (let t = 0; t <= FINISH_HOLD_MS + 40; t += 10) {
+			flushSync();
+			const p = panel();
+			const panelOpaque = p !== null && parseFloat(getComputedStyle(p).opacity) > 0.01;
+			if (p) sawPanel = true;
+			if (panelOpaque && bodyShown()) overlap++;
+			if (!p && bodyShown()) sawBodyAfter = true;
+			await vi.advanceTimersByTimeAsync(10);
+		}
+		expect(sawPanel).toBe(true);
+		expect(overlap).toBe(0);
+		expect(sawBodyAfter).toBe(true);
+		expect(panel()).toBeNull();
 	});
 
 	it('이동이 취소되면 100% 없이 바로 정리되고 이전 화면이 돌아온다', async () => {
@@ -123,7 +150,7 @@ describe('NavStage', () => {
 		fakeNav.cancel();
 		await advance(10);
 		expect(panel()).toBeNull();
-		expect(body().offsetParent).not.toBeNull();
+		expect(bodyShown()).toBe(true);
 		expect(hoisted.stops).toBeGreaterThan(0); // 응답 관측도 끊김
 	});
 

@@ -2,6 +2,7 @@ import '../../../app.css';
 import { describe, expect, it } from 'vitest';
 import { cdp } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
+import { flushSync } from 'svelte';
 import NavLoading from './NavLoading.svelte';
 
 const bar = () => document.querySelector<HTMLElement>('[role="progressbar"]')!;
@@ -37,6 +38,36 @@ describe('NavLoading 렌더·접근성', () => {
 		expect(fill.style.width).toBe('');
 		expect(getComputedStyle(fill).transitionProperty).toBe('transform');
 		expect(getComputedStyle(fill).transitionDuration).not.toBe('0s');
+	});
+
+	it('완료(100%): 막대와 숫자가 같은 프레임에 100% — 이전 값에서 따라오지 않는다', () => {
+		const { rerender } = render(NavLoading, { name: '홈', step: 's', percent: 72 });
+		const fill = document.querySelector<HTMLElement>('.fill')!;
+		const track = document.querySelector<HTMLElement>('.track')!;
+		expect(fill.getBoundingClientRect().right).toBeLessThan(
+			track.getBoundingClientRect().right - 1
+		);
+		rerender({ name: '홈', step: 's', percent: 100, done: true });
+		flushSync();
+		// 같은 프레임(대기 없음)에 막대가 가득 차고, 숫자도 100%
+		expect(getComputedStyle(fill).transitionDuration).toBe('0s');
+		expect(fill.getBoundingClientRect().right).toBeCloseTo(track.getBoundingClientRect().right, 0);
+		expect(document.querySelector('.pct')!.textContent).toBe('100%');
+		expect(bar().getAttribute('aria-valuenow')).toBe('100');
+	});
+
+	it('퍼센트 숫자는 16px·700·accent·tabular-nums', () => {
+		render(NavLoading, { name: '홈', step: 's', percent: 42 });
+		const pct = document.querySelector<HTMLElement>('.pct')!;
+		const c = getComputedStyle(pct);
+		expect(c.fontSize).toBe('16px');
+		expect(c.fontWeight).toBe('700');
+		expect(c.fontVariantNumeric).toContain('tabular-nums');
+		const probe = document.createElement('i');
+		probe.style.color = 'var(--color-accent)';
+		document.body.append(probe);
+		expect(c.color).toBe(getComputedStyle(probe).color);
+		probe.remove();
 	});
 
 	it('0%는 게이지가 비고, 100%는 가득 찬다', () => {
