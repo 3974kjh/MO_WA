@@ -1,5 +1,6 @@
 <script lang="ts">
 	// FE-04 브리핑 상세: 메타·요약/상세 모드(?mode=)·목록 링크. 상세 모드 본문(ReportView)은 검사를 통과한 저장 렌더 캐시만.
+	import { uniqueValues } from '$lib/format/unique';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -45,7 +46,7 @@
 		<p class="headline" class:missing={hl.missing}>{hl.text}</p>
 		{#if b.tags.length}
 			<div class="tags">
-				{#each b.tags as t (t)}
+				{#each uniqueValues(b.tags) as t (t)}
 					<Tag>{t}</Tag>
 				{/each}
 			</div>

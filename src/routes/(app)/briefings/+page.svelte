@@ -1,5 +1,6 @@
 <script lang="ts">
 	// FE-10: 목록 검색·URL 상태(?q=&tag=&month=). FE-04: 월 그룹(sticky 헤더)·행 전체 링크·등락률(PC)·페이지 이동.
+	import { uniqueValues } from '$lib/format/unique';
 	import { beforeNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { untrack } from 'svelte';
@@ -147,7 +148,7 @@
 						<span class="headline" class:missing={hl.missing}>{hl.text}</span>
 						{#if b.tags.length}
 							<span class="tags">
-								{#each b.tags as t (t)}<Tag>{t}</Tag>{/each}
+								{#each uniqueValues(b.tags) as t (t)}<Tag>{t}</Tag>{/each}
 							</span>
 						{/if}
 					</span>

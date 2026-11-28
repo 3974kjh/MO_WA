@@ -499,4 +499,29 @@ describe('홈 확인 대기: 투자 원칙 개정 요청 + 일부 실패 (FE-07 
 		expect(pill(container)).toBeNull();
 		expect(container.querySelector('[data-testid="home-queue-note"]')).toBeNull();
 	});
+	it('같은 태그가 두 번 든 브리핑도 화면이 멈추지 않고 태그는 한 번씩(값-키 each)', () => {
+		const { container } = render(Page, {
+			data: {
+				...empty,
+				recentBriefings: [
+					{
+						id: 'r1',
+						kind: 'daily_brief',
+						slug: 'daily',
+						headline: '금리 동결',
+						title: '데일리',
+						report_date: '2026-11-20',
+						tags: ['금리', '환율', '금리'],
+						kospi_change_pct: null
+					}
+				]
+			} as never
+		});
+		const tags = [...container.querySelectorAll('.tags')].map(
+			(el) => el.textContent?.match(/금리/g)?.length ?? 0
+		);
+		expect(tags.length).toBeGreaterThan(0);
+		for (const n of tags) expect(n).toBe(1);
+		expect(text(container)).toContain('환율');
+	});
 });

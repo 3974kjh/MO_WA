@@ -6,6 +6,7 @@
 	 * - 값이 없거나 못 읽으면 빈/오류 상태만 보인다. 시안 샘플 수치·샘플 안내 문구는 쓰지 않는다.
 	 * - 감시 가격·방향은 바꿀 수 없다(표시만). 변경 요청 반영은 포트폴리오에서(FE-07).
 	 */
+	import { uniqueValues } from '$lib/format/unique';
 	import StockNameLink from '$lib/components/stocks/StockNameLink.svelte';
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
@@ -211,7 +212,7 @@
 			{/if}
 			{#if lead?.tags.length}
 				<div class="tags">
-					{#each lead.tags as tag (tag)}<Tag>{tag}</Tag>{/each}
+					{#each uniqueValues(lead.tags) as tag (tag)}<Tag>{tag}</Tag>{/each}
 				</div>
 			{/if}
 		</details>
@@ -392,7 +393,7 @@
 							<span class="r-head" class:missing={hl.missing}>{hl.text}</span>
 							{#if b.tags.length}
 								<span class="tags"
-									>{#each b.tags as tag (tag)}<Tag>{tag}</Tag>{/each}</span
+									>{#each uniqueValues(b.tags) as tag (tag)}<Tag>{tag}</Tag>{/each}</span
 								>
 							{/if}
 						</span>

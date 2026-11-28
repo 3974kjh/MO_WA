@@ -7,6 +7,7 @@
 	 * - 통화 기본값은 종목 시장 통화. 다르면 주의만 보인다(저장은 됨).
 	 * - 모바일 입력 16px(iOS 확대 방지).
 	 */
+	import { uniqueValues } from '$lib/format/unique';
 	import { deserialize } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import { untrack } from 'svelte';
@@ -237,7 +238,7 @@
 			<span id="{uid}-tickers-label">연결 종목</span>
 			{#if v.tickers.length > 0}
 				<ul class="chips" aria-labelledby="{uid}-tickers-label">
-					{#each v.tickers as t (t)}
+					{#each uniqueValues(v.tickers) as t (t)}
 						<li>
 							<span class="mw-chip">{t}</span><button
 								type="button"
