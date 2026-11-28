@@ -217,10 +217,12 @@ describe('installDevRouteOmit', () => {
 });
 
 describe('pnpm build wires the production /dev guard (L-1)', () => {
-	it('package.json build runs check-prod-no-dev after the CF_PAGES vite build', () => {
+	it('package.json build runs check-prod-no-dev and check-client-size after the CF_PAGES vite build', () => {
 		const pkg = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')) as {
 			scripts: { build: string };
 		};
-		expect(pkg.scripts.build).toBe('CF_PAGES=1 vite build && node scripts/check-prod-no-dev.mjs');
+		expect(pkg.scripts.build).toBe(
+			'CF_PAGES=1 vite build && node scripts/check-prod-no-dev.mjs && node scripts/check-client-size.mjs'
+		);
 	});
 });

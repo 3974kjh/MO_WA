@@ -5,9 +5,10 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
-		"build": "CF_PAGES=1 vite build && node scripts/check-prod-no-dev.mjs",
+		"build": "CF_PAGES=1 vite build && node scripts/check-prod-no-dev.mjs && node scripts/check-client-size.mjs",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
+		"check:size": "node scripts/check-client-size.mjs",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "prettier --check . && eslint . && node scripts/check-no-dark-variant.mjs",
