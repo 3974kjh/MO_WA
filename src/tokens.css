@@ -61,8 +61,8 @@
   --color-line: #DCE0E7;          /* 기본 테두리 */
   --color-line-strong: #858EA0;   /* 입력·버튼 테두리(비텍스트 3:1) */
   --color-text: #12161D;          /* 본문 */
-  --color-muted: #454E5C;         /* 보조 */
-  --color-subtle: #5D6676;        /* 캡션·플레이스홀더(≥4.5:1) */
+  --color-muted: #58616F;         /* 보조 */
+  --color-subtle: #646D7C;        /* 캡션·플레이스홀더(≥4.5:1) */
   --color-accent: #0B6E67;        /* 브랜드·링크·선택 (딥 틸) */
   --color-accent-hover: #095A54;
   --color-on-accent: #FFFFFF;
@@ -115,7 +115,7 @@
   --color-line: #2A303D;
   --color-line-strong: #6A7488;
   --color-text: #EEF0F4;
-  --color-muted: #B4BBC8;
+  --color-muted: #A0A8B6;
   --color-subtle: #8E97A8;
   --color-accent: #4FC4B8;
   --color-accent-hover: #72D6CC;
@@ -154,7 +154,7 @@
     color-scheme: dark;
     --color-canvas: #0D1017; --color-surface: #161A23; --color-surface-2: #1E232E; --color-surface-3: #282E3B;
     --color-line: #2A303D; --color-line-strong: #6A7488;
-    --color-text: #EEF0F4; --color-muted: #B4BBC8; --color-subtle: #8E97A8;
+    --color-text: #EEF0F4; --color-muted: #A0A8B6; --color-subtle: #8E97A8;
     --color-accent: #4FC4B8; --color-accent-hover: #72D6CC; --color-on-accent: #04201D; --color-accent-soft: #12332F;
     --color-up: #FF6F66; --color-up-soft: #3A1B1B; --color-down: #6EA2FF; --color-down-soft: #172743;
     --color-warn: #F2B544; --color-warn-soft: #36290E; --color-warn-fill: #F2B544; --color-on-warn: #1B1100;
