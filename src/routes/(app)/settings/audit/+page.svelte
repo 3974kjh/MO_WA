@@ -44,6 +44,39 @@
 
 	let detail = $state<Row | null>(null);
 	const preview = $derived(detail ? argsPreview(detail.args_preview) : null);
+	let argsEl = $state<HTMLPreElement | undefined>();
+	let argsOverflow = $state(false);
+	let argsMore = $state(false);
+
+	function measureArgs() {
+		const el = argsEl;
+		if (!el) {
+			argsOverflow = false;
+			argsMore = false;
+			return;
+		}
+		const over = el.scrollHeight > el.clientHeight + 1;
+		argsOverflow = over;
+		argsMore = over && el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+	}
+
+	$effect(() => {
+		const el = argsEl;
+		void preview?.text;
+		if (!el) {
+			argsOverflow = false;
+			argsMore = false;
+			return;
+		}
+		measureArgs();
+		el.addEventListener('scroll', measureArgs, { passive: true });
+		const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measureArgs) : null;
+		ro?.observe(el);
+		return () => {
+			el.removeEventListener('scroll', measureArgs);
+			ro?.disconnect();
+		};
+	});
 
 	const columns: Col<Row>[] = [
 		{ key: 'when', label: '시각', num: true, render: whenCell },
@@ -199,8 +232,20 @@
 			{/if}
 		</dl>
 		{#if preview?.text}
-			<p class="lbl" data-toc="보낸 내용">보낸 내용 미리보기</p>
-			<pre class="args" data-testid="audit-args">{preview.text}</pre>
+			<p class="lbl" id="audit-args-lbl" data-toc="보낸 내용">보낸 내용 미리보기</p>
+			<div class="args-wrap" class:more={argsMore} data-testid="audit-args-wrap">
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+				<pre
+					class="args"
+					data-testid="audit-args"
+					bind:this={argsEl}
+					tabindex={argsOverflow ? 0 : undefined}
+					role={argsOverflow ? 'region' : undefined}
+					aria-labelledby={argsOverflow ? 'audit-args-lbl' : undefined}>{preview.text}</pre>
+				{#if argsMore}
+					<p class="args-cue" data-testid="audit-args-cue" aria-hidden="true">더 보기 · 스크롤</p>
+				{/if}
+			</div>
 			{#if preview.truncated}
 				<p class="cut" data-testid="audit-args-cut">내용이 길어 앞부분만 보여 줘요.</p>
 			{/if}
@@ -327,6 +372,9 @@
 		font-size: 12px;
 		color: var(--color-muted);
 	}
+	.args-wrap {
+		position: relative;
+	}
 	.args {
 		margin: 0;
 		padding: 10px;
@@ -337,6 +385,41 @@
 		font-size: 12px;
 		background: var(--color-canvas-parchment);
 		border-radius: var(--radius-sm);
+	}
+	/* 시트 본문 스크롤 영역과 같은 포커스 링(tokens --color-focus, 상자 안쪽) */
+	.args:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: -2px;
+	}
+	/* 아래로 더 있을 때만 단서: 시트 more-down과 같은 그라데이션, 배경은 미리보기 면 */
+	.args-wrap.more::after {
+		content: '';
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		height: 32px;
+		pointer-events: none;
+		border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+		background: linear-gradient(
+			to top,
+			var(--color-canvas-parchment) 0%,
+			var(--color-canvas-parchment) 8px,
+			transparent 100%
+		);
+	}
+	.args-cue {
+		position: absolute;
+		right: 10px;
+		bottom: 6px;
+		z-index: 1;
+		margin: 0;
+		padding: 2px 6px;
+		border-radius: var(--radius-sm);
+		font-size: 13px;
+		color: var(--color-muted);
+		background: var(--color-canvas-parchment);
+		pointer-events: none;
 	}
 	.cut {
 		margin: 4px 0 0;

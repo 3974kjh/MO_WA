@@ -67,9 +67,9 @@
 			if (!el.isConnected) return;
 			if (el.contains(document.activeElement)) return;
 			const items = focusableIn(el);
-			// 손잡이·X·뒤로 다음의 첫 내용 요소로, 없으면 보이는 닫기 컨트롤(<640 손잡이, ≥640 X)
+			// 손잡이·X·뒤로·스크롤 region 다음의 첫 내용 요소로, 없으면 보이는 닫기 컨트롤(<640 손잡이, ≥640 X)
 			(
-				items.find((n) => !n.matches('.grab, .close, .back, .sheet-body')) ??
+				items.find((n) => !n.matches('.grab, .close, .back, .sheet-body, [role="region"]')) ??
 				items[0] ??
 				el
 			).focus();

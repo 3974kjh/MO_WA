@@ -122,7 +122,10 @@ describe('FE-09 활동 기록 화면', () => {
 		expect(text(document.querySelector('[data-testid="audit-args"]'))).toContain('더미 인자');
 		expect(document.querySelector('[data-testid="audit-args-cut"]')).toBeNull();
 		const args = document.querySelector('[data-testid="audit-args"]');
-		expect(text(args?.previousElementSibling).trim()).toBe('보낸 내용 미리보기');
+		expect(text(document.getElementById('audit-args-lbl')).trim()).toBe('보낸 내용 미리보기');
+		expect(args?.closest('[data-testid="audit-args-wrap"]')?.previousElementSibling).toBe(
+			document.getElementById('audit-args-lbl')
+		);
 		expect(document.body.textContent).not.toContain('요청 내용(미리보기)');
 	});
 
@@ -136,5 +139,56 @@ describe('FE-09 활동 기록 화면', () => {
 		const cut = text(document.querySelector('[data-testid="audit-args-cut"]'));
 		expect(cut).toBe('내용이 길어 앞부분만 보여 줘요.');
 		expect(cut).not.toMatch(/R-[A-Z]+/);
+	});
+
+	it('짧은 args는 포커스 영역·넘침 단서가 없고, 넘치면 region·단서가 생긴다 (리뷰 L1)', async () => {
+		const a = render(Page, { data: makeData() });
+		(a.container.querySelector('[data-action="audit-open"]') as HTMLButtonElement).click();
+		flushSync();
+		await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+		const short = document.querySelector('[data-testid="audit-args"]') as HTMLElement;
+		expect(short.getAttribute('tabindex')).toBeNull();
+		expect(short.getAttribute('role')).toBeNull();
+		expect(document.querySelector('[data-testid="audit-args-cue"]')).toBeNull();
+		a.unmount();
+		document.body.style.overflow = '';
+
+		const b = render(Page, {
+			data: makeData({ rows: [row(1, { args_preview: { memo: '가'.repeat(3000) } })] })
+		});
+		(b.container.querySelector('[data-action="audit-open"]') as HTMLButtonElement).click();
+		flushSync();
+		const args = () => document.querySelector('[data-testid="audit-args"]') as HTMLElement;
+		await expect.poll(() => args()?.getAttribute('tabindex')).toBe('0');
+		expect(args().getAttribute('role')).toBe('region');
+		expect(args().getAttribute('aria-labelledby')).toBe('audit-args-lbl');
+		expect(text(document.getElementById('audit-args-lbl'))).toBe('보낸 내용 미리보기');
+		const cue = document.querySelector('[data-testid="audit-args-cue"]');
+		expect(cue).not.toBeNull();
+		expect(text(cue)).toBe('더 보기 · 스크롤');
+		expect(
+			document.querySelector('[data-testid="audit-args-wrap"]')?.classList.contains('more')
+		).toBe(true);
+		// 맨 아래까지 스크롤하면 단서는 꺼진다
+		args().scrollTop = args().scrollHeight;
+		args().dispatchEvent(new Event('scroll'));
+		await expect.poll(() => document.querySelector('[data-testid="audit-args-cue"]')).toBeNull();
+		b.unmount();
+		document.body.style.overflow = '';
+	});
+
+	it('시트를 열면 미리보기 상자에 포커스가 가지 않고, 처음 포커스는 닫기다', async () => {
+		const r = render(Page, {
+			data: makeData({ rows: [row(1, { args_preview: { memo: '가'.repeat(3000) } })] })
+		});
+		(r.container.querySelector('[data-action="audit-open"]') as HTMLButtonElement).click();
+		flushSync();
+		const args = () => document.querySelector('[data-testid="audit-args"]') as HTMLElement;
+		await expect.poll(() => args()?.getAttribute('tabindex')).toBe('0');
+		const close = document.querySelector('.sheet-foot button') as HTMLElement;
+		await expect.poll(() => document.activeElement).toBe(close);
+		expect(document.activeElement).not.toBe(args());
+		r.unmount();
+		document.body.style.overflow = '';
 	});
 });
