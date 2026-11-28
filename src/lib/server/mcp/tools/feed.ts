@@ -9,6 +9,7 @@
  */
 import { z } from 'zod';
 import {
+	getBotClientCreatedAt,
 	insertFeedPriceRows,
 	listFeedIndicatorWindow,
 	listFeedPriceWindow,
@@ -39,6 +40,7 @@ import {
 import { filterToolsByScopes } from '../scopes';
 import type { McpAffectedId, McpRuleIssue } from '../types';
 import { dbErrorToMcpToolError, unwrapDb } from './db-error';
+import { evaluateFeedWarmup, WARMUP_TRADING_DAYS } from './feedWarmup';
 import {
 	registerAuditedTool,
 	type ToolHandlerInput,
@@ -145,7 +147,9 @@ export const FEED_RULES = {
 	auditIntent: 'R-FEED-31',
 	auditFailed: 'R-FEED-32',
 	partialWrite: 'R-FEED-33',
-	conflict: 'R-FEED-34'
+	conflict: 'R-FEED-34',
+	warmup: 'R-FEED-40',
+	warmupUnverifiable: 'R-FEED-41'
 } as const;
 
 /* ----------------------------------------------------------------------------------------- */
@@ -1292,6 +1296,50 @@ function writeFailure(
 	return out;
 }
 
+/**
+ * Warm-up gate (R-FEED-40/41): live writes are refused during a key's first 5 trading days.
+ * `created_at` is read server-side from the authenticated key's row (id from the auth context);
+ * nothing comes from the arguments. Any failure to establish it fails closed (R-FEED-41).
+ */
+async function warmupRefusal(input: ToolHandlerInput): Promise<McpToolError | null> {
+	const refuse = (rule: string, message: string) => {
+		const err = new McpToolError('VALIDATION', [{ rule, field: 'warmup', message }]);
+		err.auditNotes = [
+			{
+				rule: FEED_RULES.auditSummary,
+				message: `dry_run=false ok=false warmup refused (${rule})`
+			}
+		];
+		return err;
+	};
+	const unverifiable = (why: string) =>
+		refuse(
+			FEED_RULES.warmupUnverifiable,
+			`live writes refused: key age could not be verified (${why}); dry_run still works`
+		);
+	const { ctx, repo } = input;
+	if (ctx.mode !== 'db' || !repo || !ctx.ownerId) return unverifiable('not a db-mode key');
+	if (repo.actor.botClientId !== null && repo.actor.botClientId !== ctx.botClientId) {
+		return unverifiable('key identity mismatch');
+	}
+	let createdAt: string | null = null;
+	try {
+		const r = await getBotClientCreatedAt(repo, ctx.botClientId);
+		if (!r.error) createdAt = r.data;
+	} catch {
+		createdAt = null;
+	}
+	const verdict = evaluateFeedWarmup(createdAt, feedClock.now());
+	if (verdict.status === 'open') return null;
+	if (verdict.status === 'unverifiable') return unverifiable(verdict.reason);
+	return refuse(
+		FEED_RULES.warmup,
+		`warm-up: live writes are refused for this key's first ${WARMUP_TRADING_DAYS} trading days ` +
+			`(${verdict.elapsed} of ${WARMUP_TRADING_DAYS} elapsed since ${verdict.firstTradingDay}; days count only when KRX, NYSE and SIFMA are all open, KST); ` +
+			`live writes unlock on ${verdict.unlockDate}; dry_run still works. unlock_date=${verdict.unlockDate}`
+	);
+}
+
 export async function submitDailyMarketFeedHandler(
 	input: ToolHandlerInput
 ): Promise<ToolHandlerOutcome> {
@@ -1317,6 +1365,10 @@ export async function submitDailyMarketFeedHandler(
 		);
 	}
 	const args = parsed.data;
+	if (!args.dry_run) {
+		const refusal = await warmupRefusal(input);
+		if (refusal) throw refusal;
+	}
 	const repo = requireRepo(input.repo);
 
 	const instruments = unwrapDb(await listInstruments(repo));
@@ -1531,7 +1583,8 @@ export function registerFeedTools(reg: ToolRegistrationContext): void {
 			'허용 8종목·기대 종목 중 최대 1개 결측, 급변(KRX ±30%·미국 ±50%)·등락률 교차 확인 0.3%p, 지표 범위·usdkrw 서울 15:30·전일 ±25원, ' +
 			'수급 5종목(주 단위, 기존 가격 행의 수급 칸만), 정정은 직전 거래일·feed_date당 1회, source=fm:daily-feed 고정, 삭제 없음. ' +
 			'직전 종가가 없는 종목·지난 feed_date 재전송(다른 feed_id)은 거부(정정은 corrections로 1회). 같은 feed_id는 지표 포함 값 변경 불가. 감사 기록(쓰기 전 이전 값 포함)을 못 남기면 쓰지 않고 오류. ' +
-			'거부가 하나라도 있으면 아무것도 쓰지 않는다(live는 VALIDATION). 소유자는 키에서만 정한다(R-PERM-03).',
+			'거부가 하나라도 있으면 아무것도 쓰지 않는다(live는 VALIDATION). 소유자는 키에서만 정한다(R-PERM-03). ' +
+			'키마다 첫 5거래일(KRX·NYSE·SIFMA 모두 개장일, 키 생성일 KST부터)은 dry_run만 허용하고 live는 R-FEED-40으로 거부한다(키 나이를 못 읽으면 R-FEED-41).',
 		inputSchema: feedInputShape,
 		strictInput: true,
 		annotations: { idempotentHint: true, destructiveHint: false },
