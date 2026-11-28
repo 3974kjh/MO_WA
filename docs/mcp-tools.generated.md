@@ -1640,7 +1640,7 @@ id로 리포트 1건을 조회한다. include_body=false면 본문을 제외한�
 
 #### Notable rule IDs (from description + implementing module)
 
-`R-FEED-01`, `R-FEED-02`, `R-FEED-03`, `R-FEED-04`, `R-FEED-05`, `R-FEED-06`, `R-FEED-07`, `R-FEED-08`, `R-FEED-09`, `R-FEED-10`, `R-FEED-11`, `R-FEED-12`, `R-FEED-13`, `R-FEED-14`, `R-FEED-20`, `R-FEED-21`, `R-FEED-22`, `R-FEED-23`, `R-FEED-24`, `R-FEED-25`, `R-FEED-30`, `R-FEED-31`, `R-FEED-32`, `R-FEED-33`, `R-FEED-34`, `R-PERM-03`
+`R-FEED-01`, `R-FEED-02`, `R-FEED-03`, `R-FEED-04`, `R-FEED-05`, `R-FEED-06`, `R-FEED-07`, `R-FEED-08`, `R-FEED-09`, `R-FEED-10`, `R-FEED-11`, `R-FEED-12`, `R-FEED-13`, `R-FEED-14`, `R-FEED-20`, `R-FEED-21`, `R-FEED-22`, `R-FEED-23`, `R-FEED-24`, `R-FEED-25`, `R-FEED-26`, `R-FEED-27`, `R-FEED-30`, `R-FEED-31`, `R-FEED-32`, `R-FEED-33`, `R-FEED-34`, `R-PERM-03`
 
 ### `update_journal_entry`
 

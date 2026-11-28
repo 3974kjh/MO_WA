@@ -139,6 +139,8 @@ export const FEED_RULES = {
 	warnVixSkip: 'R-FEED-23',
 	warnDryRunOutOfRange: 'R-FEED-24',
 	warnNullPct: 'R-FEED-25',
+	warnNoBaselineSkip: 'R-FEED-26',
+	missingDates: 'R-FEED-27',
 	auditSummary: 'R-FEED-30',
 	auditIntent: 'R-FEED-31',
 	auditFailed: 'R-FEED-32',
@@ -294,6 +296,8 @@ export type FeedPlan = {
 	unchanged: number;
 	skipped: string[];
 	correctionsApplied: boolean;
+	/** Trading days with no stored data that explain a gap-related rejection/skip/warning. */
+	missingDates: string[];
 };
 
 export type FeedState = {
@@ -324,6 +328,15 @@ function near(a: number | null | undefined, b: number | null | undefined, eps = 
 
 function fmt(n: number, digits = 4): string {
 	return Number.isFinite(n) ? String(Number(n.toFixed(digits))) : String(n);
+}
+
+/** Trading days strictly between `older` and `newer` for a calendar. */
+function tradingDaysStrictlyBetween(cal: MarketCalendarId, older: string, newer: string): string[] {
+	const out: string[] = [];
+	for (let d = addDays(older, 1); d < newer && out.length < 20; d = addDays(d, 1)) {
+		if (isInCalendarRange(d) && isTradingDay(cal, d)) out.push(d);
+	}
+	return out;
 }
 
 type CorrectionMarker = { feed_date: string; feed_id: string };
@@ -388,6 +401,7 @@ export function planFeed(input: FeedInput, state: FeedState): FeedPlan {
 	const warn = (rule: string, message: string, field?: string) =>
 		warnings.push({ rule, message, ...(field ? { field } : {}) });
 
+	const gapDates = new Set<string>();
 	const { feed_date: feedDate, feed_id: feedId, dry_run: dryRun } = input;
 	const prices = input.prices ?? [];
 	const indicators = input.indicators ?? [];
@@ -398,10 +412,16 @@ export function planFeed(input: FeedInput, state: FeedState): FeedPlan {
 	const today = kstDate(state.now);
 	const yesterday = addDays(today, -1);
 	if (feedDate !== today && feedDate !== yesterday) {
+		const noData =
+			isInCalendarRange(feedDate) &&
+			!isWeekend(feedDate) &&
+			(isTradingDay('KRX', feedDate) || isTradingDay('NYSE', feedDate)) &&
+			!state.priceRows.some((r) => r.as_of === feedDate);
+		if (noData) gapDates.add(feedDate);
 		reject(
 			'feed_date',
 			FEED_RULES.date,
-			`feed_date must be today (${today}) or yesterday (${yesterday}) in KST`
+			`feed_date must be today (${today}) or yesterday (${yesterday}) in KST${noData ? `; ${feedDate} has no stored data and the feed does not backfill (PM one-off backfill)` : ''}`
 		);
 	}
 	if (isWeekend(feedDate)) reject('feed_date', FEED_RULES.date, 'feed_date falls on a weekend');
@@ -486,6 +506,7 @@ export function planFeed(input: FeedInput, state: FeedState): FeedPlan {
 
 	// --- prices (normal + corrections) -------------------------------------------------------
 	const seenPrice = new Set<string>();
+	const skippedTickers = new Set<string>();
 	const evalPrice = (item: PriceItem, field: string, correction: boolean) => {
 		const dupKey = `${item.ticker}|${item.as_of}`;
 		if (seenPrice.has(dupKey)) {
@@ -545,10 +566,11 @@ export function planFeed(input: FeedInput, state: FeedState): FeedPlan {
 		const existing = priceAt(inst.id, item.as_of);
 		if (correction) {
 			if (!existing) {
+				gapDates.add(item.as_of);
 				reject(
 					field,
 					FEED_RULES.correction,
-					`no existing row to correct for ${item.ticker} ${item.as_of}`
+					`no existing row to correct for ${item.ticker} ${item.as_of} (missing date ${item.as_of}; the feed does not backfill)`
 				);
 				return;
 			}
@@ -602,13 +624,18 @@ export function planFeed(input: FeedInput, state: FeedState): FeedPlan {
 		const prev = priceBefore(inst.id, item.as_of);
 		const prevTd = previousTradingDay(side, item.as_of);
 		if (!prev) {
-			// L3: no baseline ⇒ no jump/cross-check possible ⇒ refuse (dry_run too). First rows for
-			// a new ticker must come from the manual import path.
-			reject(
-				field,
-				FEED_RULES.jump,
-				`${item.ticker}: no previous close within ${WINDOW_DAYS} days to check against; refused (seed the first row manually)`
-			);
+			// L3: no baseline ⇒ no jump/cross-check possible. A normal row is SKIPPED (explicit
+			// R-FEED-26, the rest of the feed proceeds; coverage counts it as missing); a correction
+			// is refused. First rows for a new ticker come from the manual seed path.
+			if (prevTd) gapDates.add(prevTd);
+			const why = `${item.ticker}: no previous close within ${WINDOW_DAYS} days to check against (missing ${prevTd ?? 'earlier'}); seed the first row manually`;
+			if (correction) {
+				reject(field, FEED_RULES.jump, `${why}; correction refused`);
+			} else {
+				warn(FEED_RULES.warnNoBaselineSkip, `${why}; row skipped`, field);
+				skipped.push(field);
+				skippedTickers.add(item.ticker);
+			}
 			return;
 		} else {
 			const ratio = item.close / prev.close - 1;
@@ -639,9 +666,11 @@ export function planFeed(input: FeedInput, state: FeedState): FeedPlan {
 					return;
 				}
 			} else {
+				const holes = tradingDaysStrictlyBetween(side, prev.as_of, item.as_of);
+				holes.forEach((d) => gapDates.add(d));
 				warn(
 					FEED_RULES.warnGap,
-					`${item.ticker}: previous close is from ${prev.as_of} (gap); change_pct cross-check skipped`,
+					`${item.ticker}: previous close is from ${prev.as_of} (gap; missing ${holes.join(', ') || 'none'}); change_pct cross-check skipped`,
 					field
 				);
 			}
@@ -747,10 +776,11 @@ export function planFeed(input: FeedInput, state: FeedState): FeedPlan {
 		const existing = indAt(item.key, item.as_of);
 		if (correction) {
 			if (!existing) {
+				gapDates.add(item.as_of);
 				reject(
 					field,
 					FEED_RULES.correction,
-					`no existing row to correct for ${item.key} ${item.as_of}`
+					`no existing row to correct for ${item.key} ${item.as_of} (missing date ${item.as_of}; the feed does not backfill)`
 				);
 				return;
 			}
@@ -897,7 +927,7 @@ export function planFeed(input: FeedInput, state: FeedState): FeedPlan {
 		const side = inst ? (sideOfMarket(inst.market) ?? sideOfTicker(t)) : sideOfTicker(t);
 		return side === 'KRX' ? krxOpen : usOpen;
 	});
-	const present = new Set(prices.map((p) => p.ticker));
+	const present = new Set(prices.filter((p) => !skippedTickers.has(p.ticker)).map((p) => p.ticker));
 	const missing = expectedTickers.filter((t) => !present.has(t));
 	if (expectedTickers.length > 0 && missing.length > MAX_MISSING_TICKERS) {
 		reject(
@@ -946,10 +976,11 @@ export function planFeed(input: FeedInput, state: FeedState): FeedPlan {
 		const pending = priceOps.get(opKey);
 		const existing = priceAt(inst.id, f.base_date);
 		if (!existing && !(pending && pending.kind === 'insert')) {
+			gapDates.add(f.base_date);
 			reject(
 				field,
 				FEED_RULES.flows,
-				`no price row for ${f.ticker} ${f.base_date}; flows only update an existing price row`
+				`no price row for ${f.ticker} ${f.base_date} (missing date ${f.base_date}); flows only update an existing price row`
 			);
 			return;
 		}
@@ -1043,7 +1074,8 @@ export function planFeed(input: FeedInput, state: FeedState): FeedPlan {
 		indicatorOps,
 		unchanged,
 		skipped,
-		correctionsApplied
+		correctionsApplied,
+		missingDates: [...gapDates].sort()
 	};
 }
 
@@ -1335,6 +1367,7 @@ export async function submitDailyMarketFeedHandler(
 				unchanged: plan.unchanged,
 				skipped: plan.skipped,
 				rejected: plan.rejected,
+				missing_dates: plan.missingDates,
 				warnings: plan.warnings
 			},
 			ruleIds: [...new Set(plan.rejected.map((r) => r.rule))],
@@ -1343,10 +1376,18 @@ export async function submitDailyMarketFeedHandler(
 	}
 
 	if (plan.rejected.length > 0) {
-		throw new McpToolError(
-			'VALIDATION',
-			plan.rejected.map((r) => ({ rule: r.rule, field: r.row, message: r.message }))
-		);
+		throw new McpToolError('VALIDATION', [
+			...plan.rejected.map((r) => ({ rule: r.rule, field: r.row, message: r.message })),
+			...(plan.missingDates.length
+				? [
+						{
+							rule: FEED_RULES.missingDates,
+							field: 'missing_dates',
+							message: `missing trading date(s) with no stored data: ${plan.missingDates.join(', ')} — the feed does not backfill; ask the PM for a one-off backfill`
+						}
+					]
+				: [])
+		]);
 	}
 
 	// Live write. Order: price updates → price inserts → indicators. Not a single transaction:
@@ -1365,35 +1406,44 @@ export async function submitDailyMarketFeedHandler(
 		v: op.value
 	}));
 	const affected: McpAffectedId[] = [];
-	const updateOps = plan.priceOps.filter((o) => o.kind === 'update');
+	// L-a mitigation: today's rows (they carry the correction marker + indicator stamps) are
+	// written BEFORE any correction update, so a concurrent loser fails (duplicate key / CAS on
+	// extra) before it has changed a corrected row. Corrections run after, indicators last.
+	const updateOps = [
+		...plan.priceOps.filter((o) => o.kind === 'update' && !o.price?.correction),
+		...plan.priceOps.filter((o) => o.kind === 'update' && o.price?.correction)
+	];
+	const todayUpdateCount = updateOps.filter((o) => !o.price?.correction).length;
 	const insertOps = plan.priceOps.filter((o) => o.kind === 'insert' && o.price);
 	const progress: WriteProgress = { priceUpdates: 0, priceInserts: 0, indicators: 0 };
-	try {
-		for (const op of updateOps) {
-			const patch: FeedPricePatch = {
-				extra: buildExtra(op, args.feed_date, args.feed_id, stamps)
-			};
-			if (op.price) {
-				patch.close = op.price.close;
-				patch.change_pct = op.price.change_pct;
-				patch.currency = op.price.currency;
-				patch.source = FEED_SOURCE;
-			}
-			if (op.flow) {
-				patch.foreign_net_buy = op.flow.foreign;
-				patch.inst_net_buy = op.flow.inst;
-			}
-			const e = op.existing!;
-			const r = await updateFeedPriceRow(repo, e.id, patch, {
-				close: e.close,
-				source: e.source,
-				foreign_net_buy: e.foreign_net_buy,
-				inst_net_buy: e.inst_net_buy
-			});
-			if (r.error) throw r.error;
-			progress.priceUpdates += 1;
-			affected.push({ table: 'price_snapshots', id: String(e.id) });
+	const applyUpdate = async (op: PriceOp) => {
+		const patch: FeedPricePatch = {
+			extra: buildExtra(op, args.feed_date, args.feed_id, stamps)
+		};
+		if (op.price) {
+			patch.close = op.price.close;
+			patch.change_pct = op.price.change_pct;
+			patch.currency = op.price.currency;
+			patch.source = FEED_SOURCE;
 		}
+		if (op.flow) {
+			patch.foreign_net_buy = op.flow.foreign;
+			patch.inst_net_buy = op.flow.inst;
+		}
+		const e = op.existing!;
+		const r = await updateFeedPriceRow(repo, e.id, patch, {
+			close: e.close,
+			source: e.source,
+			foreign_net_buy: e.foreign_net_buy,
+			inst_net_buy: e.inst_net_buy,
+			extra: e.extra
+		});
+		if (r.error) throw r.error;
+		progress.priceUpdates += 1;
+		affected.push({ table: 'price_snapshots', id: String(e.id) });
+	};
+	try {
+		for (const op of updateOps.slice(0, todayUpdateCount)) await applyUpdate(op);
 		const insertRows: FeedPriceInsert[] = insertOps.map((op) => ({
 			instrument_id: op.instrumentId,
 			as_of: op.asOf,
@@ -1410,6 +1460,7 @@ export async function submitDailyMarketFeedHandler(
 			progress.priceInserts = insertRows.length;
 			for (const id of r.ids) affected.push({ table: 'price_snapshots', id: String(id) });
 		}
+		for (const op of updateOps.slice(todayUpdateCount)) await applyUpdate(op);
 		if (plan.indicatorOps.length) {
 			const r = await upsertMarketIndicators(
 				repo,
@@ -1451,6 +1502,7 @@ export async function submitDailyMarketFeedHandler(
 			unchanged: plan.unchanged,
 			skipped: plan.skipped,
 			rejected: [],
+			missing_dates: plan.missingDates,
 			warnings: plan.warnings
 		},
 		affectedIds: affected,

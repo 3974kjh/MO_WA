@@ -26,6 +26,18 @@ const OWNER_B = '00000000-0000-4000-8000-0000000000bb';
 
 type Filter = (r: Row) => boolean;
 
+/** Postgres jsonb `@>` (a contains b). */
+function jsonContains(a: unknown, b: unknown): boolean {
+	if (Array.isArray(b)) {
+		return Array.isArray(a) && b.every((bv) => a.some((av) => jsonContains(av, bv)));
+	}
+	if (b && typeof b === 'object') {
+		if (!a || typeof a !== 'object' || Array.isArray(a)) return false;
+		return Object.entries(b).every(([k, v]) => jsonContains((a as Row)[k], v));
+	}
+	return a === b;
+}
+
 class FakeDb {
 	tables: Record<string, Row[]> = {
 		instruments: [],
@@ -105,6 +117,14 @@ class Query {
 	}
 	is(col: string, val: unknown) {
 		this.filters.push((r) => (r[col] ?? null) === val);
+		return this;
+	}
+	contains(col: string, val: unknown) {
+		this.filters.push((r) => jsonContains(r[col], val));
+		return this;
+	}
+	containedBy(col: string, val: unknown) {
+		this.filters.push((r) => jsonContains(val, r[col]));
 		return this;
 	}
 	order(col: string, opts: { ascending: boolean }) {
@@ -1387,15 +1407,58 @@ describe('L3 — magnitude, decimals and baseline sanity', () => {
 		expect(db.writes).toEqual([]);
 	});
 
-	it('a new row without any previous close in the window is refused (dry_run too)', async () => {
+	it('a ticker without any previous close is skipped with R-FEED-26; the rest proceeds (dry_run mirrors)', async () => {
 		db.tables.price_snapshots = db.tables.price_snapshots!.filter(
 			(r) => r.instrument_id !== instId(OWNER_A, 'SGOV')
 		);
 		const dry = ok(await feed({ ...validPayload(), dry_run: true }));
-		expect(
-			dry.rejected.some((r) => r.rule === 'R-FEED-07' && /no previous close/.test(r.message))
-		).toBe(true);
-		expect(rulesOf(await feed(validPayload()))).toContain('R-FEED-07');
+		expect(dry.rejected).toEqual([]);
+		expect(dry.skipped).toEqual(['prices[7]']);
+		expect(dry.warnings!.map((w) => w.rule)).toContain('R-FEED-26');
+		expect(db.writes).toEqual([]);
+		const live = ok(await feed(validPayload()));
+		expect(live.skipped).toEqual(['prices[7]']);
+		expect(priceRow(OWNER_A, 'SGOV', '2026-11-27')).toBeUndefined();
+		expect(priceRow(OWNER_A, '035420', '2026-11-30')!.close).toBe(163400);
+		expect(live.missing_dates).toEqual(['2026-11-25']);
+	});
+
+	it('a ticker whose last row is older than 45 days behaves the same (skipped, explicit code)', async () => {
+		db.tables.price_snapshots = db.tables.price_snapshots!.filter(
+			(r) => r.instrument_id !== instId(OWNER_A, 'SGOV')
+		);
+		db.tables.price_snapshots!.push({
+			id: 9001,
+			owner_id: OWNER_A,
+			instrument_id: instId(OWNER_A, 'SGOV'),
+			as_of: '2026-09-01',
+			close: 100,
+			change_pct: 0,
+			currency: 'USD',
+			source: 'manual',
+			extra: {}
+		});
+		const out = ok(await feed(validPayload()));
+		expect(out.skipped).toEqual(['prices[7]']);
+		expect(priceRow(OWNER_A, 'SGOV', '2026-11-27')).toBeUndefined();
+	});
+
+	it('two tickers without a baseline exceed the coverage limit (R-FEED-06), nothing written', async () => {
+		db.tables.price_snapshots = db.tables.price_snapshots!.filter(
+			(r) =>
+				r.instrument_id !== instId(OWNER_A, 'SGOV') && r.instrument_id !== instId(OWNER_A, 'QBTS')
+		);
+		const res = await feed(validPayload());
+		expect(rulesOf(res)).toContain('R-FEED-06');
+		expect(db.writes).toEqual([]);
+	});
+
+	it('a correction without a baseline is still refused (never silently skipped)', async () => {
+		db.tables.price_snapshots = db.tables.price_snapshots!.filter(
+			(r) => !(r.instrument_id === instId(OWNER_A, '035420') && r.as_of === '2026-11-26')
+		);
+		const res = await feed(validPayload({ corrections: [correction035420] }));
+		expect(rulesOf(res)).toContain('R-FEED-07');
 		expect(db.writes).toEqual([]);
 	});
 });
@@ -1423,6 +1486,9 @@ describe('L6 — audit before write; a failed audit fails the call', () => {
 		ok(await h.call('submit_daily_market_feed', correctedPayload()));
 		const intent = h.sink.rows.find((r) => r.rule_ids.includes('R-FEED-31'))!;
 		expect(intent).toBeTruthy();
+		expect(intent.tool).toBe('submit_daily_market_feed:intent');
+		// per-tool stats: exactly one row under the plain tool name
+		expect(h.sink.rows.filter((r) => r.tool === 'submit_daily_market_feed')).toHaveLength(1);
 		const note = intent.warnings.find((w) => w.message.includes('035420|2026-11-27'))!;
 		expect(note.message).toContain('"close":160200');
 		expect(note.message).toContain('source_bot_id');
@@ -1479,5 +1545,175 @@ describe('L6 — audit before write; a failed audit fails the call', () => {
 		const notes = provenanceNotes({ priceOps: ops, indicatorOps: [] } as unknown as FeedPlan);
 		expect(notes).toHaveLength(41);
 		expect(notes.at(-1)!.message).toMatch(/truncated: 5 more updates not listed \(total 45\)/);
+	});
+});
+
+/* ------------------------------------------------------------------------------------------ */
+/* PM follow-ups: L-a mitigation, intent-row marking, gap reporting                           */
+/* ------------------------------------------------------------------------------------------ */
+
+describe('L-a — concurrent feeds fail safely (write order + CAS on extra)', () => {
+	const todayFor = (c: number) => todayWith(c, 2.0);
+	const feedA = () =>
+		validPayload({
+			feed_id: 'fm-20261130-1',
+			corrections: [correction035420],
+			prices: todayFor(153000)
+		});
+
+	it.each([
+		[
+			'same date and ticker, different values',
+			() =>
+				validPayload({
+					feed_id: 'fm-20261130-2',
+					corrections: [{ ...correction035420, close: 151000, change_pct: -3.822 }],
+					prices: todayFor(154020)
+				})
+		],
+		[
+			'a different correction row',
+			() =>
+				validPayload({
+					feed_id: 'fm-20261130-2',
+					corrections: [{ ticker: 'GOOGL', as_of: '2026-11-25', close: 280, change_pct: 1.818 }],
+					prices: (validPayload().prices as Row[]).map((p) =>
+						p.ticker === 'GOOGL' ? { ...p, change_pct: -2.464 } : p
+					)
+				})
+		]
+	])(
+		'two different feed_ids correcting (%s): one wins, the other CONFLICTs unapplied',
+		async (_n, makeB) => {
+			// reference: A alone
+			ok(await feed(feedA()));
+			const solo = snapshot();
+			seed();
+			db.writes = [];
+			const [ra, rb] = await Promise.all([feed(feedA()), feed(makeB())]);
+			const results = [ra, rb];
+			const wins = results.filter((r) => !r.isError);
+			const losses = results.filter((r) => r.isError);
+			expect(wins).toHaveLength(1);
+			expect(losses).toHaveLength(1);
+			expect(err(losses[0]!).code).toBe('CONFLICT');
+			expect(err(losses[0]!).errors.map((e) => e.rule)).toContain('R-FEED-34');
+			if (ra.isError) return; // B won: no deterministic reference; state asserted below only for A
+			// A won: the final state is exactly A-alone (loser's correction/indicators not applied)
+			expect(snapshot()).toBe(solo);
+		}
+	);
+
+	it('same new feed_id, identical prices, usdkrw differs: exactly one wins, no mixed state', async () => {
+		ok(await feed(validPayload()));
+		// today's rows exist without markers (e.g. imported by hand), indicators for today absent
+		for (const r of db.tables.price_snapshots!) if (String(r.as_of) >= '2026-11-27') r.extra = {};
+		db.tables.market_indicators = db.tables.market_indicators!.filter(
+			(r) => !(r.as_of === '2026-11-30')
+		);
+		const withUsd = (v: number) =>
+			validPayload({
+				indicators: (validPayload().indicators as Row[]).map((i) =>
+					i.key === 'usdkrw' ? { ...i, value: v } : i
+				)
+			});
+		const [r1, r2] = await Promise.all([feed(withUsd(1337.9)), feed(withUsd(1345))]);
+		const [win, lose] = r1.isError ? [r2, r1] : [r1, r2];
+		expect(win.isError).not.toBe(true);
+		expect(err(lose).code).toBe('CONFLICT');
+		const winnerValue = r1.isError ? 1345 : 1337.9;
+		const stored = db.tables.market_indicators!.find(
+			(r) => r.key === 'usdkrw' && r.as_of === '2026-11-30'
+		)!.value;
+		expect(stored).toBe(winnerValue);
+		const stamp = JSON.stringify(
+			db.tables.price_snapshots!.filter((r) => r.as_of === '2026-11-30').map((r) => r.extra)
+		);
+		expect(stamp).toContain(String(winnerValue));
+		expect(stamp).not.toContain(String(winnerValue === 1345 ? 1337.9 : 1345));
+	});
+
+	it('writes today’s rows before any correction update, indicators last', async () => {
+		ok(await feed(correctedPayload()));
+		const order = db.writes.map((w) =>
+			w.table === 'price_snapshots'
+				? w.op === 'insert'
+					? 'insert'
+					: (w.payload as Row[])[0]!.close === 150000
+						? 'correction'
+						: 'update'
+				: 'indicators'
+		);
+		expect(order.indexOf('insert')).toBeLessThan(order.indexOf('correction'));
+		expect(order.indexOf('correction')).toBeLessThan(order.indexOf('indicators'));
+	});
+
+	it('a CAS miss on extra alone (marker changed by someone else) is a CONFLICT', async () => {
+		ok(await feed(validPayload()));
+		for (const r of db.tables.price_snapshots!) if (r.as_of === '2026-11-30') r.extra = {};
+		db.tables.market_indicators = db.tables.market_indicators!.filter(
+			(r) => r.as_of !== '2026-11-30'
+		);
+		db.writes = [];
+		let first = true;
+		db.hook = (table, op) => {
+			if (first && table === 'price_snapshots' && op === 'update') {
+				first = false;
+				for (const r of db.tables.price_snapshots!)
+					if (r.as_of === '2026-11-30') r.extra = { feed_id: 'fm-other', other: 1 };
+			}
+		};
+		const res = await feed(validPayload());
+		expect(err(res).code).toBe('CONFLICT');
+		db.hook = null;
+	});
+});
+
+describe('Nit — audit intent row is distinguishable from the outcome row', () => {
+	it('failed write: outcome row is the only row under the tool name; intent row is :intent', async () => {
+		db.hook = (table) =>
+			table === 'market_indicators' ? { code: 'XX000', message: 'boom' } : undefined;
+		const h = harness();
+		err(await h.call('submit_daily_market_feed', validPayload()));
+		const plain = h.sink.rows.filter((r) => r.tool === 'submit_daily_market_feed');
+		expect(plain.map((r) => r.result)).toEqual(['error']);
+		const intents = h.sink.rows.filter((r) => r.tool === 'submit_daily_market_feed:intent');
+		expect(intents).toHaveLength(1);
+		expect(intents[0]!.rule_ids).toContain('R-FEED-31');
+	});
+});
+
+describe('L5 — gap rejections list the missing date(s)', () => {
+	it('feed_date older than yesterday with no stored data: R-FEED-02 + R-FEED-27 name the date', async () => {
+		setNow('2026-12-02T09:00:00Z');
+		const body = err(await feed(validPayload()));
+		const gap = body.errors.find((e) => e.rule === 'R-FEED-27')!;
+		expect(gap.message).toContain('2026-11-30');
+		expect(body.errors.find((e) => e.rule === 'R-FEED-02')!.message).toContain('2026-11-30');
+		expect(db.writes).toEqual([]);
+	});
+
+	it('a correction/flow on a date with no row names the missing date', async () => {
+		db.tables.price_snapshots = db.tables.price_snapshots!.filter(
+			(r) => !(r.instrument_id === instId(OWNER_A, '035420') && r.as_of === '2026-11-27')
+		);
+		const body = err(await feed(validPayload({ corrections: [correction035420] })));
+		expect(body.errors.find((e) => e.rule === 'R-FEED-13')!.message).toContain('2026-11-27');
+		expect(body.errors.find((e) => e.rule === 'R-FEED-27')!.message).toContain('2026-11-27');
+	});
+
+	it('an accepted row after a gap lists the skipped sessions (warning + missing_dates)', async () => {
+		db.tables.price_snapshots = db.tables.price_snapshots!.filter(
+			(r) => !(r.instrument_id === instId(OWNER_A, '035420') && r.as_of === '2026-11-27')
+		);
+		const p = validPayload();
+		(p.prices as Row[])[0] = {
+			ticker: '035420',
+			as_of: '2026-11-30',
+			close: 160000,
+			change_pct: -0.125
+		};
+		const out = ok(await feed({ ...p, dry_run: true }));
+		expect(out.missing_dates).toContain('2026-11-27');
 	});
 });

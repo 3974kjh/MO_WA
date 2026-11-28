@@ -403,12 +403,12 @@ export async function insertFeedPriceRows(
 /** Values the row held when the feed read it (compare-and-set guard for concurrent submits). */
 export type FeedPriceExpect = Pick<
 	FeedPriceRow,
-	'close' | 'source' | 'foreign_net_buy' | 'inst_net_buy'
+	'close' | 'source' | 'foreign_net_buy' | 'inst_net_buy' | 'extra'
 >;
 
 /**
  * Update one owner price row by id. With `expect`, the update only applies while close/source/
- * flows still hold the values the feed read (else FeedRowChangedError). Errors unless exactly
+ * flows/extra still hold the values the feed read (else FeedRowChangedError). Errors unless exactly
  * one row matched.
  */
 export async function updateFeedPriceRow(
@@ -429,6 +429,8 @@ export async function updateFeedPriceRow(
 		.eq('id', id);
 	q = withOwnerFilter(q, ownerId);
 	if (expect) {
+		// extra must be unchanged too (markers / lock stamps): jsonb equality = contains + contained-by.
+		q = q.contains('extra', expect.extra).containedBy('extra', expect.extra);
 		q = q.eq('close', expect.close);
 		q = expect.source === null ? q.is('source', null) : q.eq('source', expect.source);
 		q =

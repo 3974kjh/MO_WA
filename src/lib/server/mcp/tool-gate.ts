@@ -98,7 +98,9 @@ export async function runAuditedToolCall(options: {
 				await recorder.recordSync({
 					ctx,
 					userId: meta.userId,
-					tool: meta.tool,
+					// Distinct tool name so per-tool ok/error stats are not double counted when the
+					// write later fails (the real outcome row keeps the plain tool name).
+					tool: `${meta.tool}:intent`,
 					requestId: meta.requestId,
 					args: sanitized.args,
 					result: 'ok',
