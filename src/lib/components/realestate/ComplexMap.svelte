@@ -117,6 +117,7 @@
 	let canvas: HTMLDivElement;
 	let iwEl = $state<HTMLDivElement>();
 	let cardPos = $state<CardPlace | null>(null);
+	let boxH = $state(0);
 
 	const isMobile = new MediaQuery('max-width: 639px', false);
 	const isPc = new MediaQuery('min-width: 1024px', false);
@@ -748,14 +749,13 @@
 		aria-label="단지 위치 지도. 같은 정보가 단지 목록에 있어요"
 		aria-busy={mapState === 'idle' || mapState === 'loading'}
 		bind:this={box}
+		bind:clientHeight={boxH}
 		onkeydown={onKey}
 	>
 		<div class="canvas" bind:this={canvas}></div>
 		{#if mapState === 'idle' || mapState === 'loading' || mapState === 'ready'}
 			<div class="count" data-testid="map-count">
-				<b>{countText}</b>{#if mapState === 'ready'}{#if visible.length}
-						표시 중{/if}{:else}
-					준비 중{/if}
+				<b>{countText}</b>{mapState === 'ready' ? (visible.length ? ' 표시 중' : '') : ' 준비 중'}
 				{#if sub && mapState === 'ready'}<small>{sub}</small>{/if}
 			</div>
 			<div class="ctls" class:dim={mapState !== 'ready'}>
@@ -829,6 +829,7 @@
 				role="dialog"
 				aria-labelledby="rm-iw-t"
 				data-testid="stack-card"
+				style:--sl-max="{Math.max(96, Math.min(248, boxH - 170))}px"
 				bind:this={iwEl}
 				style={cardPos && isPc.current
 					? `left:${cardPos.left}px;top:${cardPos.top}px;--ax:${cardPos.ax ?? 50}px;--ay:${cardPos.ay ?? 50}px`
@@ -840,7 +841,6 @@
 						><X size={20} aria-hidden="true" /></button
 					>
 				</div>
-				<p class="sd">같은 자리에 겹쳐 있어요. 단지를 고르면 정보가 열려요.</p>
 				<div class="sl">
 					<ComplexList
 						items={stackItems}
@@ -849,6 +849,7 @@
 						hint="정보를 열려면 누르세요"
 					/>
 				</div>
+				<p class="sd">같은 자리에 겹쳐 있어요. 한 곳을 고르면 정보를 봐요.</p>
 			</div>
 		{/if}
 		{#if mapState === 'idle' || mapState === 'loading'}
@@ -1350,10 +1351,10 @@
 	.sd {
 		font-size: var(--text-sm);
 		color: var(--color-muted);
-		margin: 0 0 8px;
+		margin: 8px 0 0;
 	}
 	.sl {
-		max-height: 248px;
+		max-height: var(--sl-max, 248px);
 		overflow-y: auto;
 		margin: 0 -8px;
 	}

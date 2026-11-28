@@ -70,7 +70,7 @@
 					{#if won}<span class="p">{won.text}{won.unit}</span>{/if}
 				</span>
 			</button>
-			{#if fallback}<NaverLink item={it} label="네이버 지도" />{/if}
+			{#if fallback}<NaverLink item={it} />{/if}
 		</li>
 	{/each}
 </ul>
@@ -182,6 +182,15 @@
 	@media (max-width: 639px) {
 		.rm-row {
 			min-height: 64px;
+		}
+		/* 지도를 못 쓰는 목록: 링크는 행 아래 줄(이름 칸에 맞춰 들여쓰기) */
+		li.has-x {
+			flex-direction: column;
+			align-items: stretch;
+			gap: 0;
+		}
+		li.has-x :global(.rm-ext) {
+			padding: 0 8px 8px 48px;
 		}
 	}
 	/* 지도를 못 쓸 때(넓은 화면): 목록이 전체 폭을 쓰고 2열로 */

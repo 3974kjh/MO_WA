@@ -431,13 +431,13 @@
 			<ComplexInfo item={openSheetItem} />
 		{:else}
 			<div data-testid="stack-sheet">
-				<p class="sd">같은 자리에 겹쳐 있어요. 단지를 고르면 정보가 열려요.</p>
 				<ComplexList
 					items={stackItems}
 					selectedId={null}
 					onselect={onStackRow}
 					hint="정보를 열려면 누르세요"
 				/>
+				<p class="sd">같은 자리에 겹쳐 있어요. 한 곳을 고르면 정보를 봐요.</p>
 			</div>
 		{/if}
 	</Sheet>
@@ -447,7 +447,7 @@
 	.sd {
 		font-size: var(--text-sm);
 		color: var(--color-muted);
-		margin: 0 0 8px;
+		margin: 12px 0 0;
 	}
 	.rm {
 		--rm-gap: 16px;

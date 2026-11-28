@@ -57,8 +57,8 @@
 	 * 지도 대신 보이는 자리(키 없음·인증 실패·로드 실패·시간 초과·오프라인·렌더 오류).
 	 * 라우트 동기 클로저에 두어 지도 청크가 안 와도 보인다. 빈 회색 지도 대신 이유와 다음 행동을 말한다.
 	 */
-	import MapPinOff from '@lucide/svelte/icons/map-pin-off';
-	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
+	import CircleAlert from '@lucide/svelte/icons/circle-alert';
+	import Info from '@lucide/svelte/icons/info';
 	import Icon from '$lib/components/ui/Icon.svelte';
 
 	let {
@@ -76,13 +76,13 @@
 	data-reason={reason}
 	role={reason === 'nokey' ? undefined : 'alert'}
 >
-	<div class="ico" aria-hidden="true"><Icon icon={MapPinOff} size={24} /></div>
+	<div class="ico" class:warn={reason !== 'nokey'} aria-hidden="true">
+		<Icon icon={reason === 'nokey' ? Info : CircleAlert} size={24} />
+	</div>
 	<p class="t">{copy.title}</p>
 	<p class="d">{copy.desc}</p>
 	{#if copy.retry && onretry}
-		<button type="button" class="btn preset-filled-brand" onclick={onretry}
-			><Icon icon={RefreshCw} />다시 시도하기</button
-		>
+		<button type="button" class="btn" onclick={onretry}>다시 시도하기</button>
 	{/if}
 </div>
 
@@ -113,6 +113,10 @@
 		place-items: center;
 		background: var(--color-surface);
 		color: var(--color-subtle);
+	}
+	.ico.warn {
+		background: var(--color-warn-soft);
+		color: var(--color-warn);
 	}
 	.t {
 		color: var(--color-text);
