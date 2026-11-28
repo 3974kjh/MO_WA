@@ -61,6 +61,16 @@ describe('모달 공통 구조 (합격 기준 1·2)', () => {
 		expect(s.scrollTop).toBe(0);
 	});
 
+	it('넘치는 textarea 는 스크롤바 숨김 대상에서 제외(단서가 없으므로)', async () => {
+		await openSheet({ sections: 2 });
+		const ta = document.createElement('textarea');
+		body().append(ta);
+		expect(getComputedStyle(ta).scrollbarWidth).not.toBe('none');
+		const div = document.createElement('div');
+		body().append(div);
+		expect(getComputedStyle(div).scrollbarWidth).toBe('none');
+	});
+
 	it('모달 안 스크롤바는 보이지 않는다(폭 0, scrollbar-width none)', async () => {
 		await openSheet({ sections: 3 });
 		expect(body().offsetWidth - body().clientWidth).toBe(0);
@@ -291,6 +301,24 @@ describe('목차 점 동작 (합격 기준 5·6)', () => {
 		);
 		expect(document.activeElement).toBe(dots()[0]);
 		dots()[0].dispatchEvent(new MouseEvent('mouseover'));
+	});
+
+	it('Tab 정지점은 현재 점 하나뿐(roving tabindex), Home·End 로 처음·끝 점 이동', async () => {
+		await openSheet({ sections: 4 });
+		await expect.poll(() => dots().length).toBe(4);
+		const stops = () => dots().filter((d) => d.tabIndex === 0);
+		expect(stops()).toEqual([dots()[0]]);
+		body().scrollTop = body().scrollHeight;
+		await frame();
+		await expect.poll(() => stops()[0]).toBe(dots()[3]);
+		expect(stops().length).toBe(1);
+		const key = (el: HTMLElement, k: string) =>
+			el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+		dots()[3].focus();
+		key(dots()[3], 'Home');
+		expect(document.activeElement).toBe(dots()[0]);
+		key(dots()[0], 'End');
+		expect(document.activeElement).toBe(dots()[3]);
 	});
 
 	it('점을 누르면 라벨이 1.3초 보였다가 사라진다', async () => {

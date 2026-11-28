@@ -418,13 +418,13 @@
 	.sheet-foot :global(.btn) {
 		flex: 1 1 0;
 	}
-	/* 스크롤바는 모달 안에서 모두 숨김(본문·표·코드·목차) — 대신 위·아래로 더 있을 때만 머리 아래·꼬리 위에 선·그림자 */
+	/* 스크롤바는 모달 안에서 숨김(본문·표·코드·목차; 넘치는 textarea 는 단서가 없으니 제외) — 대신 위·아래로 더 있을 때만 머리 아래·꼬리 위에 선·그림자 */
 	.sheet,
-	.sheet :global(*) {
+	.sheet :global(:not(textarea)) {
 		scrollbar-width: none;
 	}
 	.sheet::-webkit-scrollbar,
-	.sheet :global(*::-webkit-scrollbar) {
+	.sheet :global(:not(textarea)::-webkit-scrollbar) {
 		display: none;
 	}
 	.sheet-head::after,

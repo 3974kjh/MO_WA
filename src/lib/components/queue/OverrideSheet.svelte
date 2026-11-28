@@ -199,11 +199,12 @@
 					? ' 달러 평균 단가는 화면에서 소수 2자리로 보여요(저장은 4자리).'
 					: ''} 감시 가격·방향·손익분기 가격·관심만은 봇이 직접 기록하는 값이라 여기서 고칠 수 없어요.
 			</p>
-			<h4 class="sheet-sec" data-toc="고친 이유">고친 이유</h4>
+			<h4 class="sheet-sec" data-toc="고친 이유" id="{uid}-whyh">고친 이유</h4>
 			<label class="field" for="{uid}-why">
-				한 줄, 필수
+				<span id="{uid}-whyl">한 줄, 필수</span>
 				<input
 					id="{uid}-why"
+					aria-labelledby="{uid}-whyh {uid}-whyl"
 					class="input"
 					maxlength={OVERRIDE_REASON_MAX}
 					bind:value={reason}

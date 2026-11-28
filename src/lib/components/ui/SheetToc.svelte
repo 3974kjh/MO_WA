@@ -2,6 +2,7 @@
 	/**
 	 * 모달 목차 점 (DS v1.7.6 §7-11-0). 표시 여부는 Sheet 가 정한다(본문 넘침 AND [data-toc] ≥ 2 → names 가 채워짐).
 	 * 점 6px(현재 accent 8px + soft 링), 누름 PC 28×40·모바일 32×44, PC hover·포커스는 왼쪽 라벨, 누른 뒤 1.3초 라벨.
+	 * 키보드: 현재 점만 Tab 정지점(roving), ↑↓·Home·End 로 이동.
 	 */
 	let {
 		names,
@@ -46,12 +47,21 @@
 		}, 1300);
 	}
 	function onkeydown(e: KeyboardEvent) {
-		const d = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
 		const b = [...(ol?.querySelectorAll('button') ?? [])];
 		const k = b.indexOf(document.activeElement as HTMLButtonElement);
-		if (!d || k < 0) return;
+		const to =
+			e.key === 'ArrowDown'
+				? k + 1
+				: e.key === 'ArrowUp'
+					? k - 1
+					: e.key === 'Home'
+						? 0
+						: e.key === 'End'
+							? b.length - 1
+							: -1;
+		if (to < 0 || k < 0) return;
 		e.preventDefault();
-		b[Math.max(0, Math.min(b.length - 1, k + d))].focus();
+		b[Math.min(b.length - 1, to)].focus();
 	}
 	$effect(() => {
 		if (scrolls) ol?.children[cur]?.scrollIntoView({ block: 'nearest' });
@@ -75,6 +85,7 @@
 						class="toc-i"
 						aria-label={n}
 						aria-current={i === cur ? 'location' : undefined}
+						tabindex={i === cur ? 0 : -1}
 						{onkeydown}
 						onclick={(e) => pick(e, i)}
 						onmouseenter={(e) =>
@@ -185,6 +196,15 @@
 		.sheet-toc {
 			--toc-w: 32px;
 			right: 0;
+		}
+	}
+	@media (forced-colors: active) {
+		.toc-i::before {
+			background: CanvasText;
+			forced-color-adjust: none;
+		}
+		.toc-i[aria-current='location']::before {
+			background: Highlight;
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {

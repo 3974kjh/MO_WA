@@ -132,6 +132,12 @@
 		selected?.report_id ? (data.reports.find((r) => r.id === selected?.report_id) ?? null) : null
 	);
 
+	/** 시트가 닫히는 동안(inert) 꼬리가 비어 줄어들지 않게 마지막으로 열렸던 항목을 유지 */
+	let footItem = $state<JournalItem | null>(null);
+	$effect(() => {
+		if (selected) footItem = selected;
+	});
+
 	/** 목록 쿼리(현재 URL의 search 그대로 — 상세 URL도 같은 쿼리를 싣는다) */
 	const currentSearch = () => page.url.search;
 
@@ -377,7 +383,7 @@
 		{/if}
 		{#snippet footer()}
 			<!-- 수정·보관은 본문이 아니라 꼬리에 고정(DS v1.7.7). 동작은 PC 우측 패널과 같다. -->
-			{#if selected}
+			{#if footItem}
 				<button
 					type="button"
 					class="btn preset-outlined-surface-500"
