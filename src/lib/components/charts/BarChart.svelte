@@ -13,10 +13,14 @@
 		barLabelVisible,
 		barShape,
 		barSummary,
+		barLabelStep,
 		barTickIndices,
 		chartHeight,
+		clampLabelX,
+		compactNumber,
 		isMobileChart,
-		signedNumber
+		signedNumber,
+		textWidth
 	} from '$lib/charts/layout';
 	import { observeWidth } from '$lib/charts/observeWidth';
 	import ChartReadout from './ChartReadout.svelte';
@@ -32,6 +36,7 @@
 		height,
 		digits = 1,
 		unit = '%',
+		compact = false,
 		class: className = ''
 	}: {
 		items: readonly BarItem[];
@@ -42,27 +47,29 @@
 		digits?: number;
 		/** 축·값 카드 단위(값 라벨에는 붙이지 않는다) */
 		unit?: string;
+		/** 값 라벨·축 끝을 만/억/조로 줄인다(원 단위 수급처럼 큰 수). 툴팁·값 카드·숨김 표는 정확한 값 */
+		compact?: boolean;
 		class?: string;
 	} = $props();
 
+	/** 값 라벨 글자 크기(.val과 같게) */
+	const VAL_PX = 10;
 	let width = $state(600);
 	let mobile = $derived(isMobileChart(width));
 	let H = $derived(chartHeight(width, height, BAR_DEFAULT_HEIGHT));
 	let n = $derived(items.length);
+	let fmtValue = $derived((v: number) => (compact ? compactNumber(v) : signedNumber(v, digits)));
+	let fmtAxis = $derived((v: number) => (compact ? compactNumber(v) : signedNumber(v, 0)) + unit);
 	// 왼쪽 여백은 위·아래 끝 눈금 라벨 폭에 맞춘다(잘림 방지, DS §7-15 v1.7.5)
 	let m = $derived.by(() => {
 		const [lo, hi] = n ? barDomain(items.map((i) => i.value)) : [0, 0];
 		return {
-			l: axisLeft(
-				[lo, hi].map((v) => signedNumber(v, 0) + unit),
-				44
-			),
+			l: axisLeft([lo, hi].map(fmtAxis), 44),
 			r: 8,
 			t: 18,
 			b: 26
 		};
 	});
-	let fmtValue = $derived((v: number) => signedNumber(v, digits));
 	let fmtUnit = $derived((v: number) =>
 		Number.isFinite(v) ? signedNumber(v, digits) + unit : signedNumber(v, digits)
 	);
@@ -86,9 +93,22 @@
 		const bars = items.map((it, i) => {
 			const cx = (x(i) ?? 0) + x.bandwidth() / 2;
 			// 비유한 값은 shape=null(rect·값 라벨 생략). 배열에서 빼지 않아 인덱스·눈금 cx는 items와 맞는다.
-			return { cx, x: cx - bw / 2, w: bw, shape: barShape(it.value, y, y0) };
+			const label = Number.isFinite(it.value) ? fmtValue(it.value) : '';
+			const lw = textWidth(label, VAL_PX);
+			// 값 라벨은 플롯 안쪽에 머문다(오른쪽 끝 잘림 방지)
+			const lx = clampLabelX(cx, lw, m.l, m.l + iw);
+			return { cx, x: cx - bw / 2, w: bw, shape: barShape(it.value, y, y0), label, lx, lw };
 		});
-		return { y, y0, iw, ends, bars, ticks: barTickIndices(n, mobile) };
+		// 라벨이 막대 칸보다 넓으면 마지막 막대부터 몇 칸 걸러 하나씩만(겹침 방지). 숨긴 값은 툴팁·값 카드·숨김 표로 읽는다.
+		const step = barLabelStep(Math.max(0, ...bars.map((b) => b.lw)), x.bandwidth());
+		// 칸이 넉넉하면(step 1) 기존 규칙 그대로, 좁으면 기존 간격과 겹침 간격 중 큰 쪽으로 마지막 막대부터 센다.
+		const base = mobile ? (n <= 5 ? 1 : 5) : n <= 14 ? 1 : Math.ceil(n / 12);
+		const every = Math.max(step, base);
+		const showLabel = (i: number) =>
+			step === 1
+				? barLabelVisible(i, n, mobile)
+				: Number.isFinite(every) && (n - 1 - i) % every === 0;
+		return { y, y0, iw, ends, bars, showLabel, ticks: barTickIndices(n, mobile) };
 	});
 
 	let summary = $derived(barSummary(ariaLabel, items, fmtUnit));
@@ -141,7 +161,7 @@
 						y2={geo.y(v)}
 						stroke-dasharray="2 3"
 					/>
-					<text x={m.l - 6} y={geo.y(v) + 4} text-anchor="end">{signedNumber(v, 0)}{unit}</text>
+					<text x={m.l - 6} y={geo.y(v) + 4} text-anchor="end">{fmtAxis(v)}</text>
 				{/each}
 				<text x={m.l - 6} y={geo.y0 + 4} text-anchor="end">0</text>
 				{#each geo.bars as b, i (i)}
@@ -155,10 +175,8 @@
 							fill={b.shape.up ? 'var(--color-up)' : 'var(--color-down)'}
 							opacity={active !== null && active !== i ? 0.55 : 1}
 						/>
-						{#if barLabelVisible(i, n, mobile)}
-							<text class="val" x={b.cx} y={b.shape.ly} text-anchor="middle"
-								>{fmtValue(items[i].value)}</text
-							>
+						{#if geo.showLabel(i)}
+							<text class="val" x={b.lx} y={b.shape.ly} text-anchor="middle">{b.label}</text>
 						{/if}
 					{/if}
 				{/each}

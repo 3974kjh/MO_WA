@@ -3,6 +3,9 @@ import {
 	axisLeft,
 	barDomain,
 	barLabelVisible,
+	barLabelStep,
+	clampLabelX,
+	compactNumber,
 	barShape,
 	barSummary,
 	categoryColor,
@@ -104,6 +107,29 @@ describe('barLabelVisible (값 라벨)', () => {
 			barLabelVisible(i, 12, true)
 		);
 		expect(shown).toEqual([0, 5, 10, 11]);
+	});
+});
+
+describe('compactNumber · 라벨 간격 (큰 수 막대, M1)', () => {
+	it('만/억/조로 줄이고 10 미만만 소수 1자리', () => {
+		expect(compactNumber(123_456_789_012)).toBe('+1,235억');
+		expect(compactNumber(-350_000_000)).toBe('−3.5억');
+		expect(compactNumber(1_200_000_000_000)).toBe('+1.2조');
+		expect(compactNumber(-52_000)).toBe('−5.2만');
+		expect(compactNumber(812)).toBe('+812');
+		expect(compactNumber(0)).toBe('0');
+		expect(compactNumber(Number.NaN)).toBe('—');
+	});
+	it('라벨이 칸보다 넓으면 몇 칸마다 하나', () => {
+		expect(barLabelStep(30, 40)).toBe(1);
+		expect(barLabelStep(42, 20)).toBe(3);
+		expect(barLabelStep(10, 0)).toBe(Number.POSITIVE_INFINITY);
+	});
+	it('끝 라벨은 플롯 안쪽으로 당긴다', () => {
+		expect(clampLabelX(395, 40, 50, 400)).toBe(380);
+		expect(clampLabelX(52, 40, 50, 400)).toBe(70);
+		expect(clampLabelX(200, 40, 50, 400)).toBe(200);
+		expect(clampLabelX(60, 40, 50, 80)).toBe(65);
 	});
 });
 

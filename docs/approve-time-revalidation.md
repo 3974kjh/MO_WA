@@ -92,7 +92,7 @@ Info: avg_price ≥ 1e14 는 앱·RPC 어디서도 상한을 두지 않아 numer
 - 앱: `revalidate.spec.ts`(15), `overrides.spec.ts`(Nit-1), `proposalActions.spec.ts`(41: 만료·superseded·종결·on_hold 순서, L-3 객체 동일성, missing, MW001/MW002 코드), `queue/proposals.spec.ts`(M-1 루프 USD/KRW·proposedProblem 표·문구·보관 문구·L-B 통화 누락 문구), `QueueCard.svelte.spec.ts`(카드 안내·‘반영’만 막힘), `portfolio/+page.svelte.spec.ts`(Nit-B: confirmApprove 의 proposedProblem 가드), `portfolio.parity.spec.ts`(패리티 26 + L-B 안내).
 - DB(로컬 격리 클러스터 127.0.0.1:55435 `mowa_local_g3` 에서만): `supabase/tests/approve_proposal_g3.psql` 55건 + `approve_proposal_g3_concurrency.sh`(두 세션: 종목 FOR SHARE·포지션 FOR UPDATE) + `run-approve-g3-local.sh` — 적용 → 테스트 → 두 세션 테스트 → 롤백(정의·ACL 이 기준선과 md5 동일) → 구 동작 테스트 13건 → 재적용(첫 적용과 정의 동일) → 테스트 → 두 세션 테스트. 직접 RPC 호출(소유자 세션)로 우회 불가, 만료·superseded·충돌이 값 오류보다 먼저, 보관 차단이 충돌보다 먼저, 권한(authenticated 만 EXECUTE)·SECURITY DEFINER·search_path 불변. `FOR SHARE`/`FOR UPDATE` 만 뺀 변이는 55건 단일 세션에서는 통과하지만 두 세션 테스트에 걸린다(L-A).
 - 변이 검사: 앱 17종 전부 감지(`mutation-app.log`), SQL 15종 전부 감지(`mutation-sql.log`).
-- 게이트: svelte-check 0/0, eslint 0, G-14 OK, 변경 파일 prettier 통과(전체 20개는 기준선 그대로), vitest 전체, `CF_PAGES=1 pnpm build` OK. 클라이언트 gzip 증가분은 리베이스 뒤 기준 main 22f8548 과 개편 전 4cd42d6 대비로 다시 잰다(상한은 개편 전 대비 +40 KiB).
+- 게이트: svelte-check 0/0, eslint 0, G-14 OK, 변경 파일 prettier 통과(전체 20개는 기준선 그대로), vitest 전체, `CF_PAGES=1 pnpm build` OK. 클라이언트 gzip 증가분은 리베이스 뒤 기준 main 22f8548 과 개편 전 4cd42d6 대비로 다시 잰다(상한은 개편 전 대비 +40 KiB). 2026-11-28부터는 절대값 한도 gzip 전체 250,000 B · CSS 45,056 B — `docs/stocks-screens.md` '클라이언트 크기 한도'.
 
 ## 7. G3 마이그레이션
 

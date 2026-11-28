@@ -145,6 +145,40 @@ export function signedNumber(v: number, digits: number): string {
 	return (v > 0 ? '+' : MINUS) + body;
 }
 
+/**
+ * 큰 수를 짧게: `+1,200억` / `−3.5만` / `+1.2조` (단위 없는 수량용 — 원·주 어느 쪽이든 붙일 단위는 화면이 정한다).
+ * 1만 미만은 소수 없이 그대로. 각 단위에서 10 미만이면 소수 1자리. 값 라벨·축 끝처럼 좁은 곳에만 쓰고 툴팁·숨김 표는 정확한 값.
+ */
+export function compactNumber(v: number): string {
+	if (!Number.isFinite(v)) return NON_FINITE;
+	const a = Math.abs(v);
+	const [div, suf] =
+		a >= 1e12 ? [1e12, '조'] : a >= 1e8 ? [1e8, '억'] : a >= 1e4 ? [1e4, '만'] : [1, ''];
+	const q = a / div;
+	return signedNumber(Math.sign(v) * q, div > 1 && q < 10 ? 1 : 0) + suf;
+}
+
+/** 축·값 라벨 글자 폭 어림(숫자 글꼴 px당 ≈ 0.6em). 좁은 화면에서 겹침·잘림 판단용. */
+export function textWidth(s: string, px: number): number {
+	return s.length * px * 0.6;
+}
+
+/**
+ * 값 라벨이 이웃과 겹치지 않는 간격(막대 몇 개마다 하나). 마지막 막대에 맞춰 세므로 `(n-1-i) % step === 0`이면 보인다.
+ * 라벨 폭+여백 4px이 막대 칸보다 넓으면 2, 3, … 칸마다.
+ */
+export function barLabelStep(maxLabelWidth: number, band: number): number {
+	if (!(band > 0)) return Number.POSITIVE_INFINITY;
+	return Math.max(1, Math.ceil((maxLabelWidth + 4) / band));
+}
+
+/** 가운데 정렬 라벨이 [lo, hi] 밖으로 나가지 않게 x를 당긴다. 공간이 라벨보다 좁으면 가운데. */
+export function clampLabelX(cx: number, labelWidth: number, lo: number, hi: number): number {
+	const half = labelWidth / 2;
+	if (hi - lo <= labelWidth) return (lo + hi) / 2;
+	return Math.min(Math.max(cx, lo + half), hi - half);
+}
+
 export function plainNumber(v: number, digits: number): string {
 	if (!Number.isFinite(v)) return NON_FINITE;
 	const body = Math.abs(v).toLocaleString('ko-KR', {

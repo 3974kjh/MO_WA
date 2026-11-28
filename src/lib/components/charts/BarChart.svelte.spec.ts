@@ -43,4 +43,29 @@ describe('BarChart 렌더', () => {
 		await new Promise((r) => setTimeout(r, 50));
 		for (const r of rects(root)) expect(r.getAttribute('opacity')).toBe('1');
 	});
+	it('compact: 큰 수 값 라벨은 억 단위·겹치지 않고 플롯 안, 숨김 표는 정확한 값(M1)', async () => {
+		const items = Array.from({ length: 20 }, (_, i) => ({
+			label: `11/${i + 1}`,
+			value: (i % 2 ? -1 : 1) * 123_456_789_012
+		}));
+		const { container } = render(BarChart, {
+			items,
+			ariaLabel: '외국인 일별 순매수',
+			digits: 0,
+			unit: '',
+			compact: true
+		});
+		const root = container as HTMLElement;
+		(root.querySelector('.bar-chart') as HTMLElement).style.width = '390px';
+		await new Promise((r) => setTimeout(r, 100));
+		const vals = [...root.querySelectorAll('svg.chart text.val')] as SVGTextElement[];
+		expect(vals.length).toBeGreaterThan(0);
+		for (const t of vals) expect(t.textContent).toMatch(/억$/);
+		const boxes = vals.map((t) => t.getBBox()).sort((a, b) => a.x - b.x);
+		for (let i = 1; i < boxes.length; i++)
+			expect(boxes[i].x).toBeGreaterThanOrEqual(boxes[i - 1].x + boxes[i - 1].width);
+		const svgW = Number(root.querySelector('svg.chart')!.getAttribute('width'));
+		for (const b of boxes) expect(b.x + b.width).toBeLessThanOrEqual(svgW);
+		expect(root.querySelector('table.sr-only td')!.textContent).toBe('+123,456,789,012');
+	});
 });

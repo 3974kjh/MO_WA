@@ -275,8 +275,10 @@
 		/>
 		<MetricTile
 			label="확정 전 매수 계획서"
-			value="{data.drafts.length}건"
-			foot="{data.drafts.length ? `${data.drafts.join(', ')} · ` : ''}게시는 내가 해요"
+			value={data.reportsError ? '—' : `${data.drafts.length}건`}
+			foot={data.reportsError
+				? '리포트를 불러오지 못했어요'
+				: `${data.drafts.length ? `${data.drafts.join(', ')} · ` : ''}게시는 내가 해요`}
 		/>
 	</div>
 
@@ -303,7 +305,8 @@
 	{#if f !== 'watch'}
 		<div class="gap">
 			<Card flush title="보유 종목 {shownHeld.length}종목">
-				{#snippet aside()}<a class="text-sm" href={resolve('/portfolio')}>포트폴리오에서 보기 →</a
+				{#snippet aside()}<a class="pf text-sm" href={resolve('/portfolio')}
+						>포트폴리오에서 보기 →</a
 					>{/snippet}
 				{@render board(shownHeld, true)}
 			</Card>
@@ -479,7 +482,16 @@
 			display: none;
 		}
 	}
+	/* 카드 머리 링크 터치 높이 40(PC)/44(모바일) */
+	.pf {
+		display: inline-flex;
+		align-items: center;
+		min-height: 40px;
+	}
 	@media (max-width: 639px) {
+		.pf {
+			min-height: 44px;
+		}
 		.tiles {
 			gap: 8px;
 		}

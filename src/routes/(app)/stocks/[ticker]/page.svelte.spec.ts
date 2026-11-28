@@ -64,7 +64,8 @@ const full = (o: Record<string, unknown> = {}) =>
 		targetsError: null,
 		mentions: [],
 		journal: { items: [], total: 0 },
-		relatedError: null,
+		mentionsError: null,
+		journalError: null,
 		holdingValue: null,
 		totalKrw: null,
 		valuationError: null,
@@ -185,6 +186,19 @@ describe('FE-11 종목 상세 화면', () => {
 		expect(text()).toContain('분석 리포트 1');
 		expect(text()).toContain('주간 1');
 		expect(text()).toContain('주간 2');
+		r.unmount();
+	});
+	it('L2: 리포트·일지·브리핑을 못 읽으면 빈 상태 대신 실패 안내', () => {
+		const r = render(Page, {
+			data: full({ reportsError: 'x', journalError: 'x', mentionsError: 'x' })
+		});
+		const t = text();
+		expect(t).toContain('분석 리포트를 불러오지 못했어요');
+		expect(t).toContain('매매일지를 불러오지 못했어요.');
+		expect(t).toContain('브리핑 언급을 불러오지 못했어요.');
+		expect(t).not.toContain('아직 분석 리포트가 없어요');
+		expect(t).not.toContain('분석 리포트가 아직 없어요');
+		expect(t).not.toContain('언급되지 않았어요');
 		r.unmount();
 	});
 	it('리포트가 없으면 최신 리포트 버튼은 비활성 + 이유', () => {

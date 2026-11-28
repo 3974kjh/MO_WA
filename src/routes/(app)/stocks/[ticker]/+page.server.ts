@@ -67,7 +67,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		targetsError: err('targets', targets.error),
 		mentions: mentions.data,
 		journal: journal.data,
-		relatedError: err('mentions', mentions.error) ?? err('journal', journal.error),
+		mentionsError: err('mentions', mentions.error),
+		journalError: err('journal', journal.error),
 		holdingValue: value,
 		totalKrw: valuation?.data?.totalKrw ?? null,
 		valuationError: err('valuation', valuation?.error)

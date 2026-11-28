@@ -53,6 +53,15 @@ describe('FE-11 /stocks 화면', () => {
 		expect(document.body.textContent).toContain('마지막으로 불러온 시각');
 		r.unmount();
 	});
+	it('L2: 리포트를 못 읽으면 매수 계획서 칸은 0건 대신 —·불러오지 못함', () => {
+		const r = render(Page, {
+			data: data({ rows: [row()], reportsError: '정보를 불러오지 못했어요.' })
+		});
+		const t = document.body.textContent ?? '';
+		expect(t).toContain('리포트를 불러오지 못했어요');
+		expect(t).not.toContain('0건');
+		r.unmount();
+	});
 	it('결정 4: 마지막 시세가 3일 넘게 지나면 오래됨 배너, 최신이면 없음', () => {
 		const fresh = render(Page, { data: data({ rows: [row()] }) });
 		expect(q('[data-testid="stocks-stale"]')).toBeNull();

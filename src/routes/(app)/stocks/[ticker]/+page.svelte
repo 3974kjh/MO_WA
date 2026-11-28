@@ -69,7 +69,9 @@
 		const reps = latestBySlug(full.reports);
 		return [
 			{
-				h: `분석 리포트 ${reps.length}`,
+				failed: full.reportsError != null,
+				h: `분석 리포트 ${full.reportsError ? '—' : reps.length}`,
+				failMsg: '분석 리포트를 불러오지 못했어요.',
 				empty: '아직 분석 리포트가 없어요.',
 				items: reps.map(
 					(r): RelItem => ({
@@ -83,7 +85,9 @@
 				)
 			},
 			{
-				h: `매매일지 ${full.journal.total}`,
+				failed: full.journalError != null,
+				h: `매매일지 ${full.journalError ? '—' : full.journal.total}`,
+				failMsg: '매매일지를 불러오지 못했어요.',
 				more: full.journal.total > 3,
 				empty: '이 종목의 매매일지가 없어요.',
 				items: full.journal.items.map(
@@ -97,7 +101,9 @@
 				)
 			},
 			{
-				h: `브리핑 언급 ${full.mentions.length}`,
+				failed: full.mentionsError != null,
+				h: `브리핑 언급 ${full.mentionsError ? '—' : full.mentions.length}`,
+				failMsg: '브리핑 언급을 불러오지 못했어요.',
 				empty: '최근 브리핑에서 언급되지 않았어요.',
 				items: full.mentions.map((b): RelItem => {
 					const path = briefingDetailPath(b);
@@ -205,7 +211,11 @@
 				aria-disabled="true"
 				aria-describedby="no-rep">최신 리포트 읽기</button
 			>
-			<span class="muted text-sm" id="no-rep">이 종목의 분석 리포트가 아직 없어요</span>
+			<span class="muted text-sm" id="no-rep"
+				>{full.reportsError
+					? '분석 리포트를 불러오지 못했어요'
+					: '이 종목의 분석 리포트가 아직 없어요'}</span
+			>
 		{/if}
 		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- journalHref = resolve(/journal) + ?ticker -->
 		<a class="btn-primary-m btn preset-outlined-surface-500" href={journalHref}>매매일지에서 보기</a
@@ -275,7 +285,7 @@
 		<div class="col">
 			<div id="c-hold" class="o2">
 				<Card title={hold ? '내 보유' : '감시 가격'}>
-					{#snippet aside()}<a class="text-sm" href={resolve('/portfolio')}>포트폴리오 →</a
+					{#snippet aside()}<a class="pf text-sm" href={resolve('/portfolio')}>포트폴리오 →</a
 						>{/snippet}
 					{#if full.positionsError}
 						{@render fail()}
@@ -525,6 +535,7 @@
 			ariaLabel="{who === 'f' ? '외국인' : '기관'} 일별 순매수"
 			digits={0}
 			unit=""
+			compact
 		/>
 		<p class="hint">
 			최근 {pts.length}거래일 · 순매수(+) 빨강 ▲ / 순매도(−) 파랑 ▼ · 단위는 기록된 값 그대로 ·
@@ -548,16 +559,17 @@
 {/snippet}
 
 {#snippet related()}
-	{#if full.reportsError || full.relatedError}
-		<p class="hint" role="alert">일부 기록을 불러오지 못했어요.</p>
+	{#if relGroups.some((g) => g.failed)}
+		<p class="hint" role="alert">일부 기록을 불러오지 못했어요. 새로 고치면 다시 불러와요.</p>
 	{/if}
-	{#each relGroups as g (g.h)}
+	{#each relGroups as g, gi (gi)}
 		<h3 class="rel-h">
 			{g.h}
 			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- journalHref = resolve(/journal) + ?ticker -->
 			{#if g.more}<a class="text-sm" href={journalHref}>전체 보기</a>{/if}
 		</h3>
-		{#if g.items.length}
+		{#if g.failed}<p class="muted text-sm">{g.failMsg}</p>
+		{:else if g.items.length}
 			<ul class="rel">
 				{#each g.items as x (x.id)}
 					<li>
@@ -793,6 +805,12 @@
 	.tp .row {
 		align-items: center;
 	}
+	/* 카드 머리 링크 터치 높이 40(PC)/44(모바일) */
+	.pf {
+		display: inline-flex;
+		align-items: center;
+		min-height: 40px;
+	}
 	.rel .go {
 		padding: 0;
 		display: inline-flex;
@@ -856,6 +874,7 @@
 		}
 		.jump a,
 		.rel .go,
+		.pf,
 		.rl {
 			min-height: 44px;
 		}
