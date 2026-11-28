@@ -1,7 +1,7 @@
 /**
  * 지도 마커 DOM(시안 v1.7.8 shared/realestate-map.js pinSvg·cluster): 등급별 SVG 핀과 묶음 버튼.
  * createElement(NS) + textContent로만 만든다(innerHTML 없음). 색은 .rm 범위의 --pin-* 변수가 정한다.
- * 모양+글자로도 구분된다: 최우선 물방울+별, 관심 물방울, 후보 마름모 '후', 참고 원 '참'.
+ * 모양+글자로도 구분된다: 최우선 물방울+별, 일반 물방울, 후보 마름모 '후', 참고 원 '참'.
  */
 import { STAR_D } from './shapes';
 import { TIER_LABEL, type ComplexTier, type LocatedItem } from './points';
@@ -151,7 +151,10 @@ export function createPinEl(it: LocatedItem, selected: boolean): HTMLButtonEleme
 	return b;
 }
 
-export function createClusterEl(ids: string[], topCount: number): HTMLButtonElement {
+/**
+ * 묶음 버튼. `stack`이면 더 확대할 수 없는 최대 확대 묶음: 누르면 '겹친 단지 n곳' 목록을 연다(aria-expanded).
+ */
+export function createClusterEl(ids: string[], topCount: number, stack = false): HTMLButtonElement {
 	const n = ids.length;
 	const b = document.createElement('button');
 	b.type = 'button';
@@ -161,8 +164,14 @@ export function createClusterEl(ids: string[], topCount: number): HTMLButtonElem
 	b.tabIndex = -1;
 	b.setAttribute(
 		'aria-label',
-		`단지 ${n}곳 묶음${topCount ? `, 최우선 ${topCount}곳 포함` : ''}. 누르면 확대해요`
+		`단지 ${n}곳 묶음${topCount ? `, 최우선 ${topCount}곳 포함` : ''}. ${
+			stack ? '누르면 겹친 단지 목록을 열어요' : '누르면 확대해요'
+		}`
 	);
+	if (stack) {
+		b.dataset.stack = '1';
+		b.setAttribute('aria-expanded', 'false');
+	}
 	const d = document.createElement('span');
 	d.className = n >= 10 ? 'd big' : 'd';
 	d.setAttribute('aria-hidden', 'true');

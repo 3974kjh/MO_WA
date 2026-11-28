@@ -50,6 +50,7 @@
 	import { createClusterEl, createPinEl, PIN_SIZE } from '$lib/maps/pinDom';
 	import type { ComplexTier, LocatedItem } from '$lib/maps/points';
 	import ComplexInfo from './ComplexInfo.svelte';
+	import ComplexList from './ComplexList.svelte';
 	import MapFallback from './MapFallback.svelte';
 
 	/** 지도 줌 범위(네이버 줌 레벨) */
@@ -68,6 +69,9 @@
 		onlist,
 		onallon,
 		onsay,
+		stackIds = null,
+		onstack,
+		onbackstack,
 		watchHref,
 		loader,
 		tileTimeoutMs = LOAD_TIMEOUT_MS,
@@ -87,6 +91,11 @@
 		onlist?: () => void;
 		onallon?: () => void;
 		onsay?: (msg: string) => void;
+		/** 최대 확대에서도 남는 묶음의 '겹친 단지 n곳' 목록(열려 있으면 그 단지 id들). 목록은 PC·태블릿에선 카드, 모바일에선 페이지 시트 */
+		stackIds?: string[] | null;
+		onstack?: (ids: string[] | null) => void;
+		/** 정보 카드의 [겹친 단지 n곳으로] */
+		onbackstack?: () => void;
 		/** 카드의 '점수 근거 보기' 이동 주소 */
 		watchHref?: (id: string) => string;
 		/** 시험용 주입. 기본은 페이지 공용 로더 */
@@ -139,6 +148,14 @@
 			? selected
 			: null
 	);
+	let stackItems = $derived(
+		stackIds ? items.filter((it) => stackIds.includes(it.id)) : ([] as LocatedItem[])
+	);
+	// 겹친 단지 목록 카드: 정보 카드가 없을 때, 모바일이 아닐 때만(모바일은 시트)
+	let stackCard = $derived(
+		mapState === 'ready' && !isMobile.current && !cardItem && stackItems.length > 1
+	);
+	let hasCard = $derived(!!cardItem || stackCard);
 	const nf = new Intl.NumberFormat('ko-KR');
 
 	function setStatus(s: MapStatus) {
@@ -241,6 +258,8 @@
 				}),
 				n.Event.addListener(map, 'zoom_changed', () => {
 					zoomLevel = map.getZoom();
+					// 더 이상 최대 확대가 아니면 겹친 단지 목록은 닫는다
+					if (stackIds && zoomLevel < CLUSTER_MAX_ZOOM) onstack?.(null);
 					render();
 				}),
 				n.Event.addListener(map, 'idle', () => {
@@ -331,13 +350,20 @@
 					fresh
 				);
 			} else {
-				const key = `c:${c.key}`;
+				const atMax = map.getZoom() >= CLUSTER_MAX_ZOOM;
+				const key = `c:${c.key}:${atMax ? 's' : 'z'}`;
 				if (reuse(key)) continue;
 				const el = createClusterEl(
 					c.items.map((i) => i.id),
-					c.items.filter((i) => i.tier === 'top').length
+					c.items.filter((i) => i.tier === 'top').length,
+					atMax
 				);
-				el.addEventListener('click', () => zoomCluster(c.items.map((i) => i.id)));
+				el.addEventListener('click', (ev) =>
+					zoomCluster(
+						c.items.map((i) => i.id),
+						ev.detail === 0
+					)
+				);
 				addEnt(key, el, c.lat, c.lng, [24, 24], 700 + c.items.length, c.order, fresh);
 			}
 		}
@@ -351,6 +377,7 @@
 			}
 		}
 		markerCount = ents.size;
+		syncExpanded();
 		syncStops();
 		if (activeId && !box.contains(document.activeElement)) focusPin(activeId);
 		try {
@@ -387,12 +414,56 @@
 		focusEnt([...ents.values()].find((e) => e.el.dataset.id === id));
 	}
 
-	function zoomCluster(ids: string[]) {
+	/** 묶음 버튼의 aria-expanded: 열려 있는 겹친 단지 목록의 묶음만 true */
+	function syncExpanded() {
+		for (const e of ents.values()) {
+			if (!e.el.dataset.stack) continue;
+			const first = e.el.dataset.ids?.split(',')[0] ?? '';
+			e.el.setAttribute('aria-expanded', String(!!stackIds && stackIds.includes(first)));
+		}
+	}
+
+	/** 열려 있는 겹친 단지 목록에 해당하는 마커(묶음, 하나만 남았으면 그 핀) */
+	function stackEnt(ids: string[] | null = stackIds): Ent | undefined {
+		if (!ids?.length) return undefined;
+		const all = [...ents.values()];
+		return (
+			all.find((e) => e.el.dataset.ids && ids.includes(e.el.dataset.ids.split(',')[0])) ??
+			all.find((e) => e.el.dataset.id && ids.includes(e.el.dataset.id))
+		);
+	}
+
+	function focusCardTitle() {
+		void tick().then(() =>
+			requestAnimationFrame(() =>
+				(box.querySelector('[data-card-title]') as HTMLElement | null)?.focus()
+			)
+		);
+	}
+
+	/** 겹친 단지 목록을 닫고 그 묶음으로 포커스를 돌려 준다(모바일 시트의 Esc·끌어 닫기도 쓴다) */
+	export async function closeStack(restoreFocus: boolean) {
+		const ids = stackIds;
+		onstack?.(null);
+		if (restoreFocus && ids) {
+			await tick();
+			focusEnt(stackEnt(ids));
+		}
+	}
+
+	export function focusStack(ids: string[]) {
+		focusEnt(stackEnt(ids));
+	}
+
+	function zoomCluster(ids: string[], viaKey = false) {
 		if (!map) return;
 		const its = items.filter((i) => ids.includes(i.id));
 		if (map.getZoom() >= CLUSTER_MAX_ZOOM || !its.length) {
-			// 더 확대해도 갈라지지 않는 묶음(같은 위치): 첫 단지를 열어 목록과 이어 준다
-			if (its[0]) onselect(its[0].id, { focus: false });
+			// 더 확대해도 갈라지지 않는 묶음(같은 위치): '겹친 단지 n곳' 목록을 연다
+			if (its.length > 1) {
+				onstack?.(its.map((i) => i.id));
+				if (viaKey && !isMobile.current) focusCardTitle();
+			} else if (its[0]) onselect(its[0].id, { focus: false });
 			return;
 		}
 		const lats = its.map((i) => i.lat);
@@ -415,17 +486,23 @@
 		const focus = ev.detail === 0 && isPc.current;
 		onselect(id, { focus });
 		// 키보드로 열면 카드 제목으로 포커스(Esc로 닫으면 같은 핀으로 돌아온다)
-		if (focus)
-			void tick().then(() =>
-				requestAnimationFrame(() =>
-					(box.querySelector('[data-card-title]') as HTMLElement | null)?.focus()
-				)
-			);
+		if (focus) focusCardTitle();
+	}
+
+	/** 겹친 단지 목록의 행 */
+	function onStackRow(id: string) {
+		onselect(id, { focus: true });
+		focusCardTitle();
 	}
 
 	async function deselect(restore: boolean) {
 		const id = selectedId;
 		ondeselect?.(restore);
+		if (stackIds) {
+			// 겹친 목록에서 연 정보 → 목록으로 돌아간다
+			if (restore) focusCardTitle();
+			return;
+		}
 		if (restore && id) {
 			await tick();
 			focusPin(id);
@@ -448,13 +525,29 @@
 		};
 	}
 
+	/** 겹친 단지 목록 카드가 붙는 자리: 묶음(또는 남은 핀)의 가운데 */
+	function stackGeom(): PinGeom | null {
+		const e = stackEnt();
+		if (!e) return null;
+		const r = e.el.getBoundingClientRect();
+		const b = box.getBoundingClientRect();
+		return {
+			x: r.left + r.width / 2 - b.left,
+			y: r.top + r.height / 2 - b.top,
+			tear: false,
+			pinH: 0
+		};
+	}
+
+	const anchorGeom = () => (cardItem ? pinGeom(cardItem.id) : stackGeom());
+
 	function placeCardNow() {
 		if (!map) return;
-		if (!cardItem || !iwEl) {
+		if (!hasCard || !iwEl) {
 			cardPos = null;
 			return;
 		}
-		const g = pinGeom(cardItem.id);
+		const g = anchorGeom();
 		const b = box.getBoundingClientRect();
 		if (!g || g.x < 0 || g.x > b.width || g.y < 0 || g.y > b.height) {
 			cardPos = null;
@@ -466,13 +559,13 @@
 	}
 
 	function placeCardSoon() {
-		if (!cardItem) return;
+		if (!hasCard) return;
 		void tick().then(() => requestAnimationFrame(placeCardNow));
 	}
 
 	function autoPan() {
-		if (!cardItem || !iwEl || !map) return;
-		const g = pinGeom(cardItem.id);
+		if (!hasCard || !iwEl || !map) return;
+		const g = anchorGeom();
 		if (!g) return;
 		const b = box.getBoundingClientRect();
 		const dy = autoPanDy(g, { h: iwEl.offsetHeight }, { w: b.width, h: b.height }, isPc.current);
@@ -488,7 +581,11 @@
 		render();
 	});
 	$effect(() => {
-		const it = cardItem;
+		void stackIds;
+		syncExpanded();
+	});
+	$effect(() => {
+		const it = hasCard ? (cardItem?.id ?? 'stack') : null;
 		if (!it || !iwEl) return;
 		void tick().then(() =>
 			requestAnimationFrame(() => {
@@ -528,13 +625,24 @@
 		hintTimer = setTimeout(() => (hintOn = false), WHEEL_HINT_MS);
 	}
 
+	/** 배경 탭: 겹친 단지 목록을 닫고 묶음으로 포커스 */
+	function onBoxClick(e: MouseEvent) {
+		if (!stackIds || selectedId || isMobile.current) return;
+		if ((e.target as HTMLElement).closest?.('.iw,.rm-cl,.rm-pin,.ctls')) return;
+		void closeStack(true);
+	}
+
 	function onKey(e: KeyboardEvent) {
 		if (mapState !== 'ready') return;
 		const k = e.key;
 		if (k === 'Escape') {
+			// 정보 → 겹친 단지 목록 → 묶음 순으로 한 단계씩 돌아간다
 			if (selectedId) {
 				e.stopPropagation();
 				void deselect(true);
+			} else if (stackIds && !isMobile.current) {
+				e.stopPropagation();
+				void closeStack(true);
 			}
 			return;
 		}
@@ -589,6 +697,7 @@
 
 	onMount(() => {
 		box.addEventListener('wheel', onWheel, { passive: false });
+		box.addEventListener('click', onBoxClick);
 		let io: IntersectionObserver | undefined;
 		if (observe && typeof IntersectionObserver !== 'undefined') {
 			io = new IntersectionObserver(
@@ -606,6 +715,7 @@
 		}
 		return () => {
 			box.removeEventListener('wheel', onWheel);
+			box.removeEventListener('click', onBoxClick);
 			clearTimeout(hintTimer);
 			io?.disconnect();
 			offAuth?.();
@@ -698,12 +808,47 @@
 					>
 				</div>
 				<ComplexInfo item={cardItem} />
-				{#if watchHref}
+				{#if watchHref || (stackIds && onbackstack)}
 					<div class="acts">
-						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- 주소는 page의 href()가 resolve('/(app)/realestate')에 ?tab을 붙여 만든 것 -->
-						<a class="pri btn" href={watchHref(cardItem.id)}>점수 근거 보기</a>
+						{#if watchHref}
+							<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- 주소는 page의 href()가 resolve('/(app)/realestate')에 ?tab을 붙여 만든 것 -->
+							<a class="pri btn" href={watchHref(cardItem.id)}>점수 근거 보기</a>
+						{/if}
+						{#if stackIds && onbackstack}
+							<button type="button" class="back btn" data-testid="stack-back" onclick={onbackstack}
+								>겹친 단지 {stackIds.length}곳으로</button
+							>
+						{/if}
 					</div>
 				{/if}
+			</div>
+		{:else if stackCard}
+			<div
+				class="iw stack {cardPos?.cls ?? ''}"
+				class:pending={!cardPos}
+				role="dialog"
+				aria-labelledby="rm-iw-t"
+				data-testid="stack-card"
+				bind:this={iwEl}
+				style={cardPos && isPc.current
+					? `left:${cardPos.left}px;top:${cardPos.top}px;--ax:${cardPos.ax ?? 50}px;--ay:${cardPos.ay ?? 50}px`
+					: undefined}
+			>
+				<div class="hd">
+					<h3 id="rm-iw-t" tabindex="-1" data-card-title>겹친 단지 {stackItems.length}곳</h3>
+					<button type="button" class="x" aria-label="닫기" onclick={() => closeStack(true)}
+						><X size={20} aria-hidden="true" /></button
+					>
+				</div>
+				<p class="sd">같은 자리에 겹쳐 있어요. 단지를 고르면 정보가 열려요.</p>
+				<div class="sl">
+					<ComplexList
+						items={stackItems}
+						selectedId={null}
+						onselect={onStackRow}
+						hint="정보를 열려면 누르세요"
+					/>
+				</div>
 			</div>
 		{/if}
 		{#if mapState === 'idle' || mapState === 'loading'}
@@ -1201,6 +1346,19 @@
 		font-weight: 600;
 		cursor: pointer;
 		margin-top: 8px;
+	}
+	.sd {
+		font-size: var(--text-sm);
+		color: var(--color-muted);
+		margin: 0 0 8px;
+	}
+	.sl {
+		max-height: 248px;
+		overflow-y: auto;
+		margin: 0 -8px;
+	}
+	.btn.back {
+		min-height: 40px;
 	}
 	.acts {
 		display: flex;

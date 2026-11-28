@@ -13,12 +13,15 @@
 		items,
 		selectedId,
 		onselect,
-		fallback = false
+		fallback = false,
+		hint = ''
 	}: {
 		items: ComplexItem[];
 		selectedId: string | null;
 		onselect: (id: string) => void;
 		fallback?: boolean;
+		/** 행 읽기 이름 끝에 붙는 안내(겹친 단지 목록: '정보를 열려면 누르세요') */
+		hint?: string;
 	} = $props();
 
 	const nf = new Intl.NumberFormat('ko-KR');
@@ -32,6 +35,7 @@
 		];
 		if (it.medPrice != null)
 			parts.push(`실거래 중앙값 ${exactAriaLabel(formatWon(it.medPrice * 1e4))}`);
+		if (hint) parts.push(hint);
 		return parts.filter(Boolean).join(', ');
 	}
 </script>

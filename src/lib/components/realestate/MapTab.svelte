@@ -73,6 +73,8 @@
 	let legendOpen = $state(false);
 	let sheetOpen = $state(false);
 	let sheetFromList = $state(false);
+	/** 최대 확대에서도 남는 묶음의 '겹친 단지 n곳' 목록(열려 있을 때 단지 id들) */
+	let stack = $state<string[] | null>(null);
 	let mapStatus = $state<MapStatus>('idle');
 	let chunk = $state<MapComponent | null>(null);
 	let chunkFailed = $state(false);
@@ -104,6 +106,11 @@
 	let onTiers = $derived(TIER_ORDER.filter((t) => counts[t] > 0 && !hidden.includes(t)).length);
 	let allTiers = $derived(TIER_ORDER.filter((t) => counts[t] > 0).length);
 	let selected = $derived(items.find((i) => i.id === picked) ?? null);
+	let stackItems = $derived(
+		stack
+			? (stack.map((id) => items.find((i) => i.id === id)).filter(Boolean) as ComplexItem[])
+			: []
+	);
 
 	function say(msg: string) {
 		// 같은 문장이 연달아도 다시 읽히게 보이지 않는 글자를 번갈아 붙인다
@@ -142,9 +149,35 @@
 		say(`${it.name}, ${TIER_LABEL[it.tier]}${score}. 정보 ${where}가 열렸어요.`);
 	}
 
+	/** 겹친 단지 목록이 열리거나(ids) 닫힘(null) */
+	function onStack(ids: string[] | null) {
+		stack = ids;
+		if (ids) {
+			picked = null;
+			sheetOpen = false;
+			say(`겹친 단지 ${ids.length}곳 목록이 열렸어요. 단지를 고르면 정보가 열려요.`);
+		}
+	}
+	/** 정보 → 겹친 단지 목록으로 */
+	function backToStack() {
+		picked = null;
+		sheetOpen = false;
+		if (stack) say(`겹친 단지 ${stack.length}곳 목록으로 돌아왔어요.`);
+	}
+	/** 모바일 시트의 겹친 단지 목록에서 행을 고름 */
+	function onStackRow(id: string) {
+		const it = items.find((i) => i.id === id);
+		if (!it) return;
+		picked = id;
+		sheetFromList = false;
+		sheetOpen = true;
+		statusLine(it, '시트');
+	}
+
 	/** 지도 핀·묶음에서 고름 */
 	function onMapSelect(id: string) {
 		const it = items.find((i) => i.id === id);
+		if (stack && !stack.includes(id)) stack = null;
 		picked = id;
 		if (!it) return;
 		if (isMobile.current) {
@@ -161,6 +194,7 @@
 	function onRow(id: string) {
 		const it = items.find((i) => i.id === id);
 		if (!it) return;
+		if (stack && !stack.includes(id)) stack = null;
 		picked = id;
 		if (!fallback && !isMobile.current && isLocated(it)) {
 			mapApi?.centerOn(id);
@@ -173,10 +207,19 @@
 	}
 
 	function closeSheet() {
+		// 겹친 단지 목록에서 연 정보: 시트가 닫히지 않고 목록으로 한 단계 돌아간다(Esc·끌어 닫기 같음)
+		if (sheetOpen && stack && !sheetFromList) {
+			backToStack();
+			return;
+		}
 		const id = picked;
 		const fromPin = !sheetFromList;
+		const ids = stack;
 		sheetOpen = false;
-		if (fromPin && id) setTimeout(() => mapApi?.focusPin(id), 0);
+		if (ids) {
+			stack = null;
+			setTimeout(() => mapApi?.focusStack(ids), 0);
+		} else if (fromPin && id) setTimeout(() => mapApi?.focusPin(id), 0);
 	}
 
 	async function showOnMap() {
@@ -190,6 +233,7 @@
 
 	async function setView(v: 'list' | 'map') {
 		view = v;
+		stack = null;
 		legendOpen = false;
 		say(v === 'map' ? '지도 보기' : '목록 보기');
 		if (v === 'map') {
@@ -228,6 +272,10 @@
 
 	const ComplexMapView = $derived(chunk);
 	const openSheetItem = $derived(sheetOpen ? selected : null);
+	/** 모바일 시트 내용: 정보 또는(정보가 없고 겹친 목록이 열려 있으면) 겹친 단지 목록 */
+	const sheetKind = $derived(
+		openSheetItem ? 'info' : isMobile.current && stackItems.length > 1 ? 'stack' : null
+	);
 </script>
 
 <div
@@ -305,6 +353,9 @@
 						onlist={() => setView('list')}
 						onallon={allOn}
 						onsay={say}
+						stackIds={stack}
+						onstack={onStack}
+						onbackstack={backToStack}
 					/>
 				{:else}
 					<div
@@ -351,22 +402,53 @@
 	<div class="rm-live" role="status" aria-live="polite" aria-atomic="true">{live}</div>
 </div>
 
-{#if openSheetItem}
-	<Sheet open={sheetOpen} onclose={closeSheet} title={openSheetItem.name} variant="bottom">
-		<ComplexInfo item={openSheetItem} />
-		{#snippet footer()}
-			<div class="sf">
-				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- 주소는 page의 href()가 resolve('/(app)/realestate')에 ?tab을 붙여 만든 것 -->
-				<a class="pri btn" href={watchHref(openSheetItem.id)}>점수 근거 보기</a>
-				{#if sheetFromList && isLocated(openSheetItem) && !fallback}
-					<button type="button" class="btn" onclick={showOnMap}>지도에서 위치 보기</button>
-				{/if}
+{#snippet infoFooter()}
+	{#if openSheetItem}
+		<div class="sf">
+			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- 주소는 page의 href()가 resolve('/(app)/realestate')에 ?tab을 붙여 만든 것 -->
+			<a class="pri btn" href={watchHref(openSheetItem.id)}>점수 근거 보기</a>
+			{#if stack && !sheetFromList}
+				<button type="button" class="btn" data-testid="stack-back" onclick={backToStack}
+					>겹친 단지 {stack.length}곳으로</button
+				>
+			{/if}
+			{#if sheetFromList && isLocated(openSheetItem) && !fallback}
+				<button type="button" class="btn" onclick={showOnMap}>지도에서 위치 보기</button>
+			{/if}
+		</div>
+	{/if}
+{/snippet}
+
+{#if sheetKind}
+	<Sheet
+		open
+		onclose={closeSheet}
+		title={openSheetItem ? openSheetItem.name : `겹친 단지 ${stackItems.length}곳`}
+		variant="bottom"
+		footer={openSheetItem ? infoFooter : undefined}
+	>
+		{#if openSheetItem}
+			<ComplexInfo item={openSheetItem} />
+		{:else}
+			<div data-testid="stack-sheet">
+				<p class="sd">같은 자리에 겹쳐 있어요. 단지를 고르면 정보가 열려요.</p>
+				<ComplexList
+					items={stackItems}
+					selectedId={null}
+					onselect={onStackRow}
+					hint="정보를 열려면 누르세요"
+				/>
 			</div>
-		{/snippet}
+		{/if}
 	</Sheet>
 {/if}
 
 <style>
+	.sd {
+		font-size: var(--text-sm);
+		color: var(--color-muted);
+		margin: 0 0 8px;
+	}
 	.rm {
 		--rm-gap: 16px;
 		position: relative;
