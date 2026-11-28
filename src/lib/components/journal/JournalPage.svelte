@@ -385,7 +385,7 @@
 				>
 				<button
 					type="button"
-					class="btn text-muted hover:preset-tonal"
+					class="btn preset-outlined-surface-500"
 					onclick={() => (archiveTarget = selected)}>보관</button
 				>
 			{/if}
