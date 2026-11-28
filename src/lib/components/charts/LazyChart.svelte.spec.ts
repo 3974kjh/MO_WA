@@ -28,6 +28,9 @@ describe('LazyChart 실패 상태', () => {
 		expect(root.querySelector('[aria-busy]')).toBeNull();
 		const btn = root.querySelector<HTMLButtonElement>('.chart-pending button')!;
 		expect(btn.textContent?.trim()).toBe('새로고침');
+		const br = btn.getBoundingClientRect();
+		expect(br.height).toBeGreaterThanOrEqual(40);
+		expect(br.width).toBeGreaterThanOrEqual(64);
 		const after = slot(root)!.getBoundingClientRect();
 		expect(Math.round(after.height)).toBe(Math.round(before.height)); // 밀림 0
 		expect(Math.round(after.top)).toBe(Math.round(before.top));
