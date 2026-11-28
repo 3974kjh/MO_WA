@@ -73,7 +73,10 @@ describe('FE-12 /realestate 지도 탭', () => {
 		expect(
 			performance.getEntriesByType('resource').some((e) => e.name.includes('map.naver.com'))
 		).toBe(false);
-		expect(text()).toContain('지도는 아직 준비 중이에요');
+		expect(text()).toContain('지도가 아직 연결되지 않았어요');
+		expect(document.querySelector('a[href="#re-list"]')?.textContent).toBe(
+			'지도 건너뛰고 단지 목록으로'
+		);
 		expect(text()).not.toMatch(/PUBLIC_|ncpKeyId|Client ID/);
 		r.unmount();
 	});

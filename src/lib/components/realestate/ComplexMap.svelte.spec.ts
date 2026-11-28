@@ -192,6 +192,7 @@ describe('ComplexMap', () => {
 		const pin = root().querySelector('.cm-pin') as HTMLButtonElement;
 		expect(pin.tagName).toBe('BUTTON');
 		expect(pin.getAttribute('aria-label')).toBe('3번 다단지, 참고');
+		expect(pin.textContent).toBe('참');
 		expect(pin.getAttribute('aria-pressed')).toBe('false');
 		expect(root().dataset.markers).toBe('2');
 		expect(root().querySelector('[role="group"]')?.getAttribute('aria-label')).toContain(
@@ -239,7 +240,7 @@ describe('ComplexMap', () => {
 		const legend = [...root().querySelectorAll('.lgb')] as HTMLButtonElement[];
 		expect(legend.map((b) => b.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
 			'최우선 1곳',
-			'타깃 1곳',
+			'관심 1곳',
 			'참고 1곳'
 		]);
 		expect(legend[1].getAttribute('aria-pressed')).toBe('true');
@@ -301,14 +302,14 @@ describe('ComplexMap', () => {
 		expect(root().dataset.markers).toBe('0');
 		expect(root().querySelector('.cm-pin')).toBeNull();
 		const fb = root().querySelector('[data-testid="map-fallback"]')!;
-		expect(fb.textContent).toContain('지도 사용 허용 설정을 확인해 주세요');
+		expect(fb.textContent).toContain('지도 사용 허용 설정에 문제가 있는 것 같아요');
 		expect(fb.querySelector('button')).toBeNull();
 		expect(fb.textContent).not.toMatch(/ncp|PUBLIC_|KEY/i);
 		r.unmount();
 	});
 
 	it.each([
-		['timeout', '지도가 늦게 열리고 있어요'],
+		['timeout', '8초 안에 열리지 않았어요'],
 		['load-failed', '지도를 불러오지 못했어요'],
 		['offline', '인터넷에 연결되어 있지 않아요']
 	] as const)('로더 실패 %s → 폴백 문구', async (reason, text) => {

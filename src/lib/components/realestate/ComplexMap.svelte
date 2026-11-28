@@ -65,6 +65,8 @@
 	);
 
 	const nf = new Intl.NumberFormat('ko-KR');
+	const PIN_TIER = new Set<ComplexTier>(['top', 'target']);
+	const LETTER: Partial<Record<ComplexTier, string>> = { cand: '후', ref: '참' };
 	const scoreText = (s: number) => nf.format(Math.round(s));
 
 	function clearMarkers() {
@@ -179,8 +181,9 @@
 		const s = document.createElement('span');
 		s.className = 'cm-shape';
 		s.setAttribute('aria-hidden', 'true');
-		if ((it.tier === 'top' || it.tier === 'target') && it.score != null)
-			s.textContent = scoreText(it.score);
+		// 색 외 구분(시안 v1.7.8): 최우선·관심은 점수, 후보 '후'·참고 '참'
+		if (PIN_TIER.has(it.tier)) s.textContent = it.score != null ? scoreText(it.score) : '';
+		else s.textContent = LETTER[it.tier] ?? '';
 		b.append(s);
 		b.addEventListener('click', (ev) => {
 			ev.stopPropagation();
@@ -220,7 +223,6 @@
 		}
 	}
 
-	const PIN_TIER = new Set<ComplexTier>(['top', 'target']);
 	const Z: Record<ComplexTier, number> = { top: 300, target: 200, ref: 100, cand: 50 };
 
 	function addMarker(lat: number, lng: number, el: HTMLElement, pin: boolean, zIndex: number) {
@@ -501,27 +503,37 @@
 	}
 	/* 참고: 테두리 원 / 후보: 마름모 */
 	.cm :global(.cm-ref .cm-shape) {
-		width: 16px;
-		height: 16px;
+		width: 22px;
+		height: 22px;
 		border-radius: 50%;
-		background: var(--color-surface);
-		border: 4px solid var(--color-muted);
+		background: var(--color-muted);
+		color: var(--color-surface);
+		border: 2px solid var(--color-surface);
 		box-shadow: var(--shadow-card);
 	}
+	/* 후보: 마름모(기울인 바탕) + '후' */
 	.cm :global(.cm-cand .cm-shape) {
-		width: 13px;
-		height: 13px;
-		background: var(--color-subtle);
-		border: 2px solid var(--color-surface);
+		position: relative;
+		isolation: isolate;
+		width: 24px;
+		height: 24px;
+		color: var(--color-accent);
+	}
+	.cm :global(.cm-cand .cm-shape::before) {
+		content: '';
+		position: absolute;
+		inset: 3px;
+		z-index: -1;
 		transform: rotate(45deg);
+		border-radius: 3px;
+		background: var(--color-surface);
+		border: 2px solid var(--color-accent);
+		box-shadow: var(--shadow-card);
 	}
 	.cm :global(.cm-pin.is-sel .cm-shape) {
 		outline: 3px solid var(--color-focus);
 		outline-offset: 1px;
 		transform: scale(1.15);
-	}
-	.cm :global(.cm-cand.is-sel .cm-shape) {
-		transform: rotate(45deg) scale(1.15);
 	}
 	.cm :global(.cm-cluster span) {
 		width: 36px;

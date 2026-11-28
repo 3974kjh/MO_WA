@@ -2,7 +2,8 @@
  * 부동산 지도(FE-12 ⑤): DB 행 → 화면 모델(순수 함수). 읽기 전용이고 값을 고치지 않는다.
  * - 좌표는 R-VAL-M07 범위(lat 33~39, lng 124~132) 안의 유한수만 쓴다. 범위 밖·빈 값이면 위치 없음으로 보고
  *   지도에 찍지 않는다(추측 금지). 목록에는 '위치 정보 없음'으로 남긴다.
- * - 구분(tier): 최우선(is_target & 별 4.0 이상) · 타깃(is_target) · 참고(meta.i7_roles에 secondary) · 후보(그 밖).
+ * - 구분(tier, 디자이너 시안 v1.7.8 realestate-map): 최우선(is_target & 총점 75 이상) · 관심(is_target) ·
+ *   후보(그 밖) · 참고(meta.i7_roles에 secondary, 점수 없음). 내부 키 target = 화면 이름 '관심'.
  * - 금액은 만 원 정수 그대로 싣고, 화면이 ×10,000 뒤 formatWon()으로만 표시한다.
  * 계획: /workspace/mo_wa/naver-map/PLAN.md §3-3·§3-4.
  */
@@ -10,17 +11,17 @@
 export type ComplexTier = 'top' | 'target' | 'ref' | 'cand';
 
 /** 지도·범례·목록 순서(앞이 먼저). */
-export const TIER_ORDER: readonly ComplexTier[] = ['top', 'target', 'ref', 'cand'];
+export const TIER_ORDER: readonly ComplexTier[] = ['top', 'target', 'cand', 'ref'];
 
 export const TIER_LABEL: Record<ComplexTier, string> = {
 	top: '최우선',
-	target: '타깃',
+	target: '관심',
 	ref: '참고',
 	cand: '후보'
 };
 
-/** 최우선 기준 별점 */
-export const TOP_RATING = 4;
+/** 최우선 기준 총점(시안 v1.7.8: 관심 단지 중 총점 75점 이상). 현재 데이터에서 별 4.0↑ 3곳과 같은 3곳 */
+export const TOP_SCORE = 75;
 
 export const LAT_RANGE = [33, 39] as const;
 export const LNG_RANGE = [124, 132] as const;
@@ -105,9 +106,9 @@ function roleList(v: unknown): string[] {
 	return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
 }
 
-export function tierOf(row: Pick<ComplexRow, 'is_target' | 'rating' | 'roles'>): ComplexTier {
-	const rating = toNum(row.rating);
-	if (row.is_target) return rating != null && rating >= TOP_RATING ? 'top' : 'target';
+export function tierOf(row: Pick<ComplexRow, 'is_target' | 'total_score' | 'roles'>): ComplexTier {
+	const score = toNum(row.total_score);
+	if (row.is_target) return score != null && score >= TOP_SCORE ? 'top' : 'target';
 	if (roleList(row.roles).includes('secondary')) return 'ref';
 	return 'cand';
 }

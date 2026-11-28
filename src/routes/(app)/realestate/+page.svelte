@@ -84,6 +84,7 @@
 			<Banner tone="warn">가격 자료를 불러오지 못해 가격 없이 보여요.</Banner>
 		</div>
 	{/if}
+	<a class="skip" href="#re-list">지도 건너뛰고 단지 목록으로</a>
 	<div class="grid">
 		<div class="c-7 stack">
 			<Card title="단지 위치" sub="{data.located}곳 · 핀 숫자는 총점">
@@ -125,7 +126,7 @@
 			</Card>
 			<ComplexDetail item={selected} />
 		</div>
-		<div class="c-5">
+		<div class="c-5" id="re-list" tabindex="-1">
 			<Card flush title="단지 목록" sub="총점 높은 순 · {data.items.length}곳">
 				<ComplexList items={data.items} selectedId={picked} onselect={select} />
 			</Card>
@@ -180,6 +181,17 @@
 	}
 	.sep {
 		color: var(--color-subtle);
+	}
+	.skip {
+		position: absolute;
+		left: -9999px;
+	}
+	.skip:focus {
+		position: static;
+		display: inline-block;
+		margin-bottom: 8px;
+		color: var(--color-accent);
+		font-weight: 600;
 	}
 	.gap {
 		margin-bottom: 12px;

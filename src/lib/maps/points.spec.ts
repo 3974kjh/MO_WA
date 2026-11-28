@@ -7,6 +7,8 @@ import {
 	latestSnapshots,
 	naverSearchUrl,
 	tierOf,
+	TIER_LABEL,
+	TIER_ORDER,
 	validCoord,
 	type ComplexRow
 } from './points';
@@ -63,32 +65,34 @@ describe('지도 데이터 매핑(points)', () => {
 		expect(b.lng).toBeNull();
 	});
 
-	it('구분: 최우선(타깃·별 4.0↑) · 타깃 · 참고(secondary) · 후보', () => {
-		expect(tierOf({ is_target: true, rating: 4, roles: [] })).toBe('top');
-		expect(tierOf({ is_target: true, rating: '4.5', roles: [] })).toBe('top');
-		expect(tierOf({ is_target: true, rating: 3.5, roles: [] })).toBe('target');
-		expect(tierOf({ is_target: true, rating: null, roles: [] })).toBe('target');
-		expect(tierOf({ is_target: false, rating: null, roles: ['secondary', 'candidate'] })).toBe(
+	it('구분(시안 v1.7.8): 최우선(관심·총점 75↑) · 관심 · 후보 · 참고(secondary)', () => {
+		expect(tierOf({ is_target: true, total_score: 75, roles: [] })).toBe('top');
+		expect(tierOf({ is_target: true, total_score: '78.60', roles: [] })).toBe('top');
+		expect(tierOf({ is_target: true, total_score: 74.9, roles: [] })).toBe('target');
+		expect(tierOf({ is_target: true, total_score: null, roles: [] })).toBe('target');
+		expect(tierOf({ is_target: false, total_score: null, roles: ['secondary', 'candidate'] })).toBe(
 			'ref'
 		);
-		expect(tierOf({ is_target: false, rating: null, roles: ['candidate'] })).toBe('cand');
-		expect(tierOf({ is_target: false, rating: null, roles: 'x' })).toBe('cand');
+		expect(tierOf({ is_target: false, total_score: null, roles: ['candidate'] })).toBe('cand');
+		expect(tierOf({ is_target: false, total_score: null, roles: 'x' })).toBe('cand');
+		expect(TIER_ORDER.map((t) => TIER_LABEL[t])).toEqual(['최우선', '관심', '후보', '참고']);
 	});
 
 	it('순서: 총점 높은 순(없으면 뒤) → 구분 → 이름, rank는 1부터', () => {
 		const m = buildComplexMapModel([
 			row({ id: 'n', name: '나', total_score: null, is_target: false, roles: ['secondary'] }),
 			row({ id: 'g', name: '가', total_score: null, is_target: false, roles: ['secondary'] }),
-			row({ id: 't', total_score: '61.5' }),
-			row({ id: 'top', total_score: 61.5, rating: 4 })
+			row({ id: 'c', total_score: 61.5, is_target: false, roles: ['candidate'] }),
+			row({ id: 't', total_score: '61.5' })
 		]);
 		expect(m.items.map((i) => [i.id, i.rank])).toEqual([
-			['top', 1],
-			['t', 2],
+			['t', 1],
+			['c', 2],
 			['g', 3],
 			['n', 4]
 		]);
-		expect(m.items[1].score).toBe(61.5);
+		expect(m.items[0].score).toBe(61.5);
+		expect(m.items.map((i) => i.tier)).toEqual(['target', 'cand', 'ref', 'ref']);
 	});
 
 	it('최신 스냅샷의 중앙값(만 원 정수)만 싣는다', () => {
