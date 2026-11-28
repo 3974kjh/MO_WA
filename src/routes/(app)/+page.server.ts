@@ -42,8 +42,9 @@ import {
  *   읽힌 항목과 짧은 안내(queueNote)를 보인다. 둘 다 못 읽을 때만 queueError.
  * 로그아웃은 전용 경로 `/logout`(LOGOUT_PATH) — 여기로 action을 옮기지 않는다.
  */
-export const load: PageServerLoad = async ({ locals, parent }) => {
-	await parent();
+export const load: PageServerLoad = async ({ locals }) => {
+	// 셸의 pending 건수 조회를 기다리지 않는다(같은 조회를 아래에서 다시 한다).
+	// 로그인 가드는 루트 레이아웃과 여기 둘 다 있다.
 	if (!locals.user?.id) redirect(303, '/login');
 
 	const repo = forUser(locals.supabase, locals.user.id);

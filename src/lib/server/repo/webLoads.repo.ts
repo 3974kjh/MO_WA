@@ -177,14 +177,17 @@ function toCard(
 }
 
 async function enrichProposals(repo: RepoClient, rows: RawProposal[]): Promise<ProposalCard[]> {
-	const botNames = await botNameMap(
-		repo,
-		rows.filter((r) => r.proposed_by_type === 'bot' && r.proposed_by).map((r) => r.proposed_by!)
-	);
-	const approvalVersions = await approvalVersionMap(
-		repo,
-		rows.map((r) => r.position_id).filter((id): id is string => id != null)
-	);
+	// 봇 이름과 승인 버전은 서로 의존하지 않는다.
+	const [botNames, approvalVersions] = await Promise.all([
+		botNameMap(
+			repo,
+			rows.filter((r) => r.proposed_by_type === 'bot' && r.proposed_by).map((r) => r.proposed_by!)
+		),
+		approvalVersionMap(
+			repo,
+			rows.map((r) => r.position_id).filter((id): id is string => id != null)
+		)
+	]);
 	return rows.map((r) => toCard(r, botNames, approvalVersions));
 }
 
@@ -217,21 +220,19 @@ export async function listQueueProposals(
 		head: true
 	});
 	countQ = withOwnerFilter(countQ, ownerId).in('status', ['pending', 'on_hold']);
-	const { count, error: countErr } = await countQ;
-	if (countErr) {
-		return {
-			data: toPageResult([], 0, params),
-			error: countErr as Error
-		};
-	}
-
 	let q = fromRepo(repo, 'position_proposals')
 		.select(POSITION_PROPOSAL_COLUMNS)
 		.in('status', ['pending', 'on_hold'])
 		.order('created_at', { ascending: false })
 		.range(params.offset, params.offset + params.limit - 1);
 	q = withOwnerFilter(q, ownerId);
-	const { data, error } = await q;
+	const [{ count, error: countErr }, { data, error }] = await Promise.all([countQ, q]);
+	if (countErr) {
+		return {
+			data: toPageResult([], 0, params),
+			error: countErr as Error
+		};
+	}
 	if (error) return { data: toPageResult([], 0, params), error: error as Error };
 	const cards = await enrichProposals(repo, (data ?? []) as RawProposal[]);
 	return { data: toPageResult(cards, count ?? 0, params), error: null };
@@ -261,9 +262,6 @@ export async function listProposalHistory(
 		head: true
 	});
 	countQ = withOwnerFilter(countQ, ownerId).in('status', [...PROPOSAL_HISTORY_STATUSES]);
-	const { count, error: countErr } = await countQ;
-	if (countErr) return { data: toPageResult([], 0, params), error: countErr as Error };
-
 	let q = fromRepo(repo, 'position_proposals')
 		.select(POSITION_PROPOSAL_COLUMNS)
 		.in('status', [...PROPOSAL_HISTORY_STATUSES])
@@ -271,7 +269,8 @@ export async function listProposalHistory(
 		.order('created_at', { ascending: false })
 		.range(params.offset, params.offset + params.limit - 1);
 	q = withOwnerFilter(q, ownerId);
-	const { data, error } = await q;
+	const [{ count, error: countErr }, { data, error }] = await Promise.all([countQ, q]);
+	if (countErr) return { data: toPageResult([], 0, params), error: countErr as Error };
 	if (error) return { data: toPageResult([], 0, params), error: error as Error };
 	const cards = await enrichProposals(repo, (data ?? []) as RawProposal[]);
 	return { data: toPageResult(cards, count ?? 0, params), error: null };
@@ -365,9 +364,6 @@ async function listPrinciplesByStatus(
 	const ownerId = requireOwnerId(repo);
 	let countQ = fromRepo(repo, 'principle_proposals').select('id', { count: 'exact', head: true });
 	countQ = withOwnerFilter(countQ, ownerId).in('status', [...statuses]);
-	const { count, error: countErr } = await countQ;
-	if (countErr) return { data: toPageResult([], 0, params), error: countErr as Error };
-
 	let q = fromRepo(repo, 'principle_proposals')
 		.select(PRINCIPLE_LIST_COLUMNS)
 		.in('status', [...statuses]);
@@ -376,7 +372,8 @@ async function listPrinciplesByStatus(
 		.order('created_at', { ascending: false })
 		.range(params.offset, params.offset + params.limit - 1);
 	q = withOwnerFilter(q, ownerId);
-	const { data, error } = await q;
+	const [{ count, error: countErr }, { data, error }] = await Promise.all([countQ, q]);
+	if (countErr) return { data: toPageResult([], 0, params), error: countErr as Error };
 	if (error) return { data: toPageResult([], 0, params), error: error as Error };
 	const cards = await principleCards(repo, (data ?? []) as unknown as RawPrinciple[]);
 	return { data: toPageResult(cards, count ?? 0, params), error: null };
@@ -749,9 +746,6 @@ export async function listBriefingsWithKospi(
 		.in('kind', ['daily_brief', 'weekly_report'])
 		.is('archived_at', null);
 	countQ = applyBriefingFilter(countQ, filter);
-	const { count, error: countErr } = await countQ;
-	if (countErr) return { data: toPageResult([], 0, params), error: countErr as Error };
-
 	let q = fromRepo(repo, 'reports')
 		.select('id, kind, slug, headline, title, report_date, tags')
 		.in('kind', ['daily_brief', 'weekly_report'])
@@ -761,7 +755,8 @@ export async function listBriefingsWithKospi(
 	const pageQ = q
 		.order('report_date', { ascending: false })
 		.range(params.offset, params.offset + params.limit - 1);
-	const { data, error } = await pageQ;
+	const [{ count, error: countErr }, { data, error }] = await Promise.all([countQ, pageQ]);
+	if (countErr) return { data: toPageResult([], 0, params), error: countErr as Error };
 	if (error) return { data: toPageResult([], 0, params), error: error as Error };
 
 	const rows = (data ?? []) as Array<{

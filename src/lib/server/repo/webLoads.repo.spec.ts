@@ -790,3 +790,79 @@ describe('FE-03 Low-2 홈 평가금액: 이미 읽은 가격·환율을 다시 �
 		expect(got).toEqual({ data: null, error: err });
 	});
 });
+
+describe('목록 조회: count·page와 보강 조회는 같이 보낸다', () => {
+	const DELAY = 40;
+	const botId = '11111111-1111-4111-8111-111111111111';
+	const posId = '22222222-2222-4222-8222-222222222222';
+
+	function delayedClient() {
+		const starts: Array<{ table: string; method: string; at: number }> = [];
+		const t0 = Date.now();
+		const fetchStub = async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
+			const method = (init?.method ?? 'GET').toUpperCase();
+			const table = url.pathname.replace(/^\/rest\/v1\//, '');
+			starts.push({ table, method, at: Date.now() - t0 });
+			await new Promise((r) => setTimeout(r, DELAY));
+			const proposal = {
+				id: 'q1',
+				display_id: 'P-0001',
+				change_type: 'set_qty',
+				status: 'pending',
+				calc_note: null,
+				reason_md: null,
+				decision_note: null,
+				proposed_by_type: 'bot',
+				proposed_by: botId,
+				evidence: [],
+				attention_started_at: null,
+				acknowledged_at: null,
+				base_version: 1,
+				proposed_values: {},
+				applied_values: null,
+				current_values: null,
+				position_id: posId,
+				instrument_id: 'i1',
+				created_at: '2026-11-20T00:00:00Z',
+				expires_at: '2026-12-20T00:00:00Z',
+				held_at: null,
+				decided_at: null
+			};
+			const bodies: Record<string, unknown[]> = {
+				position_proposals: [proposal],
+				bot_clients: [{ id: botId, name: '시세봇' }],
+				positions: [{ id: posId, approval_version: 2 }]
+			};
+			const body = bodies[table] ?? [];
+			return new Response(method === 'HEAD' ? null : JSON.stringify(body), {
+				status: 200,
+				headers: {
+					'content-type': 'application/json',
+					'content-range': '0-0/1'
+				}
+			});
+		};
+		const sb = createClient('http://stub.local', 'stub-anon-key', {
+			auth: { persistSession: false, autoRefreshToken: false },
+			global: { fetch: fetchStub as typeof fetch }
+		});
+		return { repo: forUser(sb as never, OWNER), starts };
+	}
+
+	it('listQueueProposals: 건수와 목록을 한 번에, 봇 이름과 버전도 한 번에', async () => {
+		const { repo, starts } = delayedClient();
+		const { data, error } = await listQueueProposals(repo, page);
+		expect(error).toBeNull();
+		expect(data.items).toHaveLength(1);
+		expect(data.items[0]?.proposer_name).toBe('시세봇');
+		const wave1 = starts.filter((s) => s.table === 'position_proposals');
+		expect(wave1.map((s) => s.method).sort()).toEqual(['GET', 'HEAD']);
+		expect(Math.abs(wave1[0].at - wave1[1].at)).toBeLessThan(DELAY / 2);
+		const bot = starts.find((s) => s.table === 'bot_clients');
+		const ver = starts.find((s) => s.table === 'positions');
+		if (!bot || !ver) throw new Error('보강 조회가 없다');
+		expect(Math.abs(bot.at - ver.at)).toBeLessThan(DELAY / 2);
+		expect(Math.min(bot.at, ver.at)).toBeGreaterThan(Math.max(wave1[0].at, wave1[1].at));
+	});
+});
