@@ -13,6 +13,7 @@ import { createStubMcpContext } from '../testing';
 import { runAuditedToolCall } from '../tool-gate';
 import type { McpContext, McpToolResult } from '../types';
 import {
+	clip,
 	feedClock,
 	FEED_RULES,
 	FEED_SOURCE,
@@ -837,7 +838,9 @@ describe('corrections — previous trading day only, once per feed_date', () => 
 				})
 			)
 		);
-		const notes = h.sink.rows.at(-1)!.warnings.filter((w) => /^update /.test(w.message));
+		const notes = h.sink.rows
+			.find((r) => r.tool === 'submit_daily_market_feed:intent')!
+			.warnings.filter((w) => /^update /.test(w.message));
 		expect(notes.length).toBeGreaterThanOrEqual(2);
 		const priceNote = notes.find((n) => n.message.includes('price_snapshots'))!;
 		expect(priceNote.message).toContain('notion:daily-brief');
@@ -1381,7 +1384,7 @@ describe('L1 — conflicts and partial writes are explicit, retryable errors', (
 		expect(priceRow(OWNER_A, '035420', '2026-11-27')!.close).toBe(161000);
 	});
 
-	it('mid-write failure: explicit error with progress, before-values kept in the error audit row', async () => {
+	it('mid-write failure: explicit error with progress, before-values kept on the intent row', async () => {
 		db.hook = (table) =>
 			table === 'market_indicators'
 				? { code: 'XX000', message: 'boom (secret detail)' }
@@ -1393,11 +1396,14 @@ describe('L1 — conflicts and partial writes are explicit, retryable errors', (
 		expect(body.errors.map((e) => e.rule)).toContain('R-FEED-33');
 		expect(JSON.stringify(body)).toContain('resend the same feed_id');
 		expect(JSON.stringify(body)).not.toContain('secret detail');
+		const intent = h.sink.rows.find((r) => r.tool === 'submit_daily_market_feed:intent')!;
+		expect(
+			intent.warnings.some((w) => /before=/.test(w.message) && w.message.includes('160200'))
+		).toBe(true);
 		const errRow = h.sink.rows.at(-1)!;
 		expect(errRow.result).toBe('error');
-		expect(
-			errRow.warnings.some((w) => /before=/.test(w.message) && w.message.includes('160200'))
-		).toBe(true);
+		expect(errRow.tool).toBe('submit_daily_market_feed');
+		expect(errRow.warnings.some((w) => /before=/.test(w.message))).toBe(false);
 		// retry converges once the DB is healthy
 		db.hook = null;
 		ok(await feed(correctedPayload()));
@@ -1525,7 +1531,7 @@ describe('L4 — record_* tools reject a mismatching owner_id', () => {
 });
 
 describe('L6 — audit before write; a failed audit fails the call', () => {
-	it('intent row is stored before the first write; before-values live on the outcome row only', async () => {
+	it('intent row is stored before the first write; before-values live on the intent row only', async () => {
 		const h = harness();
 		ok(await h.call('submit_daily_market_feed', correctedPayload()));
 		const intent = h.sink.rows.find((r) => r.tool === 'submit_daily_market_feed:intent')!;
@@ -1534,18 +1540,18 @@ describe('L6 — audit before write; a failed audit fails the call', () => {
 		expect(intent.rule_ids).not.toContain('R-FEED-31');
 		expect(intent.rule_ids).not.toContain('R-FEED-30');
 		expect(intent.warnings.some((w) => w.rule === 'R-FEED-31')).toBe(true);
-		expect(intent.warnings.some((w) => /before=/.test(w.message))).toBe(false);
+		const note = intent.warnings.find((w) => w.message.includes('035420|2026-11-27'))!;
+		expect(note.message).toContain('"close":160200');
+		expect(note.message).toContain('source_bot_id');
+		expect(note.message).toContain('"extra"');
 		const outcomes = h.sink.rows.filter((r) => r.tool === 'submit_daily_market_feed');
 		expect(outcomes).toHaveLength(1);
 		const outcome = outcomes[0]!;
 		expect(outcome.rule_ids).not.toContain('R-FEED-30');
 		expect(outcome.rule_ids).not.toContain('R-FEED-31');
-		const note = outcome.warnings.find((w) => w.message.includes('035420|2026-11-27'))!;
-		expect(note.message).toContain('"close":160200');
-		expect(note.message).toContain('source_bot_id');
-		expect(note.message).toContain('"extra"');
-		// memo is not duplicated on the intent row
-		expect(intent.warnings.some((w) => w.message.includes('035420|2026-11-27'))).toBe(false);
+		// memo is not duplicated on the outcome row
+		expect(outcome.warnings.some((w) => /before=/.test(w.message))).toBe(false);
+		expect(outcome.warnings.some((w) => /:intent audit row/.test(w.message))).toBe(true);
 	});
 
 	it('audit sink down → error before any data write, alert logged, nothing changed', async () => {
@@ -1570,6 +1576,18 @@ describe('L6 — audit before write; a failed audit fails the call', () => {
 		const out = ok(await feed(validPayload()));
 		expect(out.inserted).toHaveLength(0);
 		expect(db.writes).toEqual([]);
+	});
+
+	it('final audit insert fails after write: before-values remain on the already-written intent row', async () => {
+		const h = harness(['market:feed'], OWNER_A, { failSinkAfter: 1 });
+		const body = err(await h.call('submit_daily_market_feed', correctedPayload()));
+		expect(body.errors.map((e) => e.rule)).toContain('R-FEED-32');
+		const intent = h.sink.rows.find((r) => r.tool === 'submit_daily_market_feed:intent')!;
+		expect(intent).toBeTruthy();
+		expect(h.sink.rows.filter((r) => r.tool === 'submit_daily_market_feed')).toHaveLength(0);
+		expect(
+			intent.warnings.some((w) => /before=/.test(w.message) && w.message.includes('160200'))
+		).toBe(true);
 	});
 
 	it('dry_run needs no audit intent and still works when the sink is down', async () => {
@@ -1598,6 +1616,88 @@ describe('L6 — audit before write; a failed audit fails the call', () => {
 		const notes = provenanceNotes({ priceOps: ops, indicatorOps: [] } as unknown as FeedPlan);
 		expect(notes).toHaveLength(41);
 		expect(notes.at(-1)!.message).toMatch(/truncated: 5 more updates not listed \(total 45\)/);
+	});
+});
+
+function loneSurrogate(s: string): boolean {
+	for (let i = 0; i < s.length; i++) {
+		const c = s.charCodeAt(i);
+		if (c >= 0xd800 && c <= 0xdbff) {
+			const n = s.charCodeAt(i + 1);
+			if (i + 1 >= s.length || n < 0xdc00 || n > 0xdfff) return true;
+			i++;
+		} else if (c >= 0xdc00 && c <= 0xdfff) return true;
+	}
+	return false;
+}
+
+function expectJsonSafe(s: string) {
+	expect(loneSurrogate(s)).toBe(false);
+	expect(JSON.parse(JSON.stringify(s))).toBe(s);
+}
+
+describe('clip: 코드포인트 단위로 자르고 서로게이트 쌍을 나누지 않는다', () => {
+	it('ASCII가 700자면 그대로, 701자면 말줄임', () => {
+		const exact = 'a'.repeat(700);
+		expect(clip(exact, 700)).toBe(exact);
+		expectJsonSafe(clip(exact, 700));
+		const over = 'a'.repeat(701);
+		const got = clip(over, 700);
+		expect(got).toBe('a'.repeat(699) + '…');
+		expect([...got]).toHaveLength(700);
+		expectJsonSafe(got);
+	});
+
+	it('코드포인트 700·701개(이모지)도 같은 한도', () => {
+		const exact = '🙂'.repeat(700);
+		expect(clip(exact, 700)).toBe(exact);
+		expectJsonSafe(clip(exact, 700));
+		const got = clip('🙂'.repeat(701), 700);
+		expect(got).toBe('🙂'.repeat(699) + '…');
+		expect([...got]).toHaveLength(700);
+		expectJsonSafe(got);
+	});
+
+	it('입력의 짝 없는 서로게이트는 빼고 jsonb에 안전하게 남긴다', () => {
+		const lone = '\ud83d';
+		const got = clip(`ok${lone}🙂${lone}end`, 700);
+		expect(got).toBe('ok🙂end');
+		expectJsonSafe(got);
+		const clipped = clip(`${'x'.repeat(698)}${lone}yz`, 700);
+		expect(clipped.includes(lone)).toBe(false);
+		expectJsonSafe(clipped);
+	});
+
+	it('k=484–492: 자르는 지점에 이모지가 있어도 메모가 안전하게 남는다', () => {
+		const existing = (k: number) => ({
+			id: 1,
+			close: 160200,
+			change_pct: 2.04,
+			currency: 'KRW' as const,
+			source: 'notion:daily-brief',
+			source_bot_id: null,
+			foreign_net_buy: null,
+			inst_net_buy: null,
+			extra: { note: `${'x'.repeat(k)}🙂tail` }
+		});
+		for (const k of [484, 485, 486, 487, 488, 489, 490, 491, 492]) {
+			const notes = provenanceNotes({
+				priceOps: [
+					{
+						kind: 'update',
+						key: '035420|2026-11-27',
+						field: 'prices[0]',
+						existing: existing(k)
+					}
+				],
+				indicatorOps: []
+			} as unknown as FeedPlan);
+			expect(notes).toHaveLength(1);
+			const msg = notes[0]!.message;
+			expectJsonSafe(msg);
+			expect([...msg].length).toBeLessThanOrEqual(700);
+			expect(msg.startsWith('update price_snapshots 035420|2026-11-27 before=')).toBe(true);
+		}
 	});
 });
 
@@ -1754,7 +1854,7 @@ describe('L-a — concurrent feeds fail safely (write order + CAS on extra)', ()
 });
 
 describe('Nit — audit intent row is distinguishable from the outcome row', () => {
-	it('successful call: outcome rule_ids omit R-FEED-30/31 so stats and the warn filter stay clean; memo is not on :intent', async () => {
+	it('successful call: outcome rule_ids omit R-FEED-30/31 so stats and the warn filter stay clean; memo is on :intent only', async () => {
 		const h = harness();
 		ok(await h.call('submit_daily_market_feed', correctedPayload()));
 		const outcome = h.sink.rows.find((r) => r.tool === 'submit_daily_market_feed')!;
@@ -1764,8 +1864,8 @@ describe('Nit — audit intent row is distinguishable from the outcome row', () 
 		expect(outcome.rule_ids).not.toContain('R-FEED-31');
 		expect(intent.rule_ids).not.toContain('R-FEED-30');
 		expect(intent.rule_ids).not.toContain('R-FEED-31');
-		expect(outcome.warnings.filter((w) => /before=/.test(w.message)).length).toBeGreaterThan(0);
-		expect(intent.warnings.some((w) => /before=/.test(w.message))).toBe(false);
+		expect(intent.warnings.filter((w) => /before=/.test(w.message)).length).toBeGreaterThan(0);
+		expect(outcome.warnings.some((w) => /before=/.test(w.message))).toBe(false);
 	});
 
 	it('failed write: outcome row is the only row under the tool name; intent row is :intent', async () => {
@@ -1779,8 +1879,8 @@ describe('Nit — audit intent row is distinguishable from the outcome row', () 
 		expect(intents).toHaveLength(1);
 		expect(intents[0]!.rule_ids).not.toContain('R-FEED-31');
 		expect(intents[0]!.warnings.some((w) => w.rule === 'R-FEED-31')).toBe(true);
-		expect(intents[0]!.warnings.some((w) => /before=/.test(w.message))).toBe(false);
-		expect(plain[0]!.warnings.some((w) => /before=/.test(w.message))).toBe(true);
+		expect(intents[0]!.warnings.some((w) => /before=/.test(w.message))).toBe(true);
+		expect(plain[0]!.warnings.some((w) => /before=/.test(w.message))).toBe(false);
 	});
 });
 

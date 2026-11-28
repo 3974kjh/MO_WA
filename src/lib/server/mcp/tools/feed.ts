@@ -1205,8 +1205,25 @@ export const feedClock = { now: () => Date.now() };
 const MAX_PROVENANCE_NOTES = 40;
 const MAX_IND_STAMPS = 12;
 
-function clip(text: string, max: number): string {
-	return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+/** 짝 없는 서로게이트(고립된 UTF-16 코드 유닛). */
+function isLoneSurrogate(ch: string): boolean {
+	if (ch.length !== 1) return false;
+	const c = ch.charCodeAt(0);
+	return c >= 0xd800 && c <= 0xdfff;
+}
+
+/**
+ * 감사 메모를 코드포인트 단위로 자른다. 서로게이트 쌍을 나누지 않고,
+ * 입력에 있던 짝 없는 서로게이트는 빼서 jsonb가 행을 거절하지 않게 한다.
+ * `max`는 코드포인트 수(말줄임표 포함). 넘치면 `max - 1` 글자 + `…`.
+ */
+export function clip(text: string, max: number): string {
+	const chars: string[] = [];
+	for (const ch of text) {
+		if (!isLoneSurrogate(ch)) chars.push(ch);
+	}
+	if (chars.length <= max) return chars.join('');
+	return `${chars.slice(0, max - 1).join('')}…`;
 }
 
 /**
@@ -1394,17 +1411,26 @@ export async function submitDailyMarketFeedHandler(
 	// a failure part-way is converged by retrying the same feed_id (idempotent: written rows
 	// compare unchanged, the rest are applied). Corrections run with the marker already stamped
 	// on today's rows in the same pass.
-	// L6: the audit row (summary + before-values of every row about to change) is stored BEFORE the
-	// first data write; if it cannot be stored nothing is written (auditIntent rejects).
-	// Before-values live on the outcome (or error) audit row only — not duplicated on the intent row (Nit 4).
+	// L6: the audit row is stored BEFORE the first data write; if it cannot be stored
+	// nothing is written (auditIntent rejects). Before-values live on the already-written
+	// intent row; the outcome (or mid-write error) row keeps a short pointer so a failed
+	// final audit insert cannot lose the memo (mcp-feed-nits-b89b940 Nit).
 	const provenance = provenanceNotes(plan);
-	const outcomeNotes: McpRuleIssue[] = [summary(false, true), ...provenance];
-	await input.auditIntent([
+	const intentNotes: McpRuleIssue[] = [
 		{
 			rule: FEED_RULES.auditIntent,
-			message: 'pre-write intent; before-values are recorded on the outcome audit row'
+			message: 'pre-write intent; before-values are recorded on this row (계획 시점에 읽은 값)'
+		},
+		...provenance
+	];
+	const outcomeNotes: McpRuleIssue[] = [
+		summary(false, true),
+		{
+			rule: FEED_RULES.auditSummary,
+			message: 'before-values are recorded on the :intent audit row'
 		}
-	]);
+	];
+	await input.auditIntent(intentNotes);
 
 	const stamps: IndStamp[] = plan.indicatorOps.map((op) => ({
 		feed_id: args.feed_id,
@@ -1512,7 +1538,7 @@ export async function submitDailyMarketFeedHandler(
 			warnings: plan.warnings
 		},
 		affectedIds: affected,
-		// Provenance + summary are audit-only and stored only on this outcome row (not on :intent).
+		// Summary + pointer only; the before-value memo is already on the :intent row.
 		auditNotes: outcomeNotes,
 		auditRequired: true
 	};
