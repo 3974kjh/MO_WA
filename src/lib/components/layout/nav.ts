@@ -1,7 +1,8 @@
 /**
  * 내비게이션 정의 (FE-01, H §2·§3, DS §5·§6, 시안 shared/shell.js NAV)
  * 1차 = 홈·브리핑·포트폴리오·매매일지 / '투자'(v1.6.2 B안) = 종목·부동산 / 곧 열려요 = 투자 원칙(disabled '준비 중')
- * FE-11(PM이 전한 사용자 결정 2026-11-28): 종목 열림, 부동산은 FE-12 전까지 '준비 중', 설정 열림.
+ * FE-11(PM이 전한 사용자 결정 2026-11-28): 종목 열림, 설정 열림.
+ * FE-12 골격(PM이 전한 사용자 결정 2026-11-28 21:48): 부동산 열림(지금은 지도 탭만, 나머지 탭은 화면 안에서 '준비 중').
  */
 export type SectionId =
 	| 'dashboard'
@@ -30,7 +31,15 @@ export interface NavEntry {
 	label: string;
 	icon: NavIcon;
 	/** 없으면 disabled('준비 중') */
-	href?: '/' | '/briefings' | '/portfolio' | '/journal' | '/archive' | '/settings' | '/stocks';
+	href?:
+		| '/'
+		| '/briefings'
+		| '/portfolio'
+		| '/journal'
+		| '/archive'
+		| '/settings'
+		| '/stocks'
+		| '/realestate';
 	/** 확인 대기 pill을 붙이는 항목 */
 	pendingBadge?: boolean;
 }
@@ -54,7 +63,7 @@ export const PRIMARY_NAV: NavEntry[] = [
  */
 export const INVEST_NAV: NavEntry[] = [
 	{ id: 'stocks', label: '종목', icon: 'chart-line', href: '/stocks' },
-	{ id: 'realestate', label: '부동산', icon: 'building' }
+	{ id: 'realestate', label: '부동산', icon: 'building', href: '/realestate' }
 ];
 
 /** '곧 열려요' */

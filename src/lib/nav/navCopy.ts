@@ -53,6 +53,10 @@ const TABLE: Record<string, NavCopy> = {
 		name: '분석 리포트',
 		steps: ['분석 리포트 불러오는 중', '본문 확인 중', BUILD]
 	},
+	'/realestate': {
+		name: '부동산',
+		steps: ['관심 단지 불러오는 중', '단지 위치·최근 가격 확인 중', BUILD]
+	},
 	'/archive': {
 		name: '보관함',
 		steps: ['보관한 항목 불러오는 중', '목록 확인 중', BUILD]

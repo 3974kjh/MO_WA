@@ -57,6 +57,7 @@ describe('라우트별 로딩 문구', () => {
 				'/journal',
 				'/journal/[id]',
 				'/portfolio',
+				'/realestate',
 				'/settings',
 				'/settings/audit',
 				'/stocks',
