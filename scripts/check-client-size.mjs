@@ -16,9 +16,9 @@
  * Fail-closed if manifests are missing.
  */
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { gzipSync } from 'node:zlib';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const LIMITS = {
 	loginInitial: 80_000,
@@ -341,19 +341,58 @@ export function passed(ev) {
 	return ev.hard.every((r) => r.ok);
 }
 
-/** 심볼릭 링크·상대 경로로 실행해도 CLI로 인식한다(import.meta.url은 실제 경로). 인식 못 하면 조용히 통과하지 않는다. */
-export function isMainModule(argv1 = process.argv[1], metaUrl = import.meta.url) {
-	if (!argv1) return false;
+/**
+ * CLI 진입 여부.
+ * - run: 이 파일이 메인(심볼릭 링크·--preserve-symlinks-main·상대 경로 포함)
+ * - skip: 다른 파일이 메인(테스트 등이 import)
+ * - unknown: 이 스크립트로 실행된 것으로 보이지만 경로를 확정할 수 없음 → 조용히 통과하지 않는다
+ */
+export function cliInvocation(argv1 = process.argv[1], metaUrl = import.meta.url) {
+	if (!argv1) return 'skip';
+	const urlsOf = (p) => {
+		const out = [];
+		try {
+			out.push(pathToFileURL(p).href);
+		} catch {
+			/* ignore */
+		}
+		try {
+			out.push(pathToFileURL(realpathSync(p)).href);
+		} catch {
+			/* ignore */
+		}
+		return out;
+	};
+	const argUrls = urlsOf(argv1);
+	const metaUrls = [metaUrl];
 	try {
-		return pathToFileURL(realpathSync(argv1)).href === metaUrl;
+		metaUrls.push(pathToFileURL(realpathSync(fileURLToPath(metaUrl))).href);
 	} catch {
-		return false;
+		/* ignore */
 	}
+	if (argUrls.some((u) => metaUrls.includes(u))) return 'run';
+	try {
+		if (basename(argv1) === basename(fileURLToPath(metaUrl))) return 'unknown';
+	} catch {
+		/* ignore */
+	}
+	return 'skip';
 }
 
-const isCli = isMainModule();
+/** @deprecated 테스트·호환용. 인식 실패는 false가 아니라 cliInvocation()의 'unknown'으로 본다. */
+export function isMainModule(argv1 = process.argv[1], metaUrl = import.meta.url) {
+	return cliInvocation(argv1, metaUrl) === 'run';
+}
 
-if (isCli) {
+const invocation = cliInvocation();
+if (invocation === 'unknown') {
+	console.error(
+		'client-size: could not determine whether this process is the CLI entry (refusing to no-op)'
+	);
+	process.exit(1);
+}
+
+if (invocation === 'run') {
 	const root = process.argv.slice(2).find((a) => !a.startsWith('--')) ?? process.cwd();
 	try {
 		const report = measure(root);

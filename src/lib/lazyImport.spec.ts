@@ -51,7 +51,7 @@ describe('isStaleDeploy', () => {
 });
 
 describe('reloadOnce / recoverFromChunkError', () => {
-	it('세션당 한 번만 새로고침하고, 가드 시간이 지나면 다시 허용한다', () => {
+	it('60초 가드 안에서는 한 번만 새로고침하고, 가드 시간이 지나면 다시 허용한다', () => {
 		const storage = memStore();
 		const reload = vi.fn();
 		let now = 1_000_000;

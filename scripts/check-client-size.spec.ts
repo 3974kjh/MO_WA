@@ -1,10 +1,19 @@
 import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
-import { LIMITS, REFERENCE, evaluate, gzipSize, measure, passed } from './check-client-size.mjs';
+import {
+	LIMITS,
+	REFERENCE,
+	cliInvocation,
+	evaluate,
+	gzipSize,
+	isMainModule,
+	measure,
+	passed
+} from './check-client-size.mjs';
 
 function write(p: string, s: string | Buffer) {
 	mkdirSync(join(p, '..'), { recursive: true });
@@ -266,5 +275,15 @@ describe('check-client-size CLI (L2)', () => {
 		const b = run(join(link, 'check-client-size.mjs'), repo);
 		expect(b.stdout).toBe(a.stdout);
 		expect(b.status).toBe(a.status);
+	});
+
+	it('같은 파일명인데 경로를 확정할 수 없으면 unknown이고, 다른 메인이면 skip이다 (Nit-2)', () => {
+		const meta = pathToFileURL(script).href;
+		expect(cliInvocation(script, meta)).toBe('run');
+		expect(isMainModule(script, meta)).toBe(true);
+		expect(cliInvocation('/tmp/does-not-exist/check-client-size.mjs', meta)).toBe('unknown');
+		expect(isMainModule('/tmp/does-not-exist/check-client-size.mjs', meta)).toBe(false);
+		expect(cliInvocation('/tmp/other-tool.mjs', meta)).toBe('skip');
+		expect(cliInvocation(undefined, meta)).toBe('skip');
 	});
 });
