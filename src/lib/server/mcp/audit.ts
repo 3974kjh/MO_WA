@@ -321,9 +321,11 @@ async function writeAuditRow(
 	}
 
 	const warnings = input.warnings ?? [];
+	// R-FEED-30/31 are informational audit labels. They must not enter rule_ids or they
+	// inflate rule stats and the "has warnings" filter (which is rule_ids != '{}') on every success.
 	const ruleIds = uniqueStrings([
 		...(input.ruleIds ?? []),
-		...warnings.map((w) => w.rule).filter(Boolean)
+		...warnings.map((w) => w.rule).filter((id) => id && id !== 'R-FEED-30' && id !== 'R-FEED-31')
 	]);
 
 	const args = input.args ?? {};

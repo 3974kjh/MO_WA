@@ -38,6 +38,38 @@ function jsonContains(a: unknown, b: unknown): boolean {
 	return a === b;
 }
 
+/** Postgres jsonb `=` : key order does not matter; array order and duplicates do. */
+function jsonbEq(a: unknown, raw: unknown): boolean {
+	// `filter('extra','eq', JSON.stringify(x))` passes a JSON text at the top level only.
+	let right = raw;
+	if (typeof raw === 'string') {
+		try {
+			right = JSON.parse(raw) as unknown;
+		} catch {
+			right = raw;
+		}
+	}
+	return jsonbDeepEqual(a, right);
+}
+function jsonbDeepEqual(a: unknown, b: unknown): boolean {
+	if (Object.is(a, b)) return true;
+	if (a === null || b === null || typeof a !== typeof b) return a === b;
+	if (Array.isArray(a) || Array.isArray(b)) {
+		if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+		return a.every((v, i) => jsonbDeepEqual(v, b[i]));
+	}
+	if (typeof a === 'object' && typeof b === 'object') {
+		const ak = Object.keys(a as Row);
+		const bk = Object.keys(b as Row);
+		if (ak.length !== bk.length) return false;
+		return ak.every(
+			(k) =>
+				Object.prototype.hasOwnProperty.call(b, k) && jsonbDeepEqual((a as Row)[k], (b as Row)[k])
+		);
+	}
+	return a === b;
+}
+
 class FakeDb {
 	tables: Record<string, Row[]> = {
 		instruments: [],
@@ -125,6 +157,11 @@ class Query {
 	}
 	containedBy(col: string, val: unknown) {
 		this.filters.push((r) => jsonContains(val, r[col]));
+		return this;
+	}
+	filter(col: string, op: string, val: unknown) {
+		if (op !== 'eq') throw new Error(`unsupported filter ${op}`);
+		this.filters.push((r) => jsonbEq(r[col], val));
 		return this;
 	}
 	order(col: string, opts: { ascending: boolean }) {
@@ -1481,18 +1518,27 @@ describe('L4 — record_* tools reject a mismatching owner_id', () => {
 });
 
 describe('L6 — audit before write; a failed audit fails the call', () => {
-	it('intent row (with before-values) is stored before the first write', async () => {
+	it('intent row is stored before the first write; before-values live on the outcome row only', async () => {
 		const h = harness();
 		ok(await h.call('submit_daily_market_feed', correctedPayload()));
-		const intent = h.sink.rows.find((r) => r.rule_ids.includes('R-FEED-31'))!;
+		const intent = h.sink.rows.find((r) => r.tool === 'submit_daily_market_feed:intent')!;
 		expect(intent).toBeTruthy();
-		expect(intent.tool).toBe('submit_daily_market_feed:intent');
-		// per-tool stats: exactly one row under the plain tool name
-		expect(h.sink.rows.filter((r) => r.tool === 'submit_daily_market_feed')).toHaveLength(1);
-		const note = intent.warnings.find((w) => w.message.includes('035420|2026-11-27'))!;
+		expect(intent.result).toBe('ok');
+		expect(intent.rule_ids).not.toContain('R-FEED-31');
+		expect(intent.rule_ids).not.toContain('R-FEED-30');
+		expect(intent.warnings.some((w) => w.rule === 'R-FEED-31')).toBe(true);
+		expect(intent.warnings.some((w) => /before=/.test(w.message))).toBe(false);
+		const outcomes = h.sink.rows.filter((r) => r.tool === 'submit_daily_market_feed');
+		expect(outcomes).toHaveLength(1);
+		const outcome = outcomes[0]!;
+		expect(outcome.rule_ids).not.toContain('R-FEED-30');
+		expect(outcome.rule_ids).not.toContain('R-FEED-31');
+		const note = outcome.warnings.find((w) => w.message.includes('035420|2026-11-27'))!;
 		expect(note.message).toContain('"close":160200');
 		expect(note.message).toContain('source_bot_id');
 		expect(note.message).toContain('"extra"');
+		// memo is not duplicated on the intent row
+		expect(intent.warnings.some((w) => w.message.includes('035420|2026-11-27'))).toBe(false);
 	});
 
 	it('audit sink down → error before any data write, alert logged, nothing changed', async () => {
@@ -1667,19 +1713,67 @@ describe('L-a — concurrent feeds fail safely (write order + CAS on extra)', ()
 		expect(err(res).code).toBe('CONFLICT');
 		db.hook = null;
 	});
+
+	it('a CAS miss from reordered extra arrays (strict jsonb eq, not containment) is a CONFLICT', async () => {
+		ok(await feed(validPayload()));
+		const stamps = [
+			{ feed_id: 'fm-20261130-1', k: 'kospi|2026-11-30', v: 4915.68 },
+			{ feed_id: 'fm-20261130-1', k: 'usdkrw|2026-11-30', v: 1337.9 }
+		];
+		for (const r of db.tables.price_snapshots!) {
+			if (String(r.as_of) === '2026-11-30')
+				r.extra = { feed_id: 'fm-20261130-1', feed_inds: stamps };
+		}
+		db.tables.market_indicators = db.tables.market_indicators!.filter(
+			(r) => r.as_of !== '2026-11-30'
+		);
+		db.writes = [];
+		let first = true;
+		db.hook = (table, op) => {
+			if (first && table === 'price_snapshots' && op === 'update') {
+				first = false;
+				for (const r of db.tables.price_snapshots!) {
+					if (String(r.as_of) === '2026-11-30') {
+						const extra = r.extra as { feed_inds: Row[] };
+						r.extra = { ...extra, feed_inds: [...extra.feed_inds].reverse() };
+					}
+				}
+			}
+		};
+		const res = await feed(validPayload());
+		expect(err(res).code).toBe('CONFLICT');
+		db.hook = null;
+	});
 });
 
 describe('Nit — audit intent row is distinguishable from the outcome row', () => {
+	it('successful call: outcome rule_ids omit R-FEED-30/31 so stats and the warn filter stay clean; memo is not on :intent', async () => {
+		const h = harness();
+		ok(await h.call('submit_daily_market_feed', correctedPayload()));
+		const outcome = h.sink.rows.find((r) => r.tool === 'submit_daily_market_feed')!;
+		const intent = h.sink.rows.find((r) => r.tool === 'submit_daily_market_feed:intent')!;
+		expect(outcome.result).toBe('ok');
+		expect(outcome.rule_ids).not.toContain('R-FEED-30');
+		expect(outcome.rule_ids).not.toContain('R-FEED-31');
+		expect(intent.rule_ids).not.toContain('R-FEED-30');
+		expect(intent.rule_ids).not.toContain('R-FEED-31');
+		expect(outcome.warnings.filter((w) => /before=/.test(w.message)).length).toBeGreaterThan(0);
+		expect(intent.warnings.some((w) => /before=/.test(w.message))).toBe(false);
+	});
+
 	it('failed write: outcome row is the only row under the tool name; intent row is :intent', async () => {
 		db.hook = (table) =>
 			table === 'market_indicators' ? { code: 'XX000', message: 'boom' } : undefined;
 		const h = harness();
-		err(await h.call('submit_daily_market_feed', validPayload()));
+		err(await h.call('submit_daily_market_feed', correctedPayload()));
 		const plain = h.sink.rows.filter((r) => r.tool === 'submit_daily_market_feed');
 		expect(plain.map((r) => r.result)).toEqual(['error']);
 		const intents = h.sink.rows.filter((r) => r.tool === 'submit_daily_market_feed:intent');
 		expect(intents).toHaveLength(1);
-		expect(intents[0]!.rule_ids).toContain('R-FEED-31');
+		expect(intents[0]!.rule_ids).not.toContain('R-FEED-31');
+		expect(intents[0]!.warnings.some((w) => w.rule === 'R-FEED-31')).toBe(true);
+		expect(intents[0]!.warnings.some((w) => /before=/.test(w.message))).toBe(false);
+		expect(plain[0]!.warnings.some((w) => /before=/.test(w.message))).toBe(true);
 	});
 });
 

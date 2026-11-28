@@ -1399,7 +1399,7 @@ id로 리포트 1건을 조회한다. include_body=false면 본문을 제외한�
 - **Required scope:** `market:feed`
 - **Annotations:** idempotentHint=true, destructiveHint=false
 
-일일 시세 피드 1건(scope market:feed 전용). dry_run 필수: true면 검증과 바뀔 내용만 돌려주고 쓰지 않는다. 서버 게이트(R-FEED-01~14): strict 입력·ISO 날짜, feed_date=오늘/어제(KST)·주말 거부, 시장별 기대 as_of와 휴장 달력(KRX·NYSE·SIFMA), 허용 8종목·기대 종목 중 최대 1개 결측, 급변(KRX ±30%·미국 ±50%)·등락률 교차 확인 0.3%p, 지표 범위·usdkrw 서울 15:30·전일 ±25원, 수급 5종목(주 단위, 기존 가격 행의 수급 칸만), 정정은 직전 거래일·feed_date당 1회, source=fm:daily-feed 고정, 삭제 없음. 직전 종가가 없는 종목·지난 feed_date 재전송(다른 feed_id)은 거부(정정은 corrections로 1회). 같은 feed_id는 지표 포함 값 변경 불가. 감사 기록(쓰기 전 이전 값 포함)을 못 남기면 쓰지 않고 오류. 거부가 하나라도 있으면 아무것도 쓰지 않는다(live는 VALIDATION). 소유자는 키에서만 정한다(R-PERM-03).
+일일 시세 피드 1건(scope market:feed 전용). 한 번에 하나만 호출하고, 재시도는 이전 응답을 받은 뒤 같은 feed_id로 순차 진행한다(병렬 금지). dry_run 필수: true면 검증과 바뀔 내용만 돌려주고 쓰지 않는다. 서버 게이트(R-FEED-01~14): strict 입력·ISO 날짜, feed_date=오늘/어제(KST)·주말 거부, 시장별 기대 as_of와 휴장 달력(KRX·NYSE·SIFMA), 허용 8종목·기대 종목 중 최대 1개 결측, 급변(KRX ±30%·미국 ±50%)·등락률 교차 확인 0.3%p, 지표 범위·usdkrw 서울 15:30·전일 ±25원, 수급 5종목(주 단위, 기존 가격 행의 수급 칸만), 정정은 직전 거래일·feed_date당 1회, source=fm:daily-feed 고정, 삭제 없음. 직전 종가가 없는 종목·지난 feed_date 재전송(다른 feed_id)은 거부(정정은 corrections로 1회). 같은 feed_id는 지표 포함 값 변경 불가. 감사 기록(쓰기 전 이전 값 포함)을 못 남기면 쓰지 않고 오류. 거부가 하나라도 있으면 아무것도 쓰지 않는다(live는 VALIDATION). 소유자는 키에서만 정한다(R-PERM-03).
 
 #### Input JSON Schema
 

@@ -429,8 +429,9 @@ export async function updateFeedPriceRow(
 		.eq('id', id);
 	q = withOwnerFilter(q, ownerId);
 	if (expect) {
-		// extra must be unchanged too (markers / lock stamps): jsonb equality = contains + contained-by.
-		q = q.contains('extra', expect.extra).containedBy('extra', expect.extra);
+		// extra must be unchanged too (markers / lock stamps): strict jsonb equality
+		// (PostgREST extra=eq.<json>). Array order and duplicates count as a change.
+		q = q.filter('extra', 'eq', JSON.stringify(expect.extra ?? {}));
 		q = q.eq('close', expect.close);
 		q = expect.source === null ? q.is('source', null) : q.eq('source', expect.source);
 		q =

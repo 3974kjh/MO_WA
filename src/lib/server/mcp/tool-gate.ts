@@ -104,7 +104,9 @@ export async function runAuditedToolCall(options: {
 					requestId: meta.requestId,
 					args: sanitized.args,
 					result: 'ok',
-					ruleIds: unique(['R-FEED-31', ...identityRuleIds]),
+					// R-FEED-31 lives in warnings only (not rule_ids): rule stats and the
+					// "has warnings" filter key off rule_ids, so a successful intent row must not pollute them.
+					ruleIds: unique(identityRuleIds),
 					warnings: notes,
 					durationMs: Date.now() - startedAt,
 					ip: meta.ip,
@@ -132,7 +134,7 @@ export async function runAuditedToolCall(options: {
 			...identityRuleIds,
 			...(outcome.ruleIds ?? []),
 			...warnings.map((w) => w.rule)
-		]);
+		]).filter((id) => id !== 'R-FEED-30' && id !== 'R-FEED-31');
 		const okRow = {
 			ctx,
 			userId: meta.userId,

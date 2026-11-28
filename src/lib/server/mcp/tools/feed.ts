@@ -1396,9 +1396,15 @@ export async function submitDailyMarketFeedHandler(
 	// on today's rows in the same pass.
 	// L6: the audit row (summary + before-values of every row about to change) is stored BEFORE the
 	// first data write; if it cannot be stored nothing is written (auditIntent rejects).
+	// Before-values live on the outcome (or error) audit row only — not duplicated on the intent row (Nit 4).
 	const provenance = provenanceNotes(plan);
-	const intentNotes: McpRuleIssue[] = [summary(false, true), ...provenance];
-	await input.auditIntent(intentNotes);
+	const outcomeNotes: McpRuleIssue[] = [summary(false, true), ...provenance];
+	await input.auditIntent([
+		{
+			rule: FEED_RULES.auditIntent,
+			message: 'pre-write intent; before-values are recorded on the outcome audit row'
+		}
+	]);
 
 	const stamps: IndStamp[] = plan.indicatorOps.map((op) => ({
 		feed_id: args.feed_id,
@@ -1488,7 +1494,7 @@ export async function submitDailyMarketFeedHandler(
 				priceInserts: insertOps.length,
 				indicators: plan.indicatorOps.length
 			},
-			intentNotes
+			outcomeNotes
 		);
 	}
 
@@ -1506,8 +1512,8 @@ export async function submitDailyMarketFeedHandler(
 			warnings: plan.warnings
 		},
 		affectedIds: affected,
-		// Provenance + summary are audit-only; the call fails explicitly if the final row can't be stored.
-		auditNotes: intentNotes,
+		// Provenance + summary are audit-only and stored only on this outcome row (not on :intent).
+		auditNotes: outcomeNotes,
 		auditRequired: true
 	};
 }
@@ -1519,7 +1525,8 @@ export function registerFeedTools(reg: ToolRegistrationContext): void {
 		name: 'submit_daily_market_feed',
 		title: 'Submit daily market feed',
 		description:
-			'일일 시세 피드 1건(scope market:feed 전용). dry_run 필수: true면 검증과 바뀔 내용만 돌려주고 쓰지 않는다. ' +
+			'일일 시세 피드 1건(scope market:feed 전용). 한 번에 하나만 호출하고, 재시도는 이전 응답을 받은 뒤 같은 feed_id로 순차 진행한다(병렬 금지). ' +
+			'dry_run 필수: true면 검증과 바뀔 내용만 돌려주고 쓰지 않는다. ' +
 			'서버 게이트(R-FEED-01~14): strict 입력·ISO 날짜, feed_date=오늘/어제(KST)·주말 거부, 시장별 기대 as_of와 휴장 달력(KRX·NYSE·SIFMA), ' +
 			'허용 8종목·기대 종목 중 최대 1개 결측, 급변(KRX ±30%·미국 ±50%)·등락률 교차 확인 0.3%p, 지표 범위·usdkrw 서울 15:30·전일 ±25원, ' +
 			'수급 5종목(주 단위, 기존 가격 행의 수급 칸만), 정정은 직전 거래일·feed_date당 1회, source=fm:daily-feed 고정, 삭제 없음. ' +
