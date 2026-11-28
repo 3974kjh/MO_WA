@@ -141,6 +141,8 @@
 	let hintTimer: ReturnType<typeof setTimeout> | undefined;
 	let sizeObs: ResizeObserver | undefined;
 	let sizeRaf = 0;
+	let lastSizeW = 0;
+	let lastSizeH = 0;
 	let offAuth: (() => void) | undefined;
 	let lastWheel = 0;
 
@@ -176,15 +178,18 @@
 		sizeRaf = 0;
 	}
 
-	/** 컨테이너 CSS 크기에 지도를 맞춘다. autoResize를 쓰고, 없으면 setSize. 0 크기는 건너뛴다. */
+	/** 컨테이너 CSS 크기에 지도를 맞춘다. autoResize를 쓰고, 없으면 setSize. 0 크기와 같은 픽셀은 건너뛴다. */
 	function syncMapSize() {
 		if (!map || !canvas) return;
 		const w = canvas.clientWidth;
 		const h = canvas.clientHeight;
 		if (w <= 0 || h <= 0) return;
+		if (w === lastSizeW && h === lastSizeH) return;
 		try {
 			if (typeof map.autoResize === 'function') map.autoResize();
 			else if (typeof map.setSize === 'function' && ns) map.setSize(new ns.Size(w, h));
+			lastSizeW = w;
+			lastSizeH = h;
 		} catch {
 			/* SDK 없거나 미지원 */
 		}
@@ -205,6 +210,8 @@
 
 	function teardown() {
 		stopSizeWatch();
+		lastSizeW = 0;
+		lastSizeH = 0;
 		clearTimeout(tileTimer);
 		clearMarkers();
 		if (ns && listeners.length) ns.Event.removeListener(listeners);
@@ -852,13 +859,13 @@
 					>
 				</div>
 				<ComplexInfo item={cardItem} />
-				{#if watchHref || (stackIds && onbackstack)}
+				{#if watchHref || (stackItems.length > 1 && onbackstack)}
 					<div class="acts">
 						{#if watchHref}
 							<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- 주소는 page의 href()가 resolve('/(app)/realestate')에 ?tab을 붙여 만든 것 -->
 							<a class="pri btn" href={watchHref(cardItem.id)}>점수 근거 보기</a>
 						{/if}
-						{#if stackIds && onbackstack}
+						{#if stackItems.length > 1 && onbackstack}
 							<button type="button" class="back btn" data-testid="stack-back" onclick={onbackstack}
 								>겹친 단지 {stackItems.length}곳으로</button
 							>

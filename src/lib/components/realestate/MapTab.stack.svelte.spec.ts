@@ -279,6 +279,27 @@ describe('겹친 단지 목록 — PC 앵커 카드', () => {
 		expect(card4.textContent).toContain('정자역 상가주택');
 		r.unmount();
 	});
+
+	it('보이는 겹친 단지가 1곳이면 [겹친 단지 n곳으로] 버튼이 없다', async () => {
+		await page.viewport(1280, 800);
+		const r = await open(STACKED.slice(0, 3));
+		cluster().click();
+		await sleep(60);
+		flushSync();
+		(document.querySelector('[data-testid="stack-card"] button.rm-row') as HTMLElement).click();
+		await sleep(60);
+		flushSync();
+		expect(document.querySelector('[data-testid="stack-back"]')?.textContent).toContain(
+			'겹친 단지 3곳으로'
+		);
+		(document.querySelector('.rm-lc[data-g="target"]') as HTMLButtonElement).click();
+		(document.querySelector('.rm-lc[data-g="ref"]') as HTMLButtonElement).click();
+		await sleep(60);
+		flushSync();
+		expect(document.querySelector('[data-testid="complex-card"]')).not.toBeNull();
+		expect(document.querySelector('[data-testid="stack-back"]')).toBeNull();
+		r.unmount();
+	});
 });
 
 describe('겹친 단지 목록 — 모바일 v1.7.6 시트', () => {
@@ -316,6 +337,26 @@ describe('겹친 단지 목록 — 모바일 v1.7.6 시트', () => {
 		expect(document.querySelector('[data-testid="stack-sheet"]')).toBeNull();
 		expect(document.querySelector('[role="dialog"][aria-modal="true"]')).toBeNull();
 		expect(document.activeElement).toBe(cluster());
+		r.unmount();
+	});
+
+	it('모바일에서도 보이는 곳이 1곳이면 [겹친 단지 n곳으로]가 없다', async () => {
+		await page.viewport(414, 896);
+		const r = await open(STACKED.slice(0, 3));
+		cluster().click();
+		await sleep(80);
+		flushSync();
+		(document.querySelector('[data-testid="stack-sheet"] button.rm-row') as HTMLElement).click();
+		await sleep(80);
+		flushSync();
+		expect(document.querySelector('[data-testid="stack-back"]')?.textContent).toContain(
+			'겹친 단지 3곳으로'
+		);
+		(document.querySelector('.rm-lc[data-g="target"]') as HTMLButtonElement).click();
+		(document.querySelector('.rm-lc[data-g="ref"]') as HTMLButtonElement).click();
+		await sleep(80);
+		flushSync();
+		expect(document.querySelector('[data-testid="stack-back"]')).toBeNull();
 		r.unmount();
 	});
 });

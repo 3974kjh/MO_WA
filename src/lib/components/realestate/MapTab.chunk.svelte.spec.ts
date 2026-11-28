@@ -6,6 +6,8 @@ import { render } from 'vitest-browser-svelte';
 import { flushSync } from 'svelte';
 import type { ComplexItem } from '$lib/maps/points';
 import MapTab from './MapTab.svelte';
+import type ComplexMap from './ComplexMap.svelte';
+import StubMap from './MapTab.chunk.stub.svelte';
 
 const item = (o: Partial<ComplexItem> = {}): ComplexItem => ({
 	id: 'a',
@@ -55,8 +57,8 @@ describe('MapTab 청크 한도', () => {
 
 	it('한도를 넘긴 뒤 늦게 성공해도 폴백이 지도로 바뀌지 않는다', async () => {
 		vi.useFakeTimers();
-		let finish: (m: { default: never }) => void = () => {};
-		const pending = new Promise<{ default: never }>((res) => {
+		let finish: (m: { default: typeof ComplexMap }) => void = () => {};
+		const pending = new Promise<{ default: typeof ComplexMap }>((res) => {
 			finish = res;
 		});
 		const r = render(MapTab, {
@@ -75,7 +77,7 @@ describe('MapTab 청크 한도', () => {
 		const el = () => document.querySelector('[data-testid="complex-map"]') as HTMLElement;
 		expect(el()?.dataset.state).toBe('load-failed');
 		expect(el()?.textContent).toContain('지도를 불러오지 못했어요');
-		finish({ default: {} as never });
+		finish({ default: StubMap as unknown as typeof ComplexMap });
 		await Promise.resolve();
 		await Promise.resolve();
 		flushSync();

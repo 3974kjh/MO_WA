@@ -57,7 +57,9 @@ const ITEMS: LocatedItem[] = [
 
 type L = { t: unknown; n: string; f: () => void };
 
-function fakeSdk(flags: { naverContainerStyle?: boolean; noAutoResize?: boolean } = {}) {
+function fakeSdk(
+	flags: { naverContainerStyle?: boolean; noAutoResize?: boolean; setSizeMutates?: boolean } = {}
+) {
 	const ls: L[] = [];
 	const fire = (t: unknown, n: string) =>
 		ls.filter((l) => l.t === t && l.n === n).forEach((l) => l.f());
@@ -118,6 +120,10 @@ function fakeSdk(flags: { naverContainerStyle?: boolean; noAutoResize?: boolean 
 		setSize(s: Size) {
 			this.lastSize = s;
 			calls.setSize++;
+			if (flags.setSizeMutates) {
+				this.el.style.width = `${s.width}px`;
+				this.el.style.height = `${s.height}px`;
+			}
 		}
 		getZoom() {
 			return this.zoom;
@@ -792,7 +798,7 @@ describe('ComplexMap 캔버스 크기', () => {
 });
 
 describe('ComplexMap 크기 변경', () => {
-	async function ready(sdkFlags: { noAutoResize?: boolean } = {}) {
+	async function ready(sdkFlags: { noAutoResize?: boolean; setSizeMutates?: boolean } = {}) {
 		await page.viewport(1280, 800);
 		const sdk = fakeSdk({ naverContainerStyle: true, ...sdkFlags });
 		const loader = fakeLoader(() => Promise.resolve(sdk.ns));
@@ -842,6 +848,19 @@ describe('ComplexMap 크기 변경', () => {
 		expect(last).not.toBeNull();
 		expect(last!.width).toBeGreaterThan(0);
 		expect(last!.height).toBeGreaterThan(0);
+		r.unmount();
+	});
+
+	it('setSize가 캔버스 박스를 바꿔도 같은 픽셀이면 다시 부르지 않는다', async () => {
+		const { r, sdk } = await ready({ noAutoResize: true, setSizeMutates: true });
+		r.container.style.height = '420px';
+		await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+		const mid = sdk.calls.setSize;
+		expect(mid).toBeGreaterThan(0);
+		expect(mid).toBeLessThan(8);
+		await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+		await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+		expect(sdk.calls.setSize).toBe(mid);
 		r.unmount();
 	});
 });

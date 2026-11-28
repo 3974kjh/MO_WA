@@ -440,7 +440,7 @@
 		<div class="sf">
 			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- 주소는 page의 href()가 resolve('/(app)/realestate')에 ?tab을 붙여 만든 것 -->
 			<a class="pri btn" href={watchHref(openSheetItem.id)}>점수 근거 보기</a>
-			{#if stack && !sheetFromList}
+			{#if stackItems.length > 1 && !sheetFromList}
 				<button type="button" class="btn" data-testid="stack-back" onclick={backToStack}
 					>겹친 단지 {stackItems.length}곳으로</button
 				>
