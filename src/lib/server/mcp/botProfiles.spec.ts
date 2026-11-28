@@ -4,6 +4,7 @@ import {
 	BOT_PROFILES,
 	DEFAULT_SCOPES_BY_PROFILE,
 	OPT_IN_SCOPES,
+	scopesMixOptIn,
 	scopesViolateOptIn,
 	defaultScopesForProfile,
 	FINANCE_MANAGER_ONLY_SCOPES,
@@ -49,6 +50,13 @@ describe('botProfiles (BE-12 / design §5-2)', () => {
 		for (const p of BOT_PROFILES) {
 			for (const opt of OPT_IN_SCOPES) expect(defaultScopesForProfile(p)).not.toContain(opt);
 		}
+	});
+
+	it('scopesMixOptIn: market:feed alone is fine, with anything else (even read) is not', () => {
+		expect(scopesMixOptIn(['market:feed'])).toBe(false);
+		expect(scopesMixOptIn(['market:feed', 'market:feed'])).toBe(false);
+		expect(scopesMixOptIn(['market:feed', 'read'])).toBe(true);
+		expect(scopesMixOptIn(['read', 'journal:write'])).toBe(false);
 	});
 
 	it('opt-in list matches the settings screen and is finance-manager only', () => {

@@ -79,6 +79,14 @@
 	// 기본값에 없는 권한(market:feed)은 체크 해제로 시작 — picked는 scopeChoices만으로 채워진다.
 	const optInChoices = $derived(optInScopes(profile));
 	let picked = $derived<string[]>([...scopeChoices]);
+	// 직접 켜는 권한(market:feed)은 단독 발급: 켜면 나머지가 꺼지고, 다른 걸 켜면 이게 꺼진다.
+	function toggle(s: string, on: boolean) {
+		picked = !on
+			? picked.filter((x) => x !== s)
+			: optInChoices.includes(s)
+				? [s]
+				: [...picked.filter((x) => !optInChoices.includes(x)), s];
+	}
 	const scopesValue = $derived(JSON.stringify(picked));
 	// N-3: JS 없이(SSR 그대로) 제출하면 hidden scopes는 빈 값 → 서버가 고른 프로필의 기본 권한을 쓴다.
 	// SSR 값에 재무 관리 봇 기본값(제안 권한 포함)을 박아 두면 프로필만 바꿔 보낼 때 거부된다.
@@ -222,9 +230,7 @@
 							type="checkbox"
 							value={s}
 							checked={picked.includes(s)}
-							onchange={(e) => {
-								picked = e.currentTarget.checked ? [...picked, s] : picked.filter((x) => x !== s);
-							}}
+							onchange={(e) => toggle(s, e.currentTarget.checked)}
 						/>
 						{s}
 					</label>
@@ -246,15 +252,14 @@
 								value={s}
 								checked={picked.includes(s)}
 								disabled={!hydrated}
-								onchange={(e) => {
-									picked = e.currentTarget.checked ? [...picked, s] : picked.filter((x) => x !== s);
-								}}
+								aria-describedby="optin-note"
+								onchange={(e) => toggle(s, e.currentTarget.checked)}
 							/>
 							{OPT_IN_SCOPE_LABEL[s] ?? s}
 						</label>
 					{/each}
-					<p class="muted" data-testid="optin-note">
-						기본으로 켜지지 않아요. 시세 적재 키라면 위 권한을 모두 끄고 이것만 켜 주세요.
+					<p class="muted" id="optin-note" data-testid="optin-note">
+						기본으로 켜지지 않아요. 켜면 다른 권한은 꺼지고 이 권한만 발급돼요.
 					</p>
 				</fieldset>
 			{/if}
@@ -461,6 +466,7 @@
 	.check {
 		display: flex;
 		align-items: center;
+		min-height: 44px;
 		gap: 8px;
 		font-weight: 400;
 	}

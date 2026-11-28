@@ -13,6 +13,7 @@ import {
 	defaultScopesForProfile,
 	isBotProfile,
 	scopesRequireFinanceManager,
+	scopesMixOptIn,
 	scopesViolateOptIn,
 	type BotProfile
 } from '$lib/server/mcp/botProfiles';
@@ -104,7 +105,7 @@ function parseScopesOverride(
 	if (!Array.isArray(parsed) || !parsed.every((s) => typeof s === 'string' && s.length > 0)) {
 		return { ok: false, ruleId: 'R-PERM-10', message: 'scopes must be a JSON string array' };
 	}
-	const scopes = parsed as string[];
+	const scopes = [...new Set(parsed as string[])];
 	const unknown = scopes.find((s) => !isKnownScope(s));
 	if (unknown !== undefined) {
 		return { ok: false, ruleId: 'R-PERM-10', message: '[R-PERM-10] unknown scope' };
@@ -114,6 +115,13 @@ function parseScopesOverride(
 			ok: false,
 			ruleId: 'R-PERM-10',
 			message: '[R-PERM-10] market:feed requires finance-manager'
+		};
+	}
+	if (scopesMixOptIn(scopes)) {
+		return {
+			ok: false,
+			ruleId: 'R-PERM-10',
+			message: '[R-PERM-10] market:feed must be the only scope'
 		};
 	}
 	if (scopesRequireFinanceManager(scopes) && profile !== 'finance-manager') {

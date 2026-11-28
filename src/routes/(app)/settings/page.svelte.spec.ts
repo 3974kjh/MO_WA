@@ -143,16 +143,26 @@ describe('FE-09 설정 화면', () => {
 			)
 		];
 		expect(defaultChecks.map((c) => c.value)).not.toContain('market:feed');
-		// 기본 권한을 모두 끄고 market:feed만 켠다
-		for (const c of defaultChecks) {
-			c.click();
-		}
-		flushSync();
-		expect(JSON.parse(hidden.value)).toEqual([]);
+		// 기본 권한이 켜진 채로 market:feed를 켜면 단독이 된다(나머지는 꺼짐)
+		const defaultsBefore = JSON.parse(hidden.value) as string[];
+		expect(defaultsBefore.length).toBeGreaterThan(1);
 		optin().click();
 		flushSync();
 		expect(optin().checked).toBe(true);
 		expect(JSON.parse(hidden.value)).toEqual(['market:feed']);
+		expect(defaultChecks.every((c) => !c.checked)).toBe(true);
+		// 다른 권한을 켜면 market:feed가 꺼진다 — 같이 보내지 않는다
+		defaultChecks[0]!.click();
+		flushSync();
+		expect(optin().checked).toBe(false);
+		expect(JSON.parse(hidden.value)).toEqual([defaultChecks[0]!.value]);
+		// 다시 켜면 단독
+		optin().click();
+		flushSync();
+		expect(JSON.parse(hidden.value)).toEqual(['market:feed']);
+		// 접근성: 도움말이 체크박스에 연결되어 있다
+		expect(optin().getAttribute('aria-describedby')).toBe('optin-note');
+		expect(container.querySelector('#optin-note')).toBeTruthy();
 		// 프로필을 바꾸면 선택지가 사라지고 값도 되돌아간다
 		const sel = container.querySelector('[data-testid="issue-profile"]') as HTMLSelectElement;
 		sel.value = 'equity-analyst';

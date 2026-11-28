@@ -97,6 +97,7 @@ const MESSAGE_MAP: Array<[RegExp, string]> = [
 		'제안 권한(포지션·원칙)은 재무 관리 봇에만 줄 수 있어요.'
 	],
 	[/unknown scope/i, '알 수 없는 권한 범위예요.'],
+	[/market:feed must be the only scope/i, '시세 적재 권한은 다른 권한과 함께 줄 수 없어요.'],
 	[/market:feed requires finance-manager/i, '시세 적재 권한은 재무 관리 봇에만 줄 수 있어요.'],
 	[/finance-manager must not receive/i, '재무 관리 봇에는 평가·원칙 쓰기 권한을 줄 수 없어요.'],
 	[/not found or already revoked/i, '이미 사용 중지됐거나 찾을 수 없는 키예요.'],

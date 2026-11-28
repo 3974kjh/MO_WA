@@ -68,6 +68,9 @@ describe('권한 범위·만료', () => {
 	});
 	it('서버 안내(알 수 없는 권한·market:feed 프로필)를 한글로, 규칙 ID 없이 보여 준다', () => {
 		expect(settingsErrorMessage('[R-PERM-10] unknown scope')).toBe('알 수 없는 권한 범위예요.');
+		expect(settingsErrorMessage('[R-PERM-10] market:feed must be the only scope')).toBe(
+			'시세 적재 권한은 다른 권한과 함께 줄 수 없어요.'
+		);
 		expect(settingsErrorMessage('[R-PERM-10] market:feed requires finance-manager')).toBe(
 			'시세 적재 권한은 재무 관리 봇에만 줄 수 있어요.'
 		);

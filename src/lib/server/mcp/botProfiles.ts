@@ -70,6 +70,12 @@ export const DEFAULT_SCOPES_BY_PROFILE: Readonly<Record<BotProfile, readonly str
 		custom: Object.freeze(['read'])
 	});
 
+/** Opt-in scopes (market:feed) may only be issued alone — never with read or any other scope. */
+export function scopesMixOptIn(scopes: readonly string[]): boolean {
+	const set = new Set(scopes);
+	return set.size > 1 && [...set].some((s) => (OPT_IN_SCOPES as readonly string[]).includes(s));
+}
+
 /** True when scopes include an opt-in scope that this profile may not hold. */
 export function scopesViolateOptIn(scopes: readonly string[], profile: BotProfile): boolean {
 	return (

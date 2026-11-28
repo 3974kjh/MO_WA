@@ -257,6 +257,28 @@ describe('handleIssueBotKey', () => {
 		});
 
 		it.each([
+			['with read', ['read', 'market:feed']],
+			['with a write scope', ['market:feed', 'prices:write']],
+			['with propose scopes', ['market:feed', 'positions:propose', 'principles:propose']]
+		])('market:feed must be the only scope (%s)', async (_n, scopes) => {
+			const result = await issue({ scopes: JSON.stringify(scopes) });
+			expect(result).toMatchObject({
+				status: 400,
+				data: expect.objectContaining({ ok: false, ruleIds: ['R-PERM-10'] })
+			});
+			expect(issueBotClientRpc).not.toHaveBeenCalled();
+		});
+
+		it('duplicates are collapsed: ["market:feed","market:feed"] is the sole scope; ["read","read"] → ["read"]', async () => {
+			issueBotClientRpc.mockResolvedValue({ data: publicBot(), error: null });
+			await issue({ scopes: JSON.stringify(['market:feed', 'market:feed']) });
+			expect(issueBotClientRpc.mock.calls[0]![1].scopes).toEqual(['market:feed']);
+			issueBotClientRpc.mockClear();
+			await issue({ scopes: JSON.stringify(['read', 'read', 'journal:write', 'read']) });
+			expect(issueBotClientRpc.mock.calls[0]![1].scopes).toEqual(['read', 'journal:write']);
+		});
+
+		it.each([
 			['typo', ['market:feeds']],
 			['wildcard', ['market:*']],
 			['invented', ['read', 'admin:all']],
