@@ -13,7 +13,7 @@
 	 * 시안 v1.7.8(design/realestate-map-spec.md, handoff §24)을 따른다.
 	 * - SDK는 이 컴포넌트가 화면 가까이 올 때(IntersectionObserver 200px)만 요청한다. 키가 없으면 페이지가
 	 *   이 컴포넌트를 불러오지 않는다. 상태: idle → loading → ready | auth-failed | load-failed | timeout |
-	 *   offline | error. 첫 타일(tilesloaded)이 8초 안에 안 오면 timeout, 인증 실패는 언제 와도 폴백.
+	 *   offline | error. 스크립트 요청부터 첫 타일(tilesloaded)까지 하나의 8초 마감(timeout), 인증 실패는 언제 와도 폴백.
 	 * - 마커 = SVG 핀 버튼(등급 4종, 최소 44×44)과 묶음 버튼. 거리 기반 묶음(반경 40·34·28px), 고른 단지는
 	 *   묶지 않는다. 마커 DOM은 createElement(NS)+textContent로만 만든다(innerHTML 없음).
 	 * - 정보창은 우리 카드: PC(≥1024)는 핀에 붙는 카드(+자동 이동), 태블릿은 지도 칸 아래 카드, 모바일은 페이지의
@@ -47,6 +47,7 @@
 		type NaverLoader,
 		type NaverMapsNs
 	} from '$lib/maps/naverLoader';
+	import { clusterZIndex, pinZIndex } from '$lib/maps/markerZ';
 	import { createClusterEl, createPinEl, PIN_SIZE } from '$lib/maps/pinDom';
 	import type { ComplexTier, LocatedItem } from '$lib/maps/points';
 	import ComplexInfo from './ComplexInfo.svelte';
@@ -150,7 +151,9 @@
 			: null
 	);
 	let stackItems = $derived(
-		stackIds ? items.filter((it) => stackIds.includes(it.id)) : ([] as LocatedItem[])
+		stackIds
+			? items.filter((it) => stackIds.includes(it.id) && !hidden.includes(it.tier))
+			: ([] as LocatedItem[])
 	);
 	// 겹친 단지 목록 카드: 정보 카드가 없을 때, 모바일이 아닐 때만(모바일은 시트)
 	let stackCard = $derived(
@@ -189,6 +192,10 @@
 		const l = loader ?? naverLoader();
 		offAuth?.();
 		offAuth = l.onAuthFailure(() => fail('auth-failed'));
+		// 스크립트 + 첫 타일을 하나의 마감으로 본다(명세·화면 문구 '8초 안에').
+		tileTimer = setTimeout(() => {
+			if (mapState === 'loading') fail('timeout');
+		}, tileTimeoutMs);
 		l.load(keyId).then(
 			(n) => {
 				if (mapState === 'loading') init(n);
@@ -249,9 +256,6 @@
 			});
 			zoomLevel = map.getZoom();
 			fitAll();
-			tileTimer = setTimeout(() => {
-				if (mapState === 'loading') fail('timeout');
-			}, tileTimeoutMs);
 			listeners.push(
 				n.Event.once(map, 'tilesloaded', () => {
 					clearTimeout(tileTimer);
@@ -292,8 +296,6 @@
 		}
 		return worldPixel(p.lat, p.lng, map.getZoom());
 	}
-
-	const Z: Record<ComplexTier, number> = { top: 600, target: 500, cand: 400, ref: 300 };
 
 	function addEnt(
 		key: string,
@@ -346,7 +348,7 @@
 					it.lat,
 					it.lng,
 					[z.w / 2, z.tear ? z.h : z.h / 2],
-					sel ? 1000 : Z[it.tier] + (it.score ?? 0),
+					pinZIndex(it.tier, it.score, sel),
 					c.order,
 					fresh
 				);
@@ -365,7 +367,7 @@
 						ev.detail === 0
 					)
 				);
-				addEnt(key, el, c.lat, c.lng, [24, 24], 700 + c.items.length, c.order, fresh);
+				addEnt(key, el, c.lat, c.lng, [24, 24], clusterZIndex(c.items.length), c.order, fresh);
 			}
 		}
 		for (const e of ents.values()) e.marker.setMap(null);
@@ -927,6 +929,9 @@
 	.canvas {
 		position: absolute;
 		inset: 0;
+		/* SDK 마커 zIndex(수백~수천)가 이 쌓임 맥락 안에만 있게 해서 PC 앵커 카드(.iw) 아래로 둔다 */
+		z-index: 0;
+		isolation: isolate;
 	}
 	.rm-map.fb .canvas,
 	.rm-map.fb .count,

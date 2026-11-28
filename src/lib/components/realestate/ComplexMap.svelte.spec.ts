@@ -124,11 +124,17 @@ function fakeSdk() {
 	}
 	class Marker {
 		el: HTMLElement;
-		constructor(o: { map: FakeMap; position: LatLng; icon: { content: HTMLElement } }) {
+		constructor(o: {
+			map: FakeMap;
+			position: LatLng;
+			icon: { content: HTMLElement };
+			zIndex?: number;
+		}) {
 			this.el = o.icon.content;
 			this.el.style.position = 'absolute';
 			this.el.style.left = `${(o.position.lng - 126.5) * 3000}px`;
 			this.el.style.top = `${(38 - o.position.lat) * 3000}px`;
+			if (o.zIndex != null) this.el.style.zIndex = String(o.zIndex);
 			o.map.el.append(this.el);
 		}
 		setMap(m: unknown) {
@@ -599,6 +605,115 @@ describe('ComplexMap 실패·재시도', () => {
 		spacer.remove();
 		await new Promise((res) => setTimeout(res, 100));
 		expect(loader.loads).toBe(1);
+		r.unmount();
+	});
+});
+
+describe('ComplexMap 쌓임·한 마감', () => {
+	it('PC 앵커 카드는 .canvas 안 높은 zIndex 마커(묶음) 위에 있다', async () => {
+		await page.viewport(1280, 800);
+		const sdk = fakeSdk();
+		// 가짜 SDK 좌표식에서 화면 안(~200,200)에 오는 한 점
+		const items = [
+			item({
+				id: 'east',
+				name: '동쪽',
+				lat: 37.933,
+				lng: 126.567,
+				tier: 'target',
+				score: 80.4
+			})
+		];
+		const { r } = await mount(
+			{ items, selectedId: 'east', watchHref: (id: string) => `/w?c=${id}` },
+			sdk
+		);
+		const host = root();
+		host.style.width = '960px';
+		host.style.height = '640px';
+		(host.querySelector('.box') as HTMLElement).style.height = '640px';
+		sdk.fire(sdk.map(), 'idle');
+		await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+		flushSync();
+
+		const card = host.querySelector('[data-testid="complex-card"]') as HTMLElement;
+		expect(card).not.toBeNull();
+		// placeCard가 아직 자리를 못 정해도 쌓임 자체는 보여야 한다
+		card.style.visibility = 'visible';
+		if (!card.style.left) {
+			card.style.left = '80px';
+			card.style.top = '80px';
+		}
+		const btn = [...card.querySelectorAll('a')].find((a) =>
+			a.textContent?.includes('점수 근거 보기')
+		) as HTMLAnchorElement;
+		expect(btn).toBeTruthy();
+		const canvas = host.querySelector('.canvas') as HTMLElement;
+		const cs = getComputedStyle(canvas);
+		expect(cs.isolation === 'isolate' || cs.zIndex !== 'auto').toBe(true);
+		expect(Number(getComputedStyle(card).zIndex)).toBeGreaterThan(Number(cs.zIndex) || 0);
+
+		const cl = document.createElement('button');
+		cl.className = 'rm-cl';
+		cl.type = 'button';
+		cl.textContent = '2';
+		cl.setAttribute('aria-label', '단지 2곳 묶음');
+		const br = btn.getBoundingClientRect();
+		const cr = canvas.getBoundingClientRect();
+		expect(br.width).toBeGreaterThan(0);
+		cl.style.cssText = `position:absolute;z-index:8000;width:48px;height:48px;left:${br.left - cr.left}px;top:${br.top - cr.top}px;background:#333;color:#fff;border:0;border-radius:50%;`;
+		canvas.append(cl);
+
+		const x = br.left + br.width / 2;
+		const y = br.top + br.height / 2;
+		const hit = document.elementFromPoint(x, y);
+		const label =
+			hit instanceof HTMLElement ? `${hit.tagName}.${hit.className}`.trim() : String(hit);
+		expect(hit, `hit=${label} @${x},${y}`).not.toBeNull();
+		expect(card.contains(hit) || btn.contains(hit as Node), `hit=${label}`).toBe(true);
+		r.unmount();
+	});
+
+	it('로더가 걸려도 타일 한도를 넘기면 timeout(스크립트+타일을 이어서 두 배로 기다리지 않는다)', async () => {
+		const loader = fakeLoader(() => new Promise(() => {}));
+		const t0 = Date.now();
+		const r = render(ComplexMap, {
+			items: ITEMS,
+			keyId: KEY,
+			selectedId: null,
+			onselect: () => {},
+			loader,
+			observe: false,
+			tileTimeoutMs: 40
+		});
+		await new Promise((res) => setTimeout(res, 80));
+		flushSync();
+		expect(root().dataset.state).toBe('timeout');
+		expect(Date.now() - t0).toBeLessThan(200);
+		r.unmount();
+	});
+
+	it('로더가 한도의 일부를 써도 남은 시간만 타일을 기다리고, 합은 한 한도를 넘지 않는다', async () => {
+		let resolveNs: (n: unknown) => void = () => {};
+		const sdk = fakeSdk();
+		const loader = fakeLoader(() => new Promise((res) => (resolveNs = res)));
+		const t0 = Date.now();
+		const r = render(ComplexMap, {
+			items: ITEMS,
+			keyId: KEY,
+			selectedId: null,
+			onselect: () => {},
+			loader,
+			observe: false,
+			tileTimeoutMs: 120
+		});
+		await new Promise((res) => setTimeout(res, 80));
+		resolveNs(sdk.ns);
+		// 타일 이벤트를 안 주면 시작 후 ~120ms에 timeout. 이어서 120을 더하면 200ms 뒤에야 폴백이다.
+		await new Promise((res) => setTimeout(res, 80));
+		flushSync();
+		expect(root().dataset.state).toBe('timeout');
+		expect(Date.now() - t0).toBeLessThan(250);
 		r.unmount();
 	});
 });
