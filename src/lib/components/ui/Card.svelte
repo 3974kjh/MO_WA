@@ -52,10 +52,15 @@
 	.card-title {
 		font-size: var(--text-lg);
 		line-height: var(--text-lg--line-height);
+		letter-spacing: -0.02em;
 	}
 	.card-sub {
 		font-size: var(--text-sm);
+		font-weight: 400;
 		color: var(--color-subtle);
+	}
+	.card-head :global(a) {
+		font-weight: 600;
 	}
 	.flush {
 		padding: 0;

@@ -117,10 +117,10 @@
 		min-height: var(--size-tabbar);
 		padding: 0 2px;
 		background: transparent;
-		color: var(--color-subtle);
+		color: var(--color-muted);
 		font-size: 11px;
 		line-height: 14px;
-		font-weight: 600;
+		font-weight: 500;
 	}
 	a.tab:hover {
 		background: transparent;

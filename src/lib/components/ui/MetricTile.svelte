@@ -77,6 +77,7 @@
 	}
 	.tile-label {
 		font-size: var(--text-sm);
+		font-weight: 500;
 		color: var(--color-muted);
 		display: flex;
 		align-items: center;
@@ -85,7 +86,7 @@
 	.tile-value {
 		font-size: var(--text-2xl);
 		line-height: var(--text-2xl--line-height);
-		font-weight: 700;
+		font-weight: 800;
 		margin-top: 4px;
 		letter-spacing: -0.02em;
 		white-space: nowrap;
@@ -102,7 +103,7 @@
 	.tile-delta {
 		font-size: var(--text-sm);
 		margin-top: 2px;
-		font-weight: 600;
+		font-weight: 700;
 	}
 	.tile-foot {
 		margin-top: 8px;

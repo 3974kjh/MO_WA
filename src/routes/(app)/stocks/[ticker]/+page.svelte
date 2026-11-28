@@ -690,6 +690,13 @@
 	.big {
 		font-size: 28px;
 		line-height: 1.2;
+		font-weight: 800;
+	}
+	@media (min-width: 1024px) {
+		.big {
+			font-size: var(--text-3xl);
+			line-height: var(--text-3xl--line-height);
+		}
 	}
 	.jump {
 		flex-wrap: nowrap;
@@ -707,7 +714,7 @@
 		background: var(--color-surface);
 		color: var(--color-muted);
 		font-size: var(--text-sm);
-		font-weight: 600;
+		font-weight: 500;
 	}
 	.grid {
 		display: grid;
@@ -738,9 +745,11 @@
 	.kv dt,
 	.ctx dt {
 		color: var(--color-subtle);
+		font-weight: 400;
 		font-size: var(--text-xs);
 	}
 	.kv dd {
+		color: var(--color-text);
 		font-weight: 600;
 	}
 	.trig,

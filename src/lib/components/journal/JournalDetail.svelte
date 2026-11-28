@@ -168,18 +168,20 @@
 		margin: 0 0 8px;
 	}
 	.kv dt {
-		color: var(--color-muted);
+		color: var(--color-subtle);
+		font-weight: 400;
 		font-size: var(--text-sm);
 	}
 	.kv dd {
 		margin: 0;
 		text-align: right;
+		color: var(--color-text);
 		font-weight: 600;
 	}
 	.mw-sub {
 		font-size: var(--text-sm);
 		color: var(--color-muted);
-		font-weight: 600;
+		font-weight: 700;
 		margin: 6px 0 0;
 	}
 	.memo {

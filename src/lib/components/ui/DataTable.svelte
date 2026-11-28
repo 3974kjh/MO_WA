@@ -173,7 +173,7 @@
 		top: 0;
 		background: var(--color-surface-2);
 		color: var(--color-muted);
-		font-weight: 600;
+		font-weight: 500;
 		text-align: left;
 		padding: 10px 12px;
 		border-bottom: 1px solid var(--color-line);
@@ -192,6 +192,9 @@
 	}
 	.r {
 		text-align: right;
+	}
+	td.r {
+		font-weight: 500;
 	}
 	.c {
 		text-align: center;

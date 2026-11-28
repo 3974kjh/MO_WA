@@ -954,7 +954,7 @@
 	.tabs a {
 		padding: 10px 14px;
 		color: var(--color-muted);
-		font-weight: 600;
+		font-weight: 500;
 		border-bottom: 3px solid transparent;
 		white-space: nowrap;
 		min-height: 44px;
@@ -965,6 +965,7 @@
 	}
 	.tabs a[aria-current='true'] {
 		color: var(--color-accent);
+		font-weight: 700;
 		border-bottom-color: var(--color-accent);
 	}
 	.tabs a:hover {
@@ -1169,10 +1170,13 @@
 	}
 	.kv dt {
 		color: var(--color-subtle);
+		font-weight: 400;
 	}
 	.kv dd {
 		margin: 0;
 		text-align: right;
+		color: var(--color-text);
+		font-weight: 600;
 	}
 	.sheet-body {
 		display: flex;

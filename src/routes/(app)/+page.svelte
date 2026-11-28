@@ -657,6 +657,9 @@
 		margin-top: 12px;
 		font-size: var(--text-sm);
 	}
+	.sum-link a {
+		font-weight: 600;
+	}
 	.tiles {
 		display: grid;
 		grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -799,11 +802,12 @@
 	}
 	.tbl th {
 		font-size: var(--text-xs);
-		font-weight: 600;
+		font-weight: 500;
 		color: var(--color-subtle);
 	}
 	.tbl .r {
 		text-align: right;
+		font-weight: 500;
 	}
 	.t-name {
 		font-weight: 600;

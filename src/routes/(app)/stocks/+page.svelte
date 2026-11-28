@@ -358,6 +358,7 @@
 		background: var(--color-surface-2);
 		color: var(--color-muted);
 		font-size: var(--text-xs);
+		font-weight: 500;
 	}
 	.bn {
 		display: flex;
@@ -412,12 +413,13 @@
 	}
 	th {
 		color: var(--color-muted);
-		font-weight: 600;
+		font-weight: 500;
 		font-size: var(--text-xs);
 	}
 	.r {
 		text-align: right !important;
 		white-space: nowrap;
+		font-weight: 500;
 	}
 	.px b {
 		display: block;

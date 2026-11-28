@@ -26,7 +26,7 @@
 
 <style>
 	.delta {
-		font-weight: 600;
+		font-weight: 700;
 		white-space: nowrap;
 	}
 	.sym {

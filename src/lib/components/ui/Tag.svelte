@@ -28,6 +28,7 @@
 		color: var(--color-muted);
 		background: var(--color-surface);
 		white-space: nowrap;
+		font-weight: 500;
 	}
 	.on {
 		background: var(--color-accent);

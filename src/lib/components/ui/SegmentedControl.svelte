@@ -35,12 +35,13 @@
 		padding: 0 14px;
 		border-radius: calc(var(--radius-sm) - 1px);
 		color: var(--color-muted);
-		font-weight: 600;
+		font-weight: 500;
 		font-size: var(--text-sm);
 	}
 	button[aria-pressed='true'] {
 		background: var(--color-surface);
-		color: var(--color-text);
+		color: var(--color-accent);
+		font-weight: 700;
 		box-shadow: var(--shadow-card);
 	}
 	@media (pointer: coarse) {
