@@ -25,6 +25,7 @@ import {
 const MAX_SNAPSHOT_BATCH = 500;
 import type { InstrumentRow } from '$lib/types/mowa.contract';
 import { McpToolError } from '../errors';
+import { isRealIsoDate } from '../marketCalendar';
 import { filterToolsByScopes, hasScope } from '../scopes';
 import type { McpContext, McpRuleIssue } from '../types';
 import { throwMappedDbError, unwrapDb } from './db-error';
@@ -80,6 +81,113 @@ export const portfolioPlanDistancesSchema = z
 	.passthrough();
 
 type Obj = Record<string, unknown>;
+
+/** Reserved for submit_daily_market_feed — generic write tools may not claim it. */
+const RESERVED_FEED_SOURCE = 'fm:daily-feed';
+const MAX_EXTRA_BYTES = 4096;
+
+const isoDateField = z
+	.string()
+	.max(10)
+	.refine((v) => isRealIsoDate(v), { message: 'must be a real ISO date YYYY-MM-DD' });
+
+const sourceField = z
+	.string()
+	.min(1)
+	.max(64)
+	.regex(/^[A-Za-z0-9_.:-]+$/, 'source: letters, digits, _ . : - only')
+	.refine((v) => v !== RESERVED_FEED_SOURCE, {
+		message: `source '${RESERVED_FEED_SOURCE}' is reserved for submit_daily_market_feed`
+	});
+
+function maxDecimals(places: number) {
+	const f = 10 ** places;
+	return (n: number) => Math.abs(Math.round(n * f) / f - n) <= 1e-9 * Math.max(1, Math.abs(n));
+}
+
+/**
+ * §3-6 field allow-list for record_price_snapshots rows. Server-owned columns
+ * (id, owner_id, source_bot_id, created_at) and unknown keys are rejected.
+ */
+export const priceSnapshotRowSchema = z.strictObject({
+	instrument_id: z.uuid(),
+	as_of: isoDateField,
+	close: z
+		.number()
+		.finite()
+		.positive()
+		.max(1e14)
+		.refine(maxDecimals(6), { message: 'close: at most 6 decimal places' }),
+	currency: z.enum(['KRW', 'USD']),
+	change_pct: z
+		.number()
+		.finite()
+		.min(-99999)
+		.max(99999)
+		.refine(maxDecimals(3), { message: 'change_pct: at most 3 decimal places' })
+		.nullable()
+		.optional(),
+	volume: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+	foreign_net_buy: z
+		.number()
+		.finite()
+		.min(-1e17)
+		.max(1e17)
+		.refine(maxDecimals(2), { message: 'at most 2 decimal places' })
+		.nullable()
+		.optional(),
+	inst_net_buy: z
+		.number()
+		.finite()
+		.min(-1e17)
+		.max(1e17)
+		.refine(maxDecimals(2), { message: 'at most 2 decimal places' })
+		.nullable()
+		.optional(),
+	source: sourceField.nullable().optional(),
+	extra: z
+		.record(z.string(), z.unknown())
+		.refine((v) => JSON.stringify(v).length <= MAX_EXTRA_BYTES, {
+			message: `extra must serialize to ≤ ${MAX_EXTRA_BYTES} bytes`
+		})
+		.optional()
+});
+
+/** Basic sanity ranges for record_market_indicators (wide: history imports must still fit). */
+const INDICATOR_SANITY_RANGE: Readonly<Record<string, readonly [number, number]>> = {
+	kospi: [100, 50000],
+	kosdaq: [50, 20000],
+	usdkrw: [500, 3000],
+	ust10y: [-5, 30],
+	vix: [1, 200]
+};
+
+export const marketIndicatorRowSchema = z.strictObject({
+	key: z.string().max(40),
+	as_of: isoDateField,
+	value: z.number().finite().refine(maxDecimals(6), { message: 'value: at most 6 decimal places' }),
+	change: z
+		.number()
+		.finite()
+		.refine(maxDecimals(6), { message: 'change: at most 6 decimal places' })
+		.nullable()
+		.optional(),
+	change_pct: z
+		.number()
+		.finite()
+		.min(-99999)
+		.max(99999)
+		.refine(maxDecimals(3), { message: 'change_pct: at most 3 decimal places' })
+		.nullable()
+		.optional(),
+	source: sourceField.nullable().optional()
+});
+
+function firstZodIssue(err: z.ZodError, prefix: string): { field: string; message: string } {
+	const iss = err.issues[0];
+	const path = iss?.path?.length ? `${prefix}.${iss.path.join('.')}` : prefix;
+	return { field: path, message: iss?.message ?? 'invalid row' };
+}
 
 function issue(rule: string, message: string, field?: string): McpRuleIssue {
 	return { rule, message, ...(field ? { field } : {}) };
@@ -239,7 +347,16 @@ export async function recordPriceSnapshotsHandler(
 			issue('R-SYS-01', `batch exceeds ${MAX_SNAPSHOT_BATCH} rows`, 'rows')
 		]);
 	}
-	const result = await upsertPriceSnapshots(repo, rows as never);
+	const validRows: Array<z.infer<typeof priceSnapshotRowSchema>> = [];
+	for (let i = 0; i < rows.length; i += 1) {
+		const parsed = priceSnapshotRowSchema.safeParse(rows[i]);
+		if (!parsed.success) {
+			const { field, message } = firstZodIssue(parsed.error, `rows[${i}]`);
+			throw new McpToolError('VALIDATION', [issue('R-VAL-I02', message, field)]);
+		}
+		validRows.push(parsed.data);
+	}
+	const result = await upsertPriceSnapshots(repo, validRows as never);
 	if (result.error) throwMappedDbError(result.error);
 	return { data: { inserted: result.inserted, updated: result.updated } };
 }
@@ -298,15 +415,33 @@ export async function recordMarketIndicatorsHandler(
 			issue('R-SYS-01', `batch exceeds ${MAX_SNAPSHOT_BATCH} rows`, 'rows')
 		]);
 	}
-	for (const r of rows) {
+	const validRows: Array<z.infer<typeof marketIndicatorRowSchema>> = [];
+	for (let i = 0; i < rows.length; i += 1) {
+		const r = rows[i];
 		const key = (r as Obj)?.key;
 		if (typeof key !== 'string' || !REGISTERED_INDICATOR_KEYS.has(key)) {
 			throw new McpToolError('VALIDATION', [
-				issue('R-VAL-I03', `unregistered indicator key: ${String(key)}`, 'key')
+				issue('R-VAL-I03', `unregistered indicator key: ${String(key).slice(0, 40)}`, 'key')
 			]);
 		}
+		const parsed = marketIndicatorRowSchema.safeParse(r);
+		if (!parsed.success) {
+			const { field, message } = firstZodIssue(parsed.error, `rows[${i}]`);
+			throw new McpToolError('VALIDATION', [issue('R-VAL-I03', message, field)]);
+		}
+		const range = INDICATOR_SANITY_RANGE[key];
+		if (range && (parsed.data.value < range[0] || parsed.data.value > range[1])) {
+			throw new McpToolError('VALIDATION', [
+				issue(
+					'R-VAL-I03',
+					`${key} value ${parsed.data.value} outside sanity range ${range[0]}–${range[1]}`,
+					`rows[${i}].value`
+				)
+			]);
+		}
+		validRows.push(parsed.data);
 	}
-	const result = await upsertMarketIndicators(repo, rows as never);
+	const result = await upsertMarketIndicators(repo, validRows as never);
 	if (result.error) throwMappedDbError(result.error);
 	return { data: { upserted: result.count } };
 }
@@ -442,7 +577,7 @@ export function registerMarketTools(reg: ToolRegistrationContext): void {
 		registerAuditedTool(reg, {
 			name: 'record_price_snapshots',
 			title: 'Record price snapshots',
-			description: `시세 스냅샷 배치(≤${MAX_SNAPSHOT_BATCH}).`,
+			description: `시세 스냅샷 배치(≤${MAX_SNAPSHOT_BATCH}). 행 필드 허용 목록만(instrument_id UUID·as_of ISO 실제 날짜·close>0·currency KRW|USD·change_pct·volume·foreign_net_buy·inst_net_buy·source·extra ≤4KB). id·owner_id·source_bot_id·created_at·모르는 키는 거부, source 'fm:daily-feed'는 피드 전용(R-VAL-I02).`,
 			inputSchema: { rows: z.array(z.record(z.string(), z.unknown())) },
 			handler: recordPriceSnapshotsHandler
 		});
@@ -468,7 +603,7 @@ export function registerMarketTools(reg: ToolRegistrationContext): void {
 		registerAuditedTool(reg, {
 			name: 'record_market_indicators',
 			title: 'Record market indicators',
-			description: `시장 지표 배치(≤${MAX_SNAPSHOT_BATCH}). 등록 키만(R-VAL-I03).`,
+			description: `시장 지표 배치(≤${MAX_SNAPSHOT_BATCH}). 등록 키만, 필드 허용 목록(key·as_of ISO·value·change·change_pct·source)과 키별 기본 범위(R-VAL-I03). source 'fm:daily-feed'는 피드 전용.`,
 			inputSchema: { rows: z.array(z.record(z.string(), z.unknown())) },
 			handler: recordMarketIndicatorsHandler
 		});

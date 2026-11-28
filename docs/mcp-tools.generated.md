@@ -1211,7 +1211,7 @@ id로 리포트 1건을 조회한다. include_body=false면 본문을 제외한�
 - **Source:** `src/lib/server/mcp/tools/market.ts`
 - **Required scope:** `indicators:write`
 
-시장 지표 배치(≤500). 등록 키만(R-VAL-I03).
+시장 지표 배치(≤500). 등록 키만, 필드 허용 목록(key·as_of ISO·value·change·change_pct·source)과 키별 기본 범위(R-VAL-I03). source 'fm:daily-feed'는 피드 전용.
 
 #### Input JSON Schema
 
@@ -1303,7 +1303,7 @@ id로 리포트 1건을 조회한다. include_body=false면 본문을 제외한�
 - **Source:** `src/lib/server/mcp/tools/market.ts`
 - **Required scope:** `prices:write`
 
-시세 스냅샷 배치(≤500).
+시세 스냅샷 배치(≤500). 행 필드 허용 목록만(instrument_id UUID·as_of ISO 실제 날짜·close>0·currency KRW|USD·change_pct·volume·foreign_net_buy·inst_net_buy·source·extra ≤4KB). id·owner_id·source_bot_id·created_at·모르는 키는 거부, source 'fm:daily-feed'는 피드 전용(R-VAL-I02).
 
 #### Input JSON Schema
 
