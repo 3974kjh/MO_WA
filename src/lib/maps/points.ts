@@ -1,0 +1,193 @@
+/**
+ * 부동산 지도(FE-12 ⑤): DB 행 → 화면 모델(순수 함수). 읽기 전용이고 값을 고치지 않는다.
+ * - 좌표는 R-VAL-M07 범위(lat 33~39, lng 124~132) 안의 유한수만 쓴다. 범위 밖·빈 값이면 위치 없음으로 보고
+ *   지도에 찍지 않는다(추측 금지). 목록에는 '위치 정보 없음'으로 남긴다.
+ * - 구분(tier): 최우선(is_target & 별 4.0 이상) · 타깃(is_target) · 참고(meta.i7_roles에 secondary) · 후보(그 밖).
+ * - 금액은 만 원 정수 그대로 싣고, 화면이 ×10,000 뒤 formatWon()으로만 표시한다.
+ * 계획: /workspace/mo_wa/naver-map/PLAN.md §3-3·§3-4.
+ */
+
+export type ComplexTier = 'top' | 'target' | 'ref' | 'cand';
+
+/** 지도·범례·목록 순서(앞이 먼저). */
+export const TIER_ORDER: readonly ComplexTier[] = ['top', 'target', 'ref', 'cand'];
+
+export const TIER_LABEL: Record<ComplexTier, string> = {
+	top: '최우선',
+	target: '타깃',
+	ref: '참고',
+	cand: '후보'
+};
+
+/** 최우선 기준 별점 */
+export const TOP_RATING = 4;
+
+export const LAT_RANGE = [33, 39] as const;
+export const LNG_RANGE = [124, 132] as const;
+
+/** `re_complexes`에서 읽는 열(필요 열만). */
+export interface ComplexRow {
+	id: string;
+	name: string;
+	sido: string | null;
+	sigungu: string | null;
+	address: string | null;
+	lat: number | string | null;
+	lng: number | string | null;
+	households: number | null;
+	built_year: number | null;
+	main_type: string | null;
+	total_score: number | string | null;
+	rating: number | string | null;
+	is_target: boolean | null;
+	roles?: unknown;
+}
+
+/** `re_complex_snapshots`에서 읽는 열. */
+export interface SnapshotRow {
+	complex_id: string;
+	as_of: string;
+	med_price: number | null;
+}
+
+export interface ComplexItem {
+	id: string;
+	/** 목록 순서(총점 높은 순, 1부터). 지도 핀 번호와 같다 */
+	rank: number;
+	name: string;
+	/** '경기도 파주시' */
+	region: string;
+	address: string | null;
+	lat: number | null;
+	lng: number | null;
+	households: number | null;
+	builtYear: number | null;
+	mainType: string | null;
+	score: number | null;
+	rating: number | null;
+	tier: ComplexTier;
+	/** 최근 실거래 중앙값(만 원 정수) */
+	medPrice: number | null;
+	priceAsOf: string | null;
+	/** 네이버 지도 검색 링크(키 불필요) */
+	naverUrl: string;
+}
+
+export type LocatedItem = ComplexItem & { lat: number; lng: number };
+
+export interface ComplexMapModel {
+	items: ComplexItem[];
+	located: number;
+	missing: number;
+	/** 가장 최근 가격 기준일(없으면 null) */
+	priceAsOf: string | null;
+}
+
+function toNum(v: unknown): number | null {
+	if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+	if (typeof v === 'string' && v.trim() !== '') {
+		const n = Number(v);
+		return Number.isFinite(n) ? n : null;
+	}
+	return null;
+}
+
+/** 범위 안 좌표만 돌려준다. 하나라도 빠지거나 범위 밖이면 null(둘 다). */
+export function validCoord(lat: unknown, lng: unknown): { lat: number; lng: number } | null {
+	const a = toNum(lat);
+	const o = toNum(lng);
+	if (a == null || o == null) return null;
+	if (a < LAT_RANGE[0] || a > LAT_RANGE[1] || o < LNG_RANGE[0] || o > LNG_RANGE[1]) return null;
+	return { lat: a, lng: o };
+}
+
+function roleList(v: unknown): string[] {
+	return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+}
+
+export function tierOf(row: Pick<ComplexRow, 'is_target' | 'rating' | 'roles'>): ComplexTier {
+	const rating = toNum(row.rating);
+	if (row.is_target) return rating != null && rating >= TOP_RATING ? 'top' : 'target';
+	if (roleList(row.roles).includes('secondary')) return 'ref';
+	return 'cand';
+}
+
+const NAVER_SEARCH = 'https://map.naver.com/p/search/';
+
+/** 네이버 지도 검색 링크. 이름과 시군구를 검색어로 쓴다(주소 대신 — 같은 이름 단지 구분). */
+export function naverSearchUrl(name: string, sigungu: string | null): string {
+	const q = [name.trim(), sigungu?.trim()].filter(Boolean).join(' ');
+	return NAVER_SEARCH + encodeURIComponent(q);
+}
+
+/** 외부 링크는 네이버 지도만 허용한다(PLAN §4-3). */
+export function isAllowedMapLink(href: string): boolean {
+	return href.startsWith(NAVER_SEARCH);
+}
+
+/** 단지별 최신 스냅샷(as_of 가장 늦은 행). */
+export function latestSnapshots(rows: readonly SnapshotRow[]): Map<string, SnapshotRow> {
+	const out = new Map<string, SnapshotRow>();
+	for (const r of rows) {
+		const prev = out.get(r.complex_id);
+		if (!prev || r.as_of > prev.as_of) out.set(r.complex_id, r);
+	}
+	return out;
+}
+
+function compare(a: ComplexItem, b: ComplexItem): number {
+	const sa = a.score ?? -1;
+	const sb = b.score ?? -1;
+	if (sa !== sb) return sb - sa;
+	const ta = TIER_ORDER.indexOf(a.tier);
+	const tb = TIER_ORDER.indexOf(b.tier);
+	if (ta !== tb) return ta - tb;
+	return a.name.localeCompare(b.name, 'ko');
+}
+
+export function buildComplexMapModel(
+	rows: readonly ComplexRow[],
+	snapshots: readonly SnapshotRow[] = []
+): ComplexMapModel {
+	const snap = latestSnapshots(snapshots);
+	const items = rows.map((r): ComplexItem => {
+		const c = validCoord(r.lat, r.lng);
+		const s = snap.get(r.id);
+		const med = s ? toNum(s.med_price) : null;
+		return {
+			id: r.id,
+			rank: 0,
+			name: r.name,
+			region: [r.sido, r.sigungu].filter(Boolean).join(' '),
+			address: r.address,
+			lat: c?.lat ?? null,
+			lng: c?.lng ?? null,
+			households: toNum(r.households),
+			builtYear: toNum(r.built_year),
+			mainType: r.main_type,
+			score: toNum(r.total_score),
+			rating: toNum(r.rating),
+			tier: tierOf(r),
+			medPrice: med != null && Number.isInteger(med) && med > 0 ? med : null,
+			priceAsOf: s?.as_of ?? null,
+			naverUrl: naverSearchUrl(r.name, r.sigungu)
+		};
+	});
+	items.sort(compare);
+	items.forEach((it, i) => (it.rank = i + 1));
+	const located = items.filter(isLocated).length;
+	const priceAsOf = items.reduce<string | null>(
+		(m, it) => (it.priceAsOf && (!m || it.priceAsOf > m) ? it.priceAsOf : m),
+		null
+	);
+	return { items, located, missing: items.length - located, priceAsOf };
+}
+
+export function isLocated(it: ComplexItem): it is LocatedItem {
+	return it.lat != null && it.lng != null;
+}
+
+/** 같은 위치(소수 4자리, 약 10m) 묶음 키 */
+export function coordKey(lat: number, lng: number): string {
+	return `${lat.toFixed(4)},${lng.toFixed(4)}`;
+}
