@@ -100,7 +100,7 @@ function input(
 	args: Record<string, unknown>,
 	repo: RepoClient | null = fakeRepo()
 ): ToolHandlerInput {
-	return { args, ctx: createStubMcpContext(), ruleIds: [], repo };
+	return { args, ctx: createStubMcpContext(), ruleIds: [], repo, auditIntent: async () => {} };
 }
 
 function seed(): void {

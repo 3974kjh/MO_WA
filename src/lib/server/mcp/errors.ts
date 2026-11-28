@@ -11,6 +11,8 @@ import type {
 export class McpToolError extends Error {
 	readonly code: McpErrorCode;
 	readonly errors: McpRuleIssue[];
+	/** Audit-only notes for the error audit row (never sent to the caller). */
+	auditNotes?: McpRuleIssue[];
 
 	constructor(code: McpErrorCode, errors: McpRuleIssue[], message?: string) {
 		super(message ?? (errors.map((e) => e.message).join('; ') || code));

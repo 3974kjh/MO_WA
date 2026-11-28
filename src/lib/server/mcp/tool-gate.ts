@@ -3,6 +3,7 @@ import {
 	errorCodeToAuditResult,
 	fromMcpToolError,
 	internalError,
+	mcpError,
 	McpToolError,
 	mcpSuccess,
 	redactedErrorMessage
@@ -31,6 +32,11 @@ export type AuditedToolHandler = (input: {
 	args: Record<string, unknown>;
 	ctx: McpContext;
 	ruleIds: string[];
+	/**
+	 * Store an audit row BEFORE the handler writes data (fail-closed): rejects with an
+	 * McpToolError when the audit row cannot be stored, so the handler must not write.
+	 */
+	auditIntent: (notes: McpRuleIssue[]) => Promise<void>;
 }) => Promise<{
 	data: Record<string, unknown>;
 	warnings?: McpRuleIssue[];
@@ -38,6 +44,8 @@ export type AuditedToolHandler = (input: {
 	ruleIds?: string[];
 	/** Recorded in mcp_audit_log.warnings only — never returned to the caller (e.g. feed summary). */
 	auditNotes?: McpRuleIssue[];
+	/** Await the final audit row; a failed audit write turns the call into an explicit error. */
+	auditRequired?: boolean;
 }>;
 
 function collectWarnings(data: Record<string, unknown>, explicit?: McpRuleIssue[]): McpRuleIssue[] {
@@ -85,7 +93,37 @@ export async function runAuditedToolCall(options: {
 	}
 
 	try {
-		const outcome = await handler({ args: sanitized.args, ctx, ruleIds: identityRuleIds });
+		const auditIntent = async (notes: McpRuleIssue[]) => {
+			try {
+				await recorder.recordSync({
+					ctx,
+					userId: meta.userId,
+					tool: meta.tool,
+					requestId: meta.requestId,
+					args: sanitized.args,
+					result: 'ok',
+					ruleIds: unique(['R-FEED-31', ...identityRuleIds]),
+					warnings: notes,
+					durationMs: Date.now() - startedAt,
+					ip: meta.ip,
+					userAgent: meta.userAgent
+				});
+			} catch {
+				options.logError?.(`mcp_audit_alert: pre-write audit failed tool=${meta.tool}`);
+				throw new McpToolError('INTERNAL', [
+					{
+						rule: 'R-FEED-32',
+						message: 'audit log unavailable; nothing was written. Retry later.'
+					}
+				]);
+			}
+		};
+		const outcome = await handler({
+			args: sanitized.args,
+			ctx,
+			ruleIds: identityRuleIds,
+			auditIntent
+		});
 		const warnings = collectWarnings(outcome.data, outcome.warnings);
 		const auditNotes = (outcome.auditNotes ?? []).filter((w) => w && typeof w.rule === 'string');
 		const allRuleIds = unique([
@@ -93,20 +131,37 @@ export async function runAuditedToolCall(options: {
 			...(outcome.ruleIds ?? []),
 			...warnings.map((w) => w.rule)
 		]);
-		recorder.record({
+		const okRow = {
 			ctx,
 			userId: meta.userId,
 			tool: meta.tool,
 			requestId: meta.requestId,
 			args: sanitized.args,
-			result: 'ok',
+			result: 'ok' as const,
 			ruleIds: allRuleIds,
 			warnings: [...warnings, ...auditNotes],
 			affectedIds: outcome.affectedIds,
 			durationMs: Date.now() - startedAt,
 			ip: meta.ip,
 			userAgent: meta.userAgent
-		});
+		};
+		if (outcome.auditRequired) {
+			try {
+				await recorder.recordSync(okRow);
+			} catch {
+				// Data is already written; do NOT report plain success.
+				options.logError?.(`mcp_audit_alert: final audit failed after write tool=${meta.tool}`);
+				return mcpError('INTERNAL', [
+					{
+						rule: 'R-FEED-32',
+						message:
+							'data was written but the audit record failed; resend the same feed_id to confirm (idempotent)'
+					}
+				]);
+			}
+		} else {
+			recorder.record(okRow);
+		}
 		const { warnings: _drop, ...dataWithoutDup } = outcome.data;
 		void _drop;
 		return mcpSuccess({
@@ -125,6 +180,7 @@ export async function runAuditedToolCall(options: {
 				result,
 				errorCode: err.code,
 				ruleIds: unique([...identityRuleIds, ...err.errors.map((e) => e.rule)]),
+				...(err.auditNotes?.length ? { warnings: err.auditNotes } : {}),
 				durationMs: Date.now() - startedAt,
 				ip: meta.ip,
 				userAgent: meta.userAgent

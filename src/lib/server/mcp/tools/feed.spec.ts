@@ -12,7 +12,7 @@ import { handleMcp } from '../handler';
 import { createStubMcpContext } from '../testing';
 import { runAuditedToolCall } from '../tool-gate';
 import type { McpToolResult } from '../types';
-import { feedClock, FEED_SOURCE, registerFeedTools } from './feed';
+import { feedClock, FEED_SOURCE, provenanceNotes, registerFeedTools, type FeedPlan } from './feed';
 import { registerMarketTools } from './market';
 
 type Row = Record<string, unknown>;
@@ -33,6 +33,8 @@ class FakeDb {
 		market_indicators: []
 	};
 	writes: Array<{ op: string; table: string; payload: unknown }> = [];
+	/** Test hook: runs before each write; may mutate rows (concurrent writer) or return an error. */
+	hook: ((table: string, op: string) => { code: string; message: string } | void) | null = null;
 	private seq = 1000;
 
 	from(table: string) {
@@ -155,6 +157,8 @@ class Query {
 			if (this.single) return { data: out[0] ?? null, error: null };
 			return { data: out, error: null };
 		}
+		const hooked = this.db.hook?.(this.table, this.mode);
+		if (hooked) return { data: null, error: hooked };
 		const list = (Array.isArray(this.payload) ? this.payload : [this.payload]) as Row[];
 		this.db.writes.push({ op: this.mode, table: this.table, payload: structuredClone(list) });
 		if (this.mode === 'insert') {
@@ -333,21 +337,51 @@ function validPayload(over: Row = {}): Row {
 
 type ToolCb = (args: unknown, extra?: unknown) => Promise<McpToolResult>;
 
-function harness(scopes: string[] = ['market:feed'], owner = OWNER_A) {
+function harness(
+	scopes: string[] = ['market:feed'],
+	owner = OWNER_A,
+	opts: { failSinkAfter?: number } = {}
+) {
 	const ctx = createStubMcpContext({ scopes, ownerId: owner });
 	const tools = new Map<string, ToolCb>();
 	const server = {
 		registerTool: (name: string, _c: unknown, cb: ToolCb) => tools.set(name, cb)
 	} as unknown as McpServer;
 	const sink = createMemoryAuditSink();
-	const recorder = createAuditRecorder({ sink, waitUntil: createImmediateWaitUntil() });
+	let inserts = 0;
+	const flaky =
+		opts.failSinkAfter === undefined
+			? sink
+			: Object.assign(sink, {
+					insert: async (row: Parameters<typeof sink.insert>[0]) => {
+						if (inserts >= opts.failSinkAfter!) throw new Error('sink down');
+						inserts += 1;
+						sink.rows.push(row);
+					}
+				});
+	const alerts: string[] = [];
+	const errors: unknown[] = [];
+	const recorder = createAuditRecorder({
+		sink: flaky,
+		waitUntil: createImmediateWaitUntil(),
+		onError: (e) => errors.push(e)
+	});
 	const repo = forUser(db as never, owner);
-	const reg = { server, ctx, repo, recorder, metaBase: {} };
+	const reg = {
+		server,
+		ctx,
+		repo,
+		recorder,
+		metaBase: {},
+		logError: (m: string) => alerts.push(m)
+	};
 	registerFeedTools(reg);
 	registerMarketTools(reg);
 	return {
 		tools,
 		sink,
+		alerts,
+		errors,
 		async call(name: string, args: Row) {
 			const cb = tools.get(name);
 			if (!cb) throw new Error(`missing ${name}`);
@@ -439,7 +473,8 @@ describe('submit_daily_market_feed — happy path, dry_run, idempotency', () => 
 			source: FEED_SOURCE,
 			close: 273.1
 		});
-		expect(r.extra).toEqual({ feed_id: 'fm-20261130-1' });
+		expect(r.extra).toMatchObject({ feed_id: 'fm-20261130-1' });
+		expect((r.extra as Row).feed_inds).toHaveLength(5);
 		const usd = db.tables.market_indicators!.find(
 			(x) => x.owner_id === OWNER_A && x.key === 'usdkrw' && x.as_of === '2026-11-30'
 		);
@@ -1104,5 +1139,345 @@ describe('scope enforcement', () => {
 		expect(text).toMatch(/owner_id/);
 		expect(text).toMatch(/unrecognized|validation/i);
 		expect(text).not.toMatch(/would_insert/);
+	});
+});
+
+/* ------------------------------------------------------------------------------------------ */
+/* Pre-review fixes (M1–M3, L1–L4, L6, Nits)                                                  */
+/* ------------------------------------------------------------------------------------------ */
+
+const correction035420 = {
+	ticker: '035420',
+	as_of: '2026-11-27',
+	close: 150000,
+	change_pct: -4.459
+};
+
+describe('M1 — a past feed_date cannot be rewritten as normal rows under a new feed_id', () => {
+	const rewritten = () =>
+		validPayload({
+			feed_id: 'fm-20261130-2',
+			prices: (validPayload().prices as Row[]).map((p) =>
+				p.ticker === '035420' ? { ...p, close: 163500, change_pct: 2.06 } : p
+			)
+		});
+
+	it('yesterday + new feed_id + different values → R-FEED-13, nothing written', async () => {
+		setNow('2026-12-01T09:00:00Z');
+		ok(await feed(validPayload()));
+		db.writes = [];
+		const res = await feed(rewritten());
+		expect(rulesOf(res)).toContain('R-FEED-13');
+		expect(db.writes).toEqual([]);
+	});
+
+	it('same feed_id retry of yesterday still converges (unchanged)', async () => {
+		setNow('2026-12-01T09:00:00Z');
+		ok(await feed(validPayload()));
+		db.writes = [];
+		const out = ok(await feed(validPayload()));
+		expect(out.updated).toHaveLength(0);
+		expect(db.writes).toEqual([]);
+	});
+
+	it('the same day may still be re-sent under a new feed_id (design: new feed_id = new submission)', async () => {
+		ok(await feed(validPayload()));
+		const out = ok(await feed(rewritten()));
+		expect(out.updated).toHaveLength(1);
+		expect(priceRow(OWNER_A, '035420', '2026-11-30')!.close).toBe(163500);
+	});
+
+	it('first feed for yesterday may still overwrite backfill rows (not feed-written yet)', async () => {
+		setNow('2026-12-01T09:00:00Z');
+		const out = ok(
+			await feed(
+				validPayload({
+					prices: (validPayload().prices as Row[]).map((p) =>
+						p.ticker === 'GOOGL' ? { ...p, close: 274, change_pct: -1.8 } : p
+					)
+				})
+			)
+		);
+		expect(out.rejected).toEqual([]);
+	});
+});
+
+describe('M2 — indicators are locked per feed_id and per past feed_date', () => {
+	const withInd = (key: string, patch: Row, extra: Row = {}) =>
+		validPayload({
+			...extra,
+			indicators: (validPayload().indicators as Row[]).map((i) =>
+				i.key === key ? { ...i, ...patch } : i
+			)
+		});
+
+	it('same feed_id cannot change a value it already wrote (usdkrw)', async () => {
+		ok(await feed(validPayload()));
+		const res = await feed(withInd('usdkrw', { value: 1345 }));
+		expect(rulesOf(res)).toContain('R-FEED-14');
+	});
+
+	it('same feed_id retry with the same value is unchanged', async () => {
+		ok(await feed(validPayload()));
+		db.writes = [];
+		ok(await feed(validPayload()));
+		expect(db.writes).toEqual([]);
+	});
+
+	it('a past feed_date cannot rewrite feed-written indicators under a new feed_id', async () => {
+		setNow('2026-12-01T09:00:00Z');
+		ok(await feed(validPayload()));
+		const res = await feed(withInd('usdkrw', { value: 1345 }, { feed_id: 'fm-20261130-2' }));
+		expect(rulesOf(res)).toContain('R-FEED-13');
+	});
+
+	it('indicator correction cannot be re-corrected by the same feed_id', async () => {
+		const fix = { key: 'kospi', as_of: '2026-11-27', value: 4700 };
+		ok(await feed(validPayload({ corrections: [fix] })));
+		const res = await feed(validPayload({ corrections: [{ ...fix, value: 4690 }] }));
+		expect(rulesOf(res)).toContain('R-FEED-14');
+		expect(
+			db.tables.market_indicators!.find((r) => r.key === 'kospi' && r.as_of === '2026-11-27')!.value
+		).toBe(4700);
+	});
+
+	it('lock stamps survive in price rows and are carried over a later rewrite', async () => {
+		ok(await feed(validPayload()));
+		const stamps = (priceRow(OWNER_A, '035420', '2026-11-30')!.extra as Row).feed_inds as Row[];
+		expect(stamps.map((s) => s.k)).toContain('usdkrw|2026-11-30');
+		ok(
+			await feed(
+				validPayload({
+					feed_id: 'fm-20261130-2',
+					prices: (validPayload().prices as Row[]).map((p) =>
+						p.ticker === '035420' ? { ...p, close: 163500, change_pct: 2.06 } : p
+					)
+				})
+			)
+		);
+		const after = (priceRow(OWNER_A, '035420', '2026-11-30')!.extra as Row).feed_inds as Row[];
+		expect(after.some((s) => s.feed_id === 'fm-20261130-1' && s.k === 'usdkrw|2026-11-30')).toBe(
+			true
+		);
+	});
+});
+
+const todayWith = (close: number, change_pct: number) =>
+	(validPayload().prices as Row[]).map((p) =>
+		p.ticker === '035420' ? { ...p, close, change_pct } : p
+	);
+const correctedPayload = () =>
+	validPayload({ corrections: [correction035420], prices: todayWith(153000, 2.0) });
+
+describe('M3 — today’s rows are checked against the corrected baseline', () => {
+	it('change_pct consistent with the corrected close is accepted (same call)', async () => {
+		const res = await feed(correctedPayload());
+		const out = ok(res);
+		expect(out.rejected).toEqual([]);
+		expect(priceRow(OWNER_A, '035420', '2026-11-27')!.close).toBe(150000);
+	});
+
+	it('change_pct consistent only with the pre-correction close is now rejected', async () => {
+		const res = await feed(
+			validPayload({ corrections: [correction035420], prices: todayWith(163400, 2.0) })
+		);
+		expect(rulesOf(res)).toContain('R-FEED-08');
+	});
+
+	it('retry after the correction was already stored converges', async () => {
+		ok(await feed(correctedPayload()));
+		db.writes = [];
+		const out = ok(await feed(correctedPayload()));
+		expect(out.updated).toHaveLength(0);
+	});
+});
+
+describe('L1 — conflicts and partial writes are explicit, retryable errors', () => {
+	it('duplicate-key on insert maps to CONFLICT R-FEED-34 (not INTERNAL)', async () => {
+		db.hook = (table, op) =>
+			table === 'price_snapshots' && op === 'insert'
+				? { code: '23505', message: 'duplicate key value violates unique constraint' }
+				: undefined;
+		const body = err(await feed(validPayload()));
+		expect(body.code).toBe('CONFLICT');
+		expect(body.errors.map((e) => e.rule)).toContain('R-FEED-34');
+		expect(JSON.stringify(body)).not.toMatch(/violates|constraint/);
+	});
+
+	it('a row changed by a concurrent writer is not overwritten (compare-and-set) → CONFLICT', async () => {
+		let fired = false;
+		db.hook = (table, op) => {
+			if (!fired && table === 'price_snapshots' && op === 'update') {
+				fired = true;
+				priceRow(OWNER_A, '035420', '2026-11-27')!.close = 161000; // concurrent change
+			}
+		};
+		const body = err(await feed(correctedPayload()));
+		expect(body.code).toBe('CONFLICT');
+		expect(priceRow(OWNER_A, '035420', '2026-11-27')!.close).toBe(161000);
+	});
+
+	it('mid-write failure: explicit error with progress, before-values kept in the error audit row', async () => {
+		db.hook = (table) =>
+			table === 'market_indicators'
+				? { code: 'XX000', message: 'boom (secret detail)' }
+				: undefined;
+		const h = harness();
+		const res = await h.call('submit_daily_market_feed', correctedPayload());
+		const body = err(res);
+		expect(body.code).toBe('INTERNAL');
+		expect(body.errors.map((e) => e.rule)).toContain('R-FEED-33');
+		expect(JSON.stringify(body)).toContain('resend the same feed_id');
+		expect(JSON.stringify(body)).not.toContain('secret detail');
+		const errRow = h.sink.rows.at(-1)!;
+		expect(errRow.result).toBe('error');
+		expect(
+			errRow.warnings.some((w) => /before=/.test(w.message) && w.message.includes('160200'))
+		).toBe(true);
+		// retry converges once the DB is healthy
+		db.hook = null;
+		ok(await feed(correctedPayload()));
+		expect(
+			db.tables.market_indicators!.find((r) => r.key === 'usdkrw' && r.as_of === '2026-11-30')!
+				.value
+		).toBe(1337.9);
+	});
+});
+
+describe('L2 — change_pct is never a silent NULL', () => {
+	it('omitted indicator change_pct is derived from the previous session, else explicit NULL + warning', async () => {
+		const payload = validPayload({
+			indicators: [
+				{ key: 'kospi', as_of: '2026-11-30', value: 4915.68 },
+				{ key: 'usdkrw', as_of: '2026-11-30', value: 1337.9, basis: 'seoul_1530' },
+				{ key: 'ust10y', as_of: '2026-11-27', value: 4.02 },
+				{ key: 'vix', as_of: '2026-11-27', value: 16 }
+			]
+		});
+		db.tables.market_indicators = db.tables.market_indicators!.filter(
+			(r) => !(r.key === 'ust10y' && r.owner_id === OWNER_A)
+		);
+		const dry = ok(await feed({ ...payload, dry_run: true }));
+		expect(dry.warnings?.some((w) => w.rule === 'R-FEED-25')).toBe(true);
+		ok(await feed(payload));
+		const get = (k: string, a: string) =>
+			db.tables.market_indicators!.find((r) => r.key === k && r.as_of === a)!;
+		expect(get('kospi', '2026-11-30').change_pct).toBeCloseTo(4.34, 2);
+		expect(get('usdkrw', '2026-11-30').change_pct).toBeCloseTo(0.6, 1);
+		expect(get('vix', '2026-11-27').change_pct).toBeCloseTo(6.667, 2);
+		expect(get('ust10y', '2026-11-27').change_pct).toBeNull();
+		const upsert = db.writes.find((w) => w.op === 'upsert' && w.table === 'market_indicators')!;
+		for (const row of upsert.payload as Row[]) expect(row).toHaveProperty('change_pct');
+	});
+
+	it('price items must carry change_pct (schema)', async () => {
+		const p = validPayload();
+		(p.prices as Row[])[0] = { ticker: '035420', as_of: '2026-11-30', close: 163400 };
+		expect(rulesOf(await feed(p))).toContain('R-FEED-01');
+	});
+});
+
+describe('L3 — magnitude, decimals and baseline sanity', () => {
+	it('huge or over-precise numbers are refused before any decimal tolerance', async () => {
+		for (const close of [1e11, 1234567890.5, 123456.1234567, 1e-7, 0.1 + 0.2]) {
+			const p = validPayload();
+			(p.prices as Row[])[0] = { ticker: '035420', as_of: '2026-11-30', close, change_pct: 2 };
+			expect(rulesOf(await feed(p)), String(close)).toContain('R-FEED-01');
+		}
+		expect(db.writes).toEqual([]);
+	});
+
+	it('a new row without any previous close in the window is refused (dry_run too)', async () => {
+		db.tables.price_snapshots = db.tables.price_snapshots!.filter(
+			(r) => r.instrument_id !== instId(OWNER_A, 'SGOV')
+		);
+		const dry = ok(await feed({ ...validPayload(), dry_run: true }));
+		expect(
+			dry.rejected.some((r) => r.rule === 'R-FEED-07' && /no previous close/.test(r.message))
+		).toBe(true);
+		expect(rulesOf(await feed(validPayload()))).toContain('R-FEED-07');
+		expect(db.writes).toEqual([]);
+	});
+});
+
+describe('L4 — record_* tools reject a mismatching owner_id', () => {
+	it('record_price_snapshots / record_market_indicators fail instead of silently dropping it', async () => {
+		const h = harness(['prices:write', 'indicators:write']);
+		for (const [tool, row] of [
+			[
+				'record_price_snapshots',
+				{ ticker: '035420', as_of: '2026-11-30', close: 1, currency: 'KRW', source: 'x' }
+			],
+			['record_market_indicators', { key: 'kospi', as_of: '2026-11-30', value: 4000, source: 'x' }]
+		] as const) {
+			const res = await h.call(tool, { owner_id: OWNER_B, rows: [row] });
+			expect(err(res).errors.map((e) => e.rule)).toContain('R-PERM-03');
+		}
+		expect(db.writes).toEqual([]);
+	});
+});
+
+describe('L6 — audit before write; a failed audit fails the call', () => {
+	it('intent row (with before-values) is stored before the first write', async () => {
+		const h = harness();
+		ok(await h.call('submit_daily_market_feed', correctedPayload()));
+		const intent = h.sink.rows.find((r) => r.rule_ids.includes('R-FEED-31'))!;
+		expect(intent).toBeTruthy();
+		const note = intent.warnings.find((w) => w.message.includes('035420|2026-11-27'))!;
+		expect(note.message).toContain('"close":160200');
+		expect(note.message).toContain('source_bot_id');
+		expect(note.message).toContain('"extra"');
+	});
+
+	it('audit sink down → error before any data write, alert logged, nothing changed', async () => {
+		const before = snapshot();
+		const h = harness(['market:feed'], OWNER_A, { failSinkAfter: 0 });
+		const body = err(await h.call('submit_daily_market_feed', validPayload()));
+		expect(body.code).toBe('INTERNAL');
+		expect(body.errors.map((e) => e.rule)).toContain('R-FEED-32');
+		expect(db.writes).toEqual([]);
+		expect(snapshot()).toBe(before);
+		expect(h.alerts.some((a) => /mcp_audit_alert/.test(a))).toBe(true);
+	});
+
+	it('final audit row fails after the write → explicit error (not success), alert logged, retry is a no-op', async () => {
+		const h = harness(['market:feed'], OWNER_A, { failSinkAfter: 1 });
+		const body = err(await h.call('submit_daily_market_feed', validPayload()));
+		expect(body.errors.map((e) => e.rule)).toContain('R-FEED-32');
+		expect(JSON.stringify(body)).toContain('resend the same feed_id');
+		expect(db.writes.length).toBeGreaterThan(0);
+		expect(h.alerts.some((a) => /final audit failed/.test(a))).toBe(true);
+		db.writes = [];
+		const out = ok(await feed(validPayload()));
+		expect(out.inserted).toHaveLength(0);
+		expect(db.writes).toEqual([]);
+	});
+
+	it('dry_run needs no audit intent and still works when the sink is down', async () => {
+		const h = harness(['market:feed'], OWNER_A, { failSinkAfter: 0 });
+		const res = await h.call('submit_daily_market_feed', validPayload({ dry_run: true }));
+		expect(res.isError).toBeFalsy();
+	});
+
+	it('provenance notes mark truncation past the cap', () => {
+		const ops = Array.from({ length: 45 }, (_, i) => ({
+			kind: 'update' as const,
+			key: `T${i}|2026-11-27`,
+			field: `prices[${i}]`,
+			existing: {
+				id: i,
+				close: 1,
+				change_pct: 0,
+				currency: 'KRW',
+				source: 'notion:daily-brief',
+				source_bot_id: null,
+				foreign_net_buy: null,
+				inst_net_buy: null,
+				extra: {}
+			}
+		}));
+		const notes = provenanceNotes({ priceOps: ops, indicatorOps: [] } as unknown as FeedPlan);
+		expect(notes).toHaveLength(41);
+		expect(notes.at(-1)!.message).toMatch(/truncated: 5 more updates not listed \(total 45\)/);
 	});
 });

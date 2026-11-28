@@ -13,6 +13,7 @@ import {
 	listFeedIndicatorWindow,
 	listFeedPriceWindow,
 	listInstruments,
+	FeedRowChangedError,
 	updateFeedPriceRow,
 	upsertMarketIndicators,
 	type FeedIndicatorRow,
@@ -37,7 +38,7 @@ import {
 } from '../marketCalendar';
 import { filterToolsByScopes } from '../scopes';
 import type { McpAffectedId, McpRuleIssue } from '../types';
-import { throwMappedDbError, unwrapDb } from './db-error';
+import { dbErrorToMcpToolError, unwrapDb } from './db-error';
 import {
 	registerAuditedTool,
 	type ToolHandlerInput,
@@ -137,17 +138,28 @@ export const FEED_RULES = {
 	warnGap: 'R-FEED-22',
 	warnVixSkip: 'R-FEED-23',
 	warnDryRunOutOfRange: 'R-FEED-24',
-	auditSummary: 'R-FEED-30'
+	warnNullPct: 'R-FEED-25',
+	auditSummary: 'R-FEED-30',
+	auditIntent: 'R-FEED-31',
+	auditFailed: 'R-FEED-32',
+	partialWrite: 'R-FEED-33',
+	conflict: 'R-FEED-34'
 } as const;
 
 /* ----------------------------------------------------------------------------------------- */
 /* Input schema (zod strict — unknown keys rejected at every level)                          */
 /* ----------------------------------------------------------------------------------------- */
 
+/** Decimal places of the shortest round-trip repr (JSON numbers arrive that way) — exact, no epsilon. */
+function decimalPlaces(n: number): number {
+	const s = String(Math.abs(n));
+	const [mant = '', exp = '0'] = s.split('e');
+	const frac = (mant.split('.')[1] ?? '').length;
+	return Math.max(0, frac - Number(exp));
+}
+
 function maxDecimals(places: number) {
-	const f = 10 ** places;
-	return (n: number) =>
-		Number.isFinite(n) && Math.abs(Math.round(n * f) / f - n) <= EPS * Math.max(1, Math.abs(n));
+	return (n: number) => Number.isFinite(n) && decimalPlaces(n) <= places;
 }
 
 const isoDate = z
@@ -163,7 +175,7 @@ const closeNum = z
 	.number()
 	.finite()
 	.positive()
-	.max(1e12)
+	.max(1e9)
 	.refine(maxDecimals(6), { message: 'at most 6 decimal places' });
 const changePct = z
 	.number()
@@ -252,6 +264,8 @@ type PriceOp = {
 	price?: { close: number; change_pct: number; currency: 'KRW' | 'USD'; correction: boolean };
 	flow?: { foreign: number; inst: number; status: string; src: string };
 	marker?: boolean;
+	/** carries this call's indicator lock stamps (M2) */
+	indStamp?: boolean;
 	/** price values already equal (counted in `unchanged` unless something else is written) */
 	noop?: boolean;
 };
@@ -265,7 +279,12 @@ type IndicatorOp = {
 	change_pct: number | null;
 	before: FeedIndicatorRow | null;
 	correction: boolean;
+	/** change_pct was derived by the server (input omitted it) */
+	changeComputed?: boolean;
 };
+
+/** Indicator lock stamp kept in price rows' extra.feed_inds (no column on market_indicators). */
+export type IndStamp = { feed_id: string; k: string; v: number };
 
 export type FeedPlan = {
 	rejected: FeedRejection[];
@@ -318,6 +337,19 @@ function markersOf(extra: Record<string, unknown>): CorrectionMarker[] {
 			typeof m === 'object' &&
 			typeof (m as CorrectionMarker).feed_date === 'string' &&
 			typeof (m as CorrectionMarker).feed_id === 'string'
+	);
+}
+
+function indStampsOf(extra: Record<string, unknown>): IndStamp[] {
+	const raw = extra.feed_inds;
+	if (!Array.isArray(raw)) return [];
+	return raw.filter(
+		(m): m is IndStamp =>
+			!!m &&
+			typeof m === 'object' &&
+			typeof (m as IndStamp).feed_id === 'string' &&
+			typeof (m as IndStamp).k === 'string' &&
+			typeof (m as IndStamp).v === 'number'
 	);
 }
 
@@ -420,17 +452,27 @@ export function planFeed(input: FeedInput, state: FeedState): FeedPlan {
 	}
 	for (const list of indRowsByKey.values()) list.sort((a, b) => a.as_of.localeCompare(b.as_of));
 
+	// M3: baselines see this call's accepted corrections (corrections are evaluated first).
+	const priceOverlay = new Map<string, { close: number; change_pct: number | null }>();
+	const indOverlay = new Map<string, { value: number; change_pct: number | null }>();
+	const backdated = feedDate !== today;
+	const allStamps = state.priceRows.flatMap((r) => indStampsOf(r.extra));
+
 	const priceAt = (instId: string, asOf: string) =>
 		(rowsByInst.get(instId) ?? []).find((r) => r.as_of === asOf) ?? null;
 	const priceBefore = (instId: string, asOf: string) => {
 		const list = (rowsByInst.get(instId) ?? []).filter((r) => r.as_of < asOf);
-		return list.length ? list[list.length - 1]! : null;
+		const row = list.length ? list[list.length - 1]! : null;
+		const o = row ? priceOverlay.get(`${instId}|${row.as_of}`) : undefined;
+		return row && o ? { ...row, close: o.close, change_pct: o.change_pct } : row;
 	};
 	const indAt = (key: string, asOf: string) =>
 		(indRowsByKey.get(key) ?? []).find((r) => r.as_of === asOf) ?? null;
 	const indBefore = (key: string, asOf: string) => {
 		const list = (indRowsByKey.get(key) ?? []).filter((r) => r.as_of < asOf);
-		return list.length ? list[list.length - 1]! : null;
+		const row = list.length ? list[list.length - 1]! : null;
+		const o = row ? indOverlay.get(`${key}|${row.as_of}`) : undefined;
+		return row && o ? { ...row, value: o.value, change_pct: o.change_pct } : row;
 	};
 
 	// Corrections already applied for this feed_date by another feed_id (once per feed_date).
@@ -536,14 +578,38 @@ export function planFeed(input: FeedInput, state: FeedState): FeedPlan {
 			);
 			return;
 		}
+		if (
+			backdated &&
+			!correction &&
+			existing &&
+			existing.source === FEED_SOURCE &&
+			existing.extra.feed_id !== feedId &&
+			!(
+				near(existing.close, item.close) &&
+				near(existing.change_pct, item.change_pct, 1e-9) &&
+				existing.currency === (side === 'KRX' ? 'KRW' : 'USD')
+			)
+		) {
+			// M1: an earlier feed_date can only be changed by corrections[] (once per feed_date),
+			// never by re-sending it as normal rows under a new feed_id.
+			reject(
+				field,
+				FEED_RULES.correction,
+				`${item.ticker} ${item.as_of} was already written by ${String(existing.extra.feed_id ?? 'another feed')} for past feed_date ${feedDate}; changes go through corrections (once per feed_date)`
+			);
+			return;
+		}
 		const prev = priceBefore(inst.id, item.as_of);
 		const prevTd = previousTradingDay(side, item.as_of);
 		if (!prev) {
-			warn(
-				FEED_RULES.warnNoPrev,
-				`${item.ticker}: no previous close; jump/change_pct checks skipped`,
-				field
+			// L3: no baseline ⇒ no jump/cross-check possible ⇒ refuse (dry_run too). First rows for
+			// a new ticker must come from the manual import path.
+			reject(
+				field,
+				FEED_RULES.jump,
+				`${item.ticker}: no previous close within ${WINDOW_DAYS} days to check against; refused (seed the first row manually)`
 			);
+			return;
 		} else {
 			const ratio = item.close / prev.close - 1;
 			if (Math.abs(ratio) > JUMP_LIMIT[side] + EPS) {
@@ -621,27 +687,13 @@ export function planFeed(input: FeedInput, state: FeedState): FeedPlan {
 			existing,
 			price: { close: item.close, change_pct: item.change_pct, currency, correction }
 		});
+		if (correction) {
+			priceOverlay.set(`${inst.id}|${item.as_of}`, {
+				close: item.close,
+				change_pct: item.change_pct
+			});
+		}
 	};
-
-	prices.forEach((p, i) => evalPrice(p, `prices[${i}]`, false));
-
-	// --- coverage ------------------------------------------------------------------------------
-	const krxOpen = expectedAsOf('KRX', feedDate) !== null;
-	const usOpen = expectedAsOf('NYSE', feedDate) !== null;
-	const expectedTickers = FEED_TICKERS.filter((t) => {
-		const inst = instByTicker.get(t);
-		const side = inst ? (sideOfMarket(inst.market) ?? sideOfTicker(t)) : sideOfTicker(t);
-		return side === 'KRX' ? krxOpen : usOpen;
-	});
-	const present = new Set(prices.map((p) => p.ticker));
-	const missing = expectedTickers.filter((t) => !present.has(t));
-	if (expectedTickers.length > 0 && missing.length > MAX_MISSING_TICKERS) {
-		reject(
-			'prices',
-			FEED_RULES.coverage,
-			`coverage: ${expectedTickers.length - missing.length}/${expectedTickers.length} expected tickers; missing ${missing.join(', ')} (at most ${MAX_MISSING_TICKERS} may be missing)`
-		);
-	}
 
 	// --- indicators (normal + corrections) -----------------------------------------------------
 	const seenInd = new Set<string>();
@@ -726,6 +778,28 @@ export function planFeed(input: FeedInput, state: FeedState): FeedPlan {
 			);
 			return;
 		}
+		if (existing && existing.source === FEED_SOURCE) {
+			// M2: indicators have no feed_id column — the lock lives in price rows' extra.feed_inds.
+			const here = `${item.key}|${item.as_of}`;
+			const mine = allStamps.filter((st) => st.k === here && st.feed_id === feedId);
+			const differs = !near(existing.value, item.value);
+			if (differs && mine.some((st) => !near(st.v, item.value))) {
+				reject(
+					field,
+					FEED_RULES.feedId,
+					`${feedId} already wrote a different ${item.key} for ${item.as_of}; use a new feed_id`
+				);
+				return;
+			}
+			if (differs && backdated && !correction && mine.length === 0) {
+				reject(
+					field,
+					FEED_RULES.correction,
+					`${item.key} ${item.as_of} was already written by the feed for past feed_date ${feedDate}; changes go through corrections (once per feed_date)`
+				);
+				return;
+			}
+		}
 		const prev = indBefore(item.key, item.as_of);
 		if (!prev) {
 			warn(
@@ -767,7 +841,14 @@ export function planFeed(input: FeedInput, state: FeedState): FeedPlan {
 				}
 			}
 		}
-		const changePctVal = item.change_pct ?? null;
+		// L2: never leave change_pct silently NULL — derive it when the input omitted it and a
+		// previous-session value exists; otherwise record an explicit NULL (and say so).
+		let changePctVal: number | null = item.change_pct ?? null;
+		let changeComputed = false;
+		if (changePctVal === null && prev && prev.as_of === previousTradingDay(rule.cal, item.as_of)) {
+			changePctVal = Number(((item.value / prev.value - 1) * 100).toFixed(3));
+			changeComputed = true;
+		}
 		if (
 			existing &&
 			near(existing.value, item.value) &&
@@ -775,6 +856,13 @@ export function planFeed(input: FeedInput, state: FeedState): FeedPlan {
 		) {
 			unchanged += 1;
 			return;
+		}
+		if (changePctVal === null) {
+			warn(
+				FEED_RULES.warnNullPct,
+				`${item.key}: change_pct not provided and not derivable; recorded as explicit NULL`,
+				field
+			);
 		}
 		indicatorOps.push({
 			kind: existing ? 'update' : 'insert',
@@ -784,16 +872,42 @@ export function planFeed(input: FeedInput, state: FeedState): FeedPlan {
 			value: item.value,
 			change_pct: changePctVal,
 			before: existing,
-			correction
+			correction,
+			changeComputed
 		});
+		if (correction)
+			indOverlay.set(`${item.key}|${item.as_of}`, { value: item.value, change_pct: changePctVal });
 	};
-	indicators.forEach((it, i) => evalIndicator(it, `indicators[${i}]`, false));
 
+	// Order matters (M3): corrections first so today's rows are checked against the corrected
+	// baseline, then today's prices, coverage, indicators.
 	corrections.forEach((c, i) => {
 		const field = `corrections[${i}]`;
 		if ('ticker' in c) evalPrice(c, field, true);
 		else evalIndicator(c, field, true);
 	});
+
+	prices.forEach((p, i) => evalPrice(p, `prices[${i}]`, false));
+
+	// --- coverage ------------------------------------------------------------------------------
+	const krxOpen = expectedAsOf('KRX', feedDate) !== null;
+	const usOpen = expectedAsOf('NYSE', feedDate) !== null;
+	const expectedTickers = FEED_TICKERS.filter((t) => {
+		const inst = instByTicker.get(t);
+		const side = inst ? (sideOfMarket(inst.market) ?? sideOfTicker(t)) : sideOfTicker(t);
+		return side === 'KRX' ? krxOpen : usOpen;
+	});
+	const present = new Set(prices.map((p) => p.ticker));
+	const missing = expectedTickers.filter((t) => !present.has(t));
+	if (expectedTickers.length > 0 && missing.length > MAX_MISSING_TICKERS) {
+		reject(
+			'prices',
+			FEED_RULES.coverage,
+			`coverage: ${expectedTickers.length - missing.length}/${expectedTickers.length} expected tickers; missing ${missing.join(', ')} (at most ${MAX_MISSING_TICKERS} may be missing)`
+		);
+	}
+
+	indicators.forEach((it, i) => evalIndicator(it, `indicators[${i}]`, false));
 
 	// --- flows --------------------------------------------------------------------------------
 	const seenFlow = new Set<string>();
@@ -912,9 +1026,14 @@ export function planFeed(input: FeedInput, state: FeedState): FeedPlan {
 		}
 	}
 
+	// M2: every row written in a call that writes indicators carries the indicator lock stamps.
+	if (indicatorOps.length > 0) for (const op of priceOps.values()) op.indStamp = true;
+
 	// Drop pure "touch" ops that change nothing; a no-op row that now carries flows or the
 	// marker is written, so it no longer counts as unchanged.
-	const finalPriceOps = [...priceOps.values()].filter((op) => op.price || op.flow || op.marker);
+	const finalPriceOps = [...priceOps.values()].filter(
+		(op) => op.price || op.flow || op.marker || op.indStamp
+	);
 	unchanged -= finalPriceOps.filter((op) => op.noop).length;
 
 	return {
@@ -942,7 +1061,12 @@ function pickValues(row: FeedPriceRow | null): PriceValues | null {
 	};
 }
 
-function buildExtra(op: PriceOp, feedDate: string, feedId: string): Record<string, unknown> {
+function buildExtra(
+	op: PriceOp,
+	feedDate: string,
+	feedId: string,
+	stamps: readonly IndStamp[]
+): Record<string, unknown> {
 	const old = op.existing?.extra ?? {};
 	const markers = markersOf(old);
 	const addMarker = op.marker || op.price?.correction;
@@ -969,6 +1093,15 @@ function buildExtra(op: PriceOp, feedDate: string, feedId: string): Record<strin
 		extra = { ...old };
 	}
 	if (nextMarkers.length) extra.feed_corrections = nextMarkers;
+	// M2 lock stamps: carried forward on every rewrite; this call's stamps replace same (feed_id,k).
+	const oldStamps = indStampsOf(old);
+	const nextStamps = op.indStamp
+		? [
+				...oldStamps.filter((o) => !stamps.some((n) => n.feed_id === o.feed_id && n.k === o.k)),
+				...stamps
+			].slice(-MAX_IND_STAMPS)
+		: oldStamps;
+	if (nextStamps.length) extra.feed_inds = nextStamps;
 	if (op.flow) {
 		extra.flows = {
 			status: op.flow.status,
@@ -1019,6 +1152,7 @@ function describeIndicatorOp(op: IndicatorOp) {
 			value: op.value,
 			change_pct: op.change_pct,
 			source: FEED_SOURCE,
+			...(op.changeComputed ? { change_pct_computed: true } : {}),
 			...(op.correction ? { correction: true } : {})
 		}
 	};
@@ -1037,15 +1171,93 @@ function requireRepo(repo: RepoClient | null): RepoClient {
 export const feedClock = { now: () => Date.now() };
 
 const MAX_PROVENANCE_NOTES = 40;
+const MAX_IND_STAMPS = 12;
 
-function updateProvenanceNotes(
-	updates: ReadonlyArray<{ table: string; key: string; field: string; before: unknown }>
-): McpRuleIssue[] {
-	return updates.slice(0, MAX_PROVENANCE_NOTES).map((u) => ({
-		rule: FEED_RULES.auditSummary,
-		field: u.field,
-		message: `update ${u.table} ${u.key} before=${JSON.stringify(u.before)}`.slice(0, 300)
-	}));
+function clip(text: string, max: number): string {
+	return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+/**
+ * Audit-only provenance: what every row this call is about to overwrite holds now (value, source,
+ * source_bot_id, flows, extra). Built from the plan BEFORE any write. Over the cap, a final note
+ * says how many were left out.
+ */
+export function provenanceNotes(plan: FeedPlan): McpRuleIssue[] {
+	const all: McpRuleIssue[] = [];
+	for (const op of plan.priceOps) {
+		if (op.kind !== 'update' || !op.existing) continue;
+		const e = op.existing;
+		const before = {
+			close: e.close,
+			change_pct: e.change_pct,
+			currency: e.currency,
+			source: e.source,
+			source_bot_id: e.source_bot_id,
+			foreign_net_buy: e.foreign_net_buy,
+			inst_net_buy: e.inst_net_buy,
+			extra: e.extra
+		};
+		all.push({
+			rule: FEED_RULES.auditSummary,
+			field: op.field,
+			message: clip(`update price_snapshots ${op.key} before=${JSON.stringify(before)}`, 700)
+		});
+	}
+	for (const op of plan.indicatorOps) {
+		if (op.kind !== 'update' || !op.before) continue;
+		const b = op.before;
+		all.push({
+			rule: FEED_RULES.auditSummary,
+			field: op.field,
+			message: clip(
+				`update market_indicators ${op.key}|${op.asOf} before=${JSON.stringify({ value: b.value, change_pct: b.change_pct, source: b.source, source_bot_id: b.source_bot_id })}`,
+				700
+			)
+		});
+	}
+	if (all.length <= MAX_PROVENANCE_NOTES) return all;
+	return [
+		...all.slice(0, MAX_PROVENANCE_NOTES),
+		{
+			rule: FEED_RULES.auditSummary,
+			message: `provenance truncated: ${all.length - MAX_PROVENANCE_NOTES} more updates not listed (total ${all.length})`
+		}
+	];
+}
+
+type WriteProgress = { priceUpdates: number; priceInserts: number; indicators: number };
+
+/** Turn a mid-write failure into an explicit, retry-guiding error that keeps the before-values. */
+function writeFailure(
+	err: unknown,
+	progress: WriteProgress,
+	planned: { priceUpdates: number; priceInserts: number; indicators: number },
+	notes: McpRuleIssue[]
+): McpToolError {
+	const code = (err as { code?: unknown } | null)?.code;
+	const conflict = err instanceof FeedRowChangedError || code === '23505';
+	const mapped = conflict ? null : dbErrorToMcpToolError(err);
+	const done = `price updates ${progress.priceUpdates}/${planned.priceUpdates}, price inserts ${progress.priceInserts}/${planned.priceInserts}, indicators ${progress.indicators}/${planned.indicators}`;
+	const partial = progress.priceUpdates + progress.priceInserts + progress.indicators > 0;
+	const advice = partial
+		? `write failed part-way (${done}); nothing is rolled back — resend the same feed_id to converge`
+		: 'write failed before any row changed; resend the same feed_id';
+	const out = conflict
+		? new McpToolError('CONFLICT', [
+				{
+					rule: FEED_RULES.conflict,
+					message: `a row changed or already exists (concurrent submit?); ${advice}`
+				}
+			])
+		: new McpToolError(mapped?.code ?? 'INTERNAL', [
+				...(mapped?.errors ?? []),
+				{ rule: FEED_RULES.partialWrite, message: advice }
+			]);
+	out.auditNotes = [
+		...notes,
+		{ rule: FEED_RULES.partialWrite, message: `${advice} [${conflict ? 'conflict' : 'db_error'}]` }
+	];
+	return out;
 }
 
 export async function submitDailyMarketFeedHandler(
@@ -1141,55 +1353,92 @@ export async function submitDailyMarketFeedHandler(
 	// a failure part-way is converged by retrying the same feed_id (idempotent: written rows
 	// compare unchanged, the rest are applied). Corrections run with the marker already stamped
 	// on today's rows in the same pass.
+	// L6: the audit row (summary + before-values of every row about to change) is stored BEFORE the
+	// first data write; if it cannot be stored nothing is written (auditIntent rejects).
+	const provenance = provenanceNotes(plan);
+	const intentNotes: McpRuleIssue[] = [summary(false, true), ...provenance];
+	await input.auditIntent(intentNotes);
+
+	const stamps: IndStamp[] = plan.indicatorOps.map((op) => ({
+		feed_id: args.feed_id,
+		k: `${op.key}|${op.asOf}`,
+		v: op.value
+	}));
 	const affected: McpAffectedId[] = [];
 	const updateOps = plan.priceOps.filter((o) => o.kind === 'update');
-	for (const op of updateOps) {
-		const patch: FeedPricePatch = { extra: buildExtra(op, args.feed_date, args.feed_id) };
-		if (op.price) {
-			patch.close = op.price.close;
-			patch.change_pct = op.price.change_pct;
-			patch.currency = op.price.currency;
-			patch.source = FEED_SOURCE;
+	const insertOps = plan.priceOps.filter((o) => o.kind === 'insert' && o.price);
+	const progress: WriteProgress = { priceUpdates: 0, priceInserts: 0, indicators: 0 };
+	try {
+		for (const op of updateOps) {
+			const patch: FeedPricePatch = {
+				extra: buildExtra(op, args.feed_date, args.feed_id, stamps)
+			};
+			if (op.price) {
+				patch.close = op.price.close;
+				patch.change_pct = op.price.change_pct;
+				patch.currency = op.price.currency;
+				patch.source = FEED_SOURCE;
+			}
+			if (op.flow) {
+				patch.foreign_net_buy = op.flow.foreign;
+				patch.inst_net_buy = op.flow.inst;
+			}
+			const e = op.existing!;
+			const r = await updateFeedPriceRow(repo, e.id, patch, {
+				close: e.close,
+				source: e.source,
+				foreign_net_buy: e.foreign_net_buy,
+				inst_net_buy: e.inst_net_buy
+			});
+			if (r.error) throw r.error;
+			progress.priceUpdates += 1;
+			affected.push({ table: 'price_snapshots', id: String(e.id) });
 		}
-		if (op.flow) {
-			patch.foreign_net_buy = op.flow.foreign;
-			patch.inst_net_buy = op.flow.inst;
-		}
-		const r = await updateFeedPriceRow(repo, op.existing!.id, patch);
-		if (r.error) throwMappedDbError(r.error);
-		affected.push({ table: 'price_snapshots', id: String(op.existing!.id) });
-	}
-	const insertRows: FeedPriceInsert[] = plan.priceOps
-		.filter((o) => o.kind === 'insert' && o.price)
-		.map((op) => ({
+		const insertRows: FeedPriceInsert[] = insertOps.map((op) => ({
 			instrument_id: op.instrumentId,
 			as_of: op.asOf,
 			close: op.price!.close,
 			change_pct: op.price!.change_pct,
 			currency: op.price!.currency,
 			source: FEED_SOURCE,
-			extra: buildExtra(op, args.feed_date, args.feed_id),
+			extra: buildExtra(op, args.feed_date, args.feed_id, stamps),
 			...(op.flow ? { foreign_net_buy: op.flow.foreign, inst_net_buy: op.flow.inst } : {})
 		}));
-	if (insertRows.length) {
-		const r = await insertFeedPriceRows(repo, insertRows);
-		if (r.error) throwMappedDbError(r.error);
-		for (const id of r.ids) affected.push({ table: 'price_snapshots', id: String(id) });
-	}
-	if (plan.indicatorOps.length) {
-		const r = await upsertMarketIndicators(
-			repo,
-			plan.indicatorOps.map((op) => ({
-				key: op.key,
-				as_of: op.asOf,
-				value: op.value,
-				...(op.change_pct !== null ? { change_pct: op.change_pct } : {}),
-				source: FEED_SOURCE
-			}))
+		if (insertRows.length) {
+			const r = await insertFeedPriceRows(repo, insertRows);
+			if (r.error) throw r.error;
+			progress.priceInserts = insertRows.length;
+			for (const id of r.ids) affected.push({ table: 'price_snapshots', id: String(id) });
+		}
+		if (plan.indicatorOps.length) {
+			const r = await upsertMarketIndicators(
+				repo,
+				// change_pct is always sent (number or explicit null): a batch with mixed keys must
+				// not turn an omitted value into a silent NULL (L2).
+				plan.indicatorOps.map((op) => ({
+					key: op.key,
+					as_of: op.asOf,
+					value: op.value,
+					change_pct: op.change_pct,
+					source: FEED_SOURCE
+				}))
+			);
+			if (r.error) throw r.error;
+			progress.indicators = plan.indicatorOps.length;
+			for (const op of plan.indicatorOps)
+				affected.push({ table: 'market_indicators', id: `${op.key}:${op.asOf}` });
+		}
+	} catch (err) {
+		throw writeFailure(
+			err,
+			progress,
+			{
+				priceUpdates: updateOps.length,
+				priceInserts: insertOps.length,
+				indicators: plan.indicatorOps.length
+			},
+			intentNotes
 		);
-		if (r.error) throwMappedDbError(r.error);
-		for (const op of plan.indicatorOps)
-			affected.push({ table: 'market_indicators', id: `${op.key}:${op.asOf}` });
 	}
 
 	return {
@@ -1205,9 +1454,9 @@ export async function submitDailyMarketFeedHandler(
 			warnings: plan.warnings
 		},
 		affectedIds: affected,
-		// Provenance (code_review Info): a live update overwrites source/source_bot_id on the row, so
-		// the audit log keeps what each updated row held before (value + source), audit-only.
-		auditNotes: [summary(false, true), ...updateProvenanceNotes(updates)]
+		// Provenance + summary are audit-only; the call fails explicitly if the final row can't be stored.
+		auditNotes: intentNotes,
+		auditRequired: true
 	};
 }
 
@@ -1222,6 +1471,7 @@ export function registerFeedTools(reg: ToolRegistrationContext): void {
 			'서버 게이트(R-FEED-01~14): strict 입력·ISO 날짜, feed_date=오늘/어제(KST)·주말 거부, 시장별 기대 as_of와 휴장 달력(KRX·NYSE·SIFMA), ' +
 			'허용 8종목·기대 종목 중 최대 1개 결측, 급변(KRX ±30%·미국 ±50%)·등락률 교차 확인 0.3%p, 지표 범위·usdkrw 서울 15:30·전일 ±25원, ' +
 			'수급 5종목(주 단위, 기존 가격 행의 수급 칸만), 정정은 직전 거래일·feed_date당 1회, source=fm:daily-feed 고정, 삭제 없음. ' +
+			'직전 종가가 없는 종목·지난 feed_date 재전송(다른 feed_id)은 거부(정정은 corrections로 1회). 같은 feed_id는 지표 포함 값 변경 불가. 감사 기록(쓰기 전 이전 값 포함)을 못 남기면 쓰지 않고 오류. ' +
 			'거부가 하나라도 있으면 아무것도 쓰지 않는다(live는 VALIDATION). 소유자는 키에서만 정한다(R-PERM-03).',
 		inputSchema: feedInputShape,
 		strictInput: true,

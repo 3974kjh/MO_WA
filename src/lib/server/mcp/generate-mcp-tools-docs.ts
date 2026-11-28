@@ -147,7 +147,7 @@ export function collectRegisteredTools(): CapturedTool[] {
 		server: server as unknown as McpServer,
 		ctx: stubCtx(scopesUnlockingAllTools()),
 		repo: null,
-		recorder: { record() {}, async drain() {} },
+		recorder: { record() {}, async recordSync() {}, async drain() {} },
 		metaBase: {}
 	});
 

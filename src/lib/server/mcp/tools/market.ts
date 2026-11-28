@@ -337,6 +337,16 @@ export async function upsertInstrumentHandler(
 export async function recordPriceSnapshotsHandler(
 	input: ToolHandlerInput
 ): Promise<ToolHandlerOutcome> {
+	if (input.ruleIds.includes('R-PERM-03')) {
+		// L4: a foreign/forged identity field is an error, not something to drop silently.
+		throw new McpToolError('VALIDATION', [
+			issue(
+				'R-PERM-03',
+				'identity fields are server-owned; the owner comes from the key',
+				'owner_id'
+			)
+		]);
+	}
 	const repo = requireRepo(input.repo);
 	const rows = input.args.rows;
 	if (!Array.isArray(rows)) {
@@ -405,6 +415,16 @@ export async function recordPortfolioSnapshotHandler(
 export async function recordMarketIndicatorsHandler(
 	input: ToolHandlerInput
 ): Promise<ToolHandlerOutcome> {
+	if (input.ruleIds.includes('R-PERM-03')) {
+		// L4: a foreign/forged identity field is an error, not something to drop silently.
+		throw new McpToolError('VALIDATION', [
+			issue(
+				'R-PERM-03',
+				'identity fields are server-owned; the owner comes from the key',
+				'owner_id'
+			)
+		]);
+	}
 	const repo = requireRepo(input.repo);
 	const rows = input.args.rows;
 	if (!Array.isArray(rows)) {

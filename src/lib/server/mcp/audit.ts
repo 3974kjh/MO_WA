@@ -260,6 +260,11 @@ export type RecordAuditInput = {
 
 export type AuditRecorder = {
 	record(input: RecordAuditInput): void;
+	/**
+	 * Write one audit row and wait for it. Rejects when the row cannot be stored (no owner, sink
+	 * error) so the caller can fail closed. Also reports through `onError` (alert hook).
+	 */
+	recordSync(input: RecordAuditInput): Promise<void>;
 	drain(): Promise<void>;
 };
 
@@ -284,6 +289,19 @@ export function createAuditRecorder(options: CreateAuditRecorderOptions): AuditR
 	return {
 		record(input: RecordAuditInput) {
 			schedule(writeAuditRow(options.sink, input, options.onError));
+		},
+		async recordSync(input: RecordAuditInput) {
+			if (!input.ctx?.ownerId) {
+				const err = new Error(`mcp_audit_skip: no ctx for tool=${input.tool}`);
+				options.onError?.(err);
+				throw err;
+			}
+			try {
+				await writeAuditRow(options.sink, input, options.onError);
+			} catch (err) {
+				options.onError?.(err);
+				throw err;
+			}
 		},
 		async drain() {
 			await Promise.all([...pending]);

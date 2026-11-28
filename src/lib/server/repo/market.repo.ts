@@ -263,6 +263,7 @@ export type FeedPriceRow = {
 	extra: Record<string, unknown>;
 	foreign_net_buy: number | null;
 	inst_net_buy: number | null;
+	source_bot_id: string | null;
 };
 
 export type FeedIndicatorRow = {
@@ -271,7 +272,16 @@ export type FeedIndicatorRow = {
 	value: number;
 	change_pct: number | null;
 	source: string | null;
+	source_bot_id: string | null;
 };
+
+/** Optimistic-lock failure: the row changed between the feed's read and its write. */
+export class FeedRowChangedError extends Error {
+	constructor(id: number) {
+		super(`price row ${id} changed concurrently`);
+		this.name = 'FeedRowChangedError';
+	}
+}
 
 function numOrNull(v: unknown): number | null {
 	if (v === null || v === undefined || v === '') return null;
@@ -294,7 +304,7 @@ export async function listFeedPriceWindow(
 	const ownerId = requireOwnerId(repo);
 	let q = fromRepo(repo, 'price_snapshots')
 		.select(
-			'id, instrument_id, as_of, close, change_pct, currency, source, extra, foreign_net_buy, inst_net_buy'
+			'id, instrument_id, as_of, close, change_pct, currency, source, extra, foreign_net_buy, inst_net_buy, source_bot_id'
 		)
 		.in('instrument_id', [...instrumentIds])
 		.gte('as_of', from)
@@ -313,7 +323,8 @@ export async function listFeedPriceWindow(
 		source: typeof r.source === 'string' ? r.source : null,
 		extra: plainObject(r.extra),
 		foreign_net_buy: numOrNull(r.foreign_net_buy),
-		inst_net_buy: numOrNull(r.inst_net_buy)
+		inst_net_buy: numOrNull(r.inst_net_buy),
+		source_bot_id: typeof r.source_bot_id === 'string' ? r.source_bot_id : null
 	}));
 	return { data: rows, error: null };
 }
@@ -328,7 +339,7 @@ export async function listFeedIndicatorWindow(
 	if (keys.length === 0) return { data: [], error: null };
 	const ownerId = requireOwnerId(repo);
 	let q = fromRepo(repo, 'market_indicators')
-		.select('key, as_of, value, change_pct, source')
+		.select('key, as_of, value, change_pct, source, source_bot_id')
 		.in('key', [...keys])
 		.gte('as_of', from)
 		.lte('as_of', to)
@@ -341,7 +352,8 @@ export async function listFeedIndicatorWindow(
 		as_of: String(r.as_of),
 		value: Number(r.value),
 		change_pct: numOrNull(r.change_pct),
-		source: typeof r.source === 'string' ? r.source : null
+		source: typeof r.source === 'string' ? r.source : null,
+		source_bot_id: typeof r.source_bot_id === 'string' ? r.source_bot_id : null
 	}));
 	return { data: rows, error: null };
 }
@@ -388,11 +400,22 @@ export async function insertFeedPriceRows(
 	return { ids: ((data ?? []) as Array<{ id: number }>).map((r) => Number(r.id)), error: null };
 }
 
-/** Update one owner price row by id; errors unless exactly one row matched. */
+/** Values the row held when the feed read it (compare-and-set guard for concurrent submits). */
+export type FeedPriceExpect = Pick<
+	FeedPriceRow,
+	'close' | 'source' | 'foreign_net_buy' | 'inst_net_buy'
+>;
+
+/**
+ * Update one owner price row by id. With `expect`, the update only applies while close/source/
+ * flows still hold the values the feed read (else FeedRowChangedError). Errors unless exactly
+ * one row matched.
+ */
 export async function updateFeedPriceRow(
 	repo: RepoClient,
 	id: number,
-	patch: FeedPricePatch
+	patch: FeedPricePatch,
+	expect?: FeedPriceExpect
 ): Promise<{ error: Error | null }> {
 	const ownerId = requireOwnerId(repo);
 	const stamps = serverCreateStamps(repo.actor);
@@ -405,10 +428,26 @@ export async function updateFeedPriceRow(
 		.update({ ...safe, source_bot_id: stamps.source_bot_id })
 		.eq('id', id);
 	q = withOwnerFilter(q, ownerId);
+	if (expect) {
+		q = q.eq('close', expect.close);
+		q = expect.source === null ? q.is('source', null) : q.eq('source', expect.source);
+		q =
+			expect.foreign_net_buy === null
+				? q.is('foreign_net_buy', null)
+				: q.eq('foreign_net_buy', expect.foreign_net_buy);
+		q =
+			expect.inst_net_buy === null
+				? q.is('inst_net_buy', null)
+				: q.eq('inst_net_buy', expect.inst_net_buy);
+	}
 	const { data, error } = await q.select('id');
 	if (error) return { error: error as Error };
 	if (!Array.isArray(data) || data.length !== 1) {
-		return { error: new Error(`price row ${id} not updated (owner mismatch or missing)`) };
+		return {
+			error: expect
+				? new FeedRowChangedError(id)
+				: new Error(`price row ${id} not updated (owner mismatch or missing)`)
+		};
 	}
 	return { error: null };
 }

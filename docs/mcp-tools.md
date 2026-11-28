@@ -183,8 +183,15 @@ ID 형식: `R-<영역>-<번호>` (예: `R-VAL-R12`, `R-PERM-04`, `R-SYS-05`).
 - 설명: finance-manager-boot가 평일 브리핑 직후 하루치 종가·지표·수급을 보낸다. `dry_run`(필수)이 `true`면 검증과 바뀔 내용(`would_insert`/`would_update`/`unchanged`/`rejected`/`warnings`)만 돌려주고 아무것도 쓰지 않는다. `false`면 거부가 0건일 때만 쓰고, 하나라도 있으면 `VALIDATION`으로 거절하며 아무것도 쓰지 않는다.
 - 서버 게이트(`R-FEED-01`~`R-FEED-14`): strict 입력(모르는 키 거부)·ISO 실제 날짜, `feed_date`=오늘/어제(KST)·주말 거부, 시장별 기대 `as_of`(KR=feed_date, 미국·vix=직전 NYSE 거래일, ust10y=직전 SIFMA 거래일)와 휴장 달력(`marketCalendar.ts`, 2026–2027, 범위 밖은 dry_run만), 허용 8종목·기대 종목 중 최대 1개 결측, 직전 종가 대비 KRX ±30%·미국 ±50%, 직전 거래일 행이 있으면 등락률 0.3%p 교차 확인, 지표 범위(usdkrw는 `basis:"seoul_1530"` 필수·전일 ±25원), 수급 5종목(단위 주, 기존 가격 행의 수급 칸만, 확정→잠정 덮어쓰기 거부), 기존 행 source가 `notion:daily-brief`/`fm:daily-feed`일 때만 덮어씀, 정정은 직전 거래일 행만·feed_date당 1회(이전 값은 `extra.prev`), 같은 `feed_id`+다른 값 거부.
 - 서버가 정하는 값: owner(키), `instrument_id`, `currency`, `source='fm:daily-feed'`, `extra`, `source_bot_id`(트리거). 삭제 기능 없음.
-- 감사: `mcp_audit_log.warnings`에 `R-FEED-30` 요약(dry_run 여부·건수)을 남긴다(응답에는 안 나옴). 라이브로 기존 행을 갱신하면 행마다 `R-FEED-30` `update <table> <key> before={이전 값·source}` 항목(최대 40건)도 남긴다 — 덮어쓴 행의 이전 값·source 출처 추적용. 쓰기마다 `source_bot_id`가 실리고 DB 트리거가 키의 봇으로 확정한다. 수급만 갱신한 행은 `source`를 바꾸지 않고(`extra.flows`에 feed_id 기록) `source_bot_id`만 갱신된다.
-- 키 발급: 설정 화면 '직접 켜야 하는 권한'에서 체크해야만 켜진다(기본·사전 선택 없음, 재무 관리 봇만). 서버는 알 수 없는 scope와 다른 프로필의 `market:feed`를 거부한다(`R-PERM-10`).
+- 잠금(사전리뷰 M1·M2): 지난 `feed_date`(어제)를 다른 `feed_id`로 일반 행으로 다시 보내 값을 바꾸면 `R-FEED-13`으로 거부 — 지난 날짜는 `corrections`(날짜당 1회)로만 바꾼다(백필 행을 처음 덮는 첫 피드는 허용). 지표는 `market_indicators`에 컬럼이 없어 **가격 행 `extra.feed_inds`**(`{feed_id, k:"key|as_of", v}`, 최대 12개, 재작성 때 이어받음)에 이번 호출이 쓴 지표 값을 찍어 잠근다: 같은 `feed_id`로 다른 값 → `R-FEED-14`, 지난 날짜 재작성 → `R-FEED-13`. 한계: 스탬프는 가격 행당 최근 12개만 이어받고, 45일 조회 창 밖이거나 해당 가격 행이 없으면 잠금 기록도 없다(그때는 범위·전일 대비 게이트만 적용). 지표를 쓰는 호출은 가격 행이 변경 없음이어도 그 행에 스탬프를 다시 쓴다.
+- 기준값(M3): 정정은 먼저 평가해 오늘 행의 급변·등락률 검사가 **정정 후 값**을 기준으로 한다(같은 호출 포함).
+- 기준 종가 없음(L3): 45일 안에 직전 종가가 없는 종목은 dry_run도 live도 `R-FEED-07`로 거부(첫 행은 수동 적재). 수치는 종가 ≤1e9, 소수 자릿수는 문자열 기준으로 정확히 검사.
+- change_pct(L2): 가격 항목은 필수. 지표는 생략하면 직전 세션 값이 있을 때 서버가 계산해 기록하고(`change_pct_computed`), 계산할 수 없으면 명시적 NULL + `R-FEED-25` 경고. 배치에서 조용히 NULL이 되지 않도록 항상 `change_pct`를 보낸다.
+- 감사(L6): `R-FEED-31` **쓰기 전** 감사 행(요약 + 바뀔 행의 이전 값·source·source_bot_id·flows·extra, 최대 40건 + 초과 시 "truncated" 표시)을 먼저 저장한다. 저장에 실패하면 데이터를 쓰지 않고 `INTERNAL` + `R-FEED-32`(알림 로그 `mcp_audit_alert`). 쓰기 도중 실패하면 `R-FEED-33`(진행 상황, 같은 `feed_id` 재전송으로 완결)과 이전 값이 담긴 오류 감사 행. 쓴 뒤 최종 감사 행이 실패하면 성공이 아니라 `R-FEED-32` 오류를 돌려주고(데이터는 이미 기록됨, 같은 `feed_id` 재전송은 변경 없음) 알림을 남긴다. 응답에는 감사 항목이 나오지 않는다.
+- 동시성(L1): 가격 행 갱신은 읽은 값(close·source·수급)이 그대로일 때만 적용(compare-and-set)하고, 바뀌었거나 중복 키(23505)면 `CONFLICT` + `R-FEED-34`로 돌려준다. 한계: 한 호출 전체가 하나의 트랜잭션은 아니고(마이그레이션 없이는 불가), 지표 upsert는 CAS가 없다 — 같은 `feed_id`의 동시 호출은 한쪽이 CONFLICT를 받고 재전송하면 수렴한다. 서로 다른 `feed_id`의 동시 제출은 직렬화되지 않는다(봇이 한 번에 한 호출만 보내야 한다).
+- 빠진 날짜 메우기(L5): `feed_date`는 오늘/어제만이라 놓친 날은 피드로 채울 수 없다(범위 밖). 필요하면 별도 수동 적재 또는 PM 결정.
+- 키 발급: 설정 화면 '직접 켜야 하는 권한'에서 체크해야만 켜진다(기본·사전 선택 없음, 재무 관리 봇만). `market:feed`는 **단독 scope**로만 발급된다 — `read`를 포함한 다른 scope와 함께 보내면 서버가 거부하고(`R-PERM-10`), 화면도 켜면 나머지를 끈다. 서버는 알 수 없는 scope·다른 프로필의 `market:feed`·중복 scope(합쳐서 한 번만 저장)를 처리한다.
+- `record_price_snapshots`·`record_market_indicators`는 다른 `owner_id`를 조용히 버리지 않고 `R-PERM-03`으로 거부한다(L4).
 - 입력·출력 스키마: `docs/mcp-tools.generated.md`.
 
 각 툴 절은 스키마를 채울 때 다음 형식으로 적는다.

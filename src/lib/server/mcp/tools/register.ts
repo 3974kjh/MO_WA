@@ -26,6 +26,8 @@ export type ToolHandlerInput = {
 	ctx: McpContext;
 	ruleIds: string[];
 	repo: RepoClient | null;
+	/** Fail-closed audit row written before data writes (see AuditedToolHandler). */
+	auditIntent: (notes: McpRuleIssue[]) => Promise<void>;
 };
 
 export type ToolHandlerOutcome = {
@@ -35,6 +37,8 @@ export type ToolHandlerOutcome = {
 	ruleIds?: string[];
 	/** Audit-only notes (mcp_audit_log.warnings); not part of the tool response. */
 	auditNotes?: McpRuleIssue[];
+	/** Await the final audit row; failure ⇒ explicit error (tools that write data). */
+	auditRequired?: boolean;
 };
 
 export type ToolHandler = (input: ToolHandlerInput) => Promise<ToolHandlerOutcome>;
