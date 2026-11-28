@@ -62,7 +62,7 @@ export interface PinGeom {
 	x: number;
 	y: number;
 	tear: boolean;
-	/** 물방울 핀 높이(최우선 50, 관심 43), 그 밖은 0 */
+	/** 물방울 핀 높이(최우선 50, 일반 43), 그 밖은 0 */
 	pinH: number;
 }
 

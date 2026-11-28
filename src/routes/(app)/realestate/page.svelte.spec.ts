@@ -137,7 +137,11 @@ describe('FE-12 /realestate 지도 탭', () => {
 		expect(
 			performance.getEntriesByType('resource').some((e) => e.name.includes('map.naver.com'))
 		).toBe(false);
-		expect(text()).toContain('지도가 아직 연결되지 않았어요');
+		expect(document.querySelector('[data-testid="map-fallback"] .t')?.textContent).toBe(
+			'지도를 불러오지 못했어요'
+		);
+		expect(text()).toContain('지도 연결 설정이 끝나지 않아 이 자리의 지도를 열 수 없어요');
+		expect(text()).not.toContain('관리자');
 		expect(document.querySelector('a[href="#re-list"]')?.textContent).toBe(
 			'지도 건너뛰고 단지 목록으로'
 		);
@@ -183,7 +187,7 @@ describe('FE-12 /realestate 지도 탭', () => {
 		const chips = [...document.querySelectorAll('.rm-lc')] as HTMLButtonElement[];
 		expect(chips.map((c) => c.getAttribute('aria-label'))).toEqual([
 			'최우선 1곳 표시',
-			'관심 1곳 표시'
+			'일반 1곳 표시'
 		]);
 		chips[0].click();
 		flushSync();

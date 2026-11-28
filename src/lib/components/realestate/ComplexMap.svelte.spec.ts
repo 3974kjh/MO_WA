@@ -503,7 +503,7 @@ describe('ComplexMap 실패·재시도', () => {
 		r.unmount();
 	});
 
-	it('인증 실패: 지도를 만든 뒤에 와도 폴백(role=alert, 지도 정리), 다시 시도하기는 페이지를 다시 불러오고 설명이 접혀 있다', async () => {
+	it('인증 실패: 지도를 만든 뒤에 와도 폴백(role=alert, 지도 정리), 다시 시도하기는 페이지를 다시 불러오고 관리자·설정 문구가 없다', async () => {
 		const reloadPage = vi.fn();
 		const onstatus = vi.fn();
 		const { r, sdk, loader } = await mount({ reloadPage, onstatus });
@@ -516,12 +516,13 @@ describe('ComplexMap 실패·재시도', () => {
 		expect(sdk.calls.destroy).toBeGreaterThan(0);
 		const fb = root().querySelector('[data-testid="map-fallback"]')!;
 		expect(fb.getAttribute('role')).toBe('alert');
-		expect(fb.textContent).toContain('지도 사용 허용 설정에 문제가 있는 것 같아요');
-		expect(fb.textContent).toContain('설정을 확인한 뒤 다시 시도해 주세요');
-		const why = fb.querySelector('details')!;
-		expect(why.open).toBe(false);
-		expect(why.querySelector('summary')?.textContent).toBe('왜 이런 일이 생기나요?');
-		expect(why.textContent).toContain('허용 목록에 없거나');
+		expect(fb.querySelector('.t')?.textContent).toBe('지도를 불러오지 못했어요');
+		expect(fb.textContent).toContain(
+			'지도를 쓸 수 있는 상태가 아닌 것 같아요. 잠시 뒤 다시 시도해 주세요.'
+		);
+		expect(fb.textContent).toContain('‘네이버 지도에서 보기’ 링크로 위치를 볼 수 있어요');
+		expect(fb.querySelector('details')).toBeNull(); // 허용 URL·관리자를 가리키는 설명 없음
+		expect(fb.textContent).not.toMatch(/관리자|허용 목록|등록/);
 		expect(fb.textContent).not.toMatch(/ncp|PUBLIC_|KEY|navermap/i);
 		[...fb.querySelectorAll('button')]
 			.find((b) => b.textContent?.includes('다시 시도하기'))!
@@ -534,7 +535,7 @@ describe('ComplexMap 실패·재시도', () => {
 	it.each([
 		['timeout', '8초 안에 열리지 않았어요'],
 		['load-failed', '지도를 불러오지 못했어요'],
-		['offline', '인터넷에 연결되어 있지 않아요']
+		['offline', '인터넷에 연결되어 있지 않은 것 같아요']
 	] as const)('로더 실패 %s → 폴백 문구', async (reason, text) => {
 		const r = render(ComplexMap, {
 			items: ITEMS,
@@ -548,6 +549,10 @@ describe('ComplexMap 실패·재시도', () => {
 		flushSync();
 		expect(root().dataset.state).toBe(reason);
 		expect(root().textContent).toContain(text);
+		// 제목은 모두 같고(관리자·코드 문구 없음), 목록·네이버 링크 안내가 이어진다
+		expect(root().querySelector('.t')?.textContent).toBe('지도를 불러오지 못했어요');
+		expect(root().textContent).toContain('‘네이버 지도에서 보기’ 링크로 위치를 볼 수 있어요');
+		expect(root().textContent).not.toMatch(/관리자|허용 목록|PUBLIC_|ncp/i);
 		r.unmount();
 	});
 

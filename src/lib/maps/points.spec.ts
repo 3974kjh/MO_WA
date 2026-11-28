@@ -65,17 +65,26 @@ describe('지도 데이터 매핑(points)', () => {
 		expect(b.lng).toBeNull();
 	});
 
-	it('구분(시안 v1.7.8): 최우선(관심·총점 75↑) · 관심 · 후보 · 참고(secondary)', () => {
-		expect(tierOf({ is_target: true, total_score: 75, roles: [] })).toBe('top');
-		expect(tierOf({ is_target: true, total_score: '78.60', roles: [] })).toBe('top');
-		expect(tierOf({ is_target: true, total_score: 74.9, roles: [] })).toBe('target');
-		expect(tierOf({ is_target: true, total_score: null, roles: [] })).toBe('target');
-		expect(tierOf({ is_target: false, total_score: null, roles: ['secondary', 'candidate'] })).toBe(
-			'ref'
-		);
-		expect(tierOf({ is_target: false, total_score: null, roles: ['candidate'] })).toBe('cand');
-		expect(tierOf({ is_target: false, total_score: null, roles: 'x' })).toBe('cand');
-		expect(TIER_ORDER.map((t) => TIER_LABEL[t])).toEqual(['최우선', '관심', '후보', '참고']);
+	it('구분: 최우선(타깃 중 봇 별점 4.0↑) · 일반 · 후보 · 참고(secondary) — 총점은 기준이 아니다', () => {
+		const t = (is_target: boolean, rating: number | string | null, roles: unknown = []) =>
+			tierOf({ is_target, rating, roles });
+		expect(t(true, 4)).toBe('top');
+		expect(t(true, '4.0')).toBe('top');
+		expect(t(true, 5)).toBe('top');
+		expect(t(true, 3.5)).toBe('target');
+		expect(t(true, null)).toBe('target');
+		// 총점이 아무리 높아도(예: 99) 별점이 없으면 최우선이 아니다 — 화면 쪽 점수 규칙 없음
+		expect(
+			tierOf({ is_target: true, rating: 3, roles: [], total_score: 99 } as Parameters<
+				typeof tierOf
+			>[0])
+		).toBe('target');
+		// 타깃이 아니면 별점이 있어도 최우선이 아니다
+		expect(t(false, 4, ['secondary'])).toBe('ref');
+		expect(t(false, null, ['secondary', 'candidate'])).toBe('ref');
+		expect(t(false, null, ['candidate'])).toBe('cand');
+		expect(t(false, null, 'x')).toBe('cand');
+		expect(TIER_ORDER.map((x) => TIER_LABEL[x])).toEqual(['최우선', '일반', '후보', '참고']);
 	});
 
 	it('순서: 구분(최우선→관심→후보→참고) → 총점 높은 순(없으면 뒤) → 이름, rank는 1부터', () => {
