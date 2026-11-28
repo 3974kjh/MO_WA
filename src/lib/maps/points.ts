@@ -25,6 +25,8 @@ export const TIER_LABEL: Record<ComplexTier, string> = {
  * 최우선 기준: 봇(house-signal 계열)이 `re_complexes.rating`에 기록한 별점 4.0 이상(PLAN §3-4 '별 4.0↑').
  * 스키마에 '최우선' 등급을 직접 담은 열은 없어 봇 별점을 그대로 읽는다(계산·보정 없음).
  * `null`로 바꾸면 어떤 단지도 최우선이 아니다(PM이 별점 기준을 원치 않을 때 한 줄로 끈다).
+ * 출처: house-signal 지도 등급 규칙 dashboard/map_block.py(TIERS, `tier = 'p' if t['stars'] >= 4.0`)와 같다.
+ * 타깃 중 별 4.0 이상 = 최우선 타깃이므로 봇 등급 그대로다. PM 확정(2026-11-28 23:04 KST).
  */
 export const TOP_RATING: number | null = 4;
 
