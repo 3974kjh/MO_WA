@@ -3,10 +3,11 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import { page } from 'vitest/browser';
 import { flushSync } from 'svelte';
 import { MapLoadError, type NaverLoader } from '$lib/maps/naverLoader';
 import type { LocatedItem } from '$lib/maps/points';
-import ComplexMap from './ComplexMap.svelte';
+import ComplexMap, { WHEEL_HINT_MS } from './ComplexMap.svelte';
 
 const KEY = 'placeholderKey01';
 
@@ -60,7 +61,7 @@ function fakeSdk() {
 	const ls: L[] = [];
 	const fire = (t: unknown, n: string) =>
 		ls.filter((l) => l.t === t && l.n === n).forEach((l) => l.f());
-	const calls = { fitBounds: 0, panTo: 0, destroy: 0, maps: 0 };
+	const calls = { fitBounds: 0, panTo: 0, panBy: 0, destroy: 0, maps: 0 };
 	const holder: { current: FakeMap | null } = { current: null };
 	class LatLng {
 		constructor(
@@ -84,9 +85,10 @@ function fakeSdk() {
 		zoom: number;
 		constructor(
 			public el: HTMLElement,
-			opts: { zoom: number }
+			opts: { zoom: number } & Record<string, unknown>
 		) {
 			this.zoom = opts.zoom;
+			this.options = opts;
 			calls.maps++;
 			holder.current = this;
 		}
@@ -98,6 +100,18 @@ function fakeSdk() {
 			fire(this, 'zoom_changed');
 		}
 		setCenter() {}
+		options: Record<string, unknown>;
+		getBounds() {
+			return { hasLatLng: () => true };
+		}
+		getProjection() {
+			// 줌 z에서 경도 1도 = 2^z 픽셀 정도의 단순 투영(거리 기반 묶음 시험용)
+			const k = 2 ** this.zoom;
+			return { fromCoordToOffset: (c: LatLng) => ({ x: c.lng * k, y: -c.lat * k }) };
+		}
+		panBy() {
+			calls.panBy++;
+		}
 		fitBounds() {
 			calls.fitBounds++;
 		}
@@ -110,8 +124,11 @@ function fakeSdk() {
 	}
 	class Marker {
 		el: HTMLElement;
-		constructor(o: { map: FakeMap; icon: { content: HTMLElement } }) {
+		constructor(o: { map: FakeMap; position: LatLng; icon: { content: HTMLElement } }) {
 			this.el = o.icon.content;
+			this.el.style.position = 'absolute';
+			this.el.style.left = `${(o.position.lng - 126.5) * 3000}px`;
+			this.el.style.top = `${(38 - o.position.lat) * 3000}px`;
 			o.map.el.append(this.el);
 		}
 		setMap(m: unknown) {
@@ -129,7 +146,8 @@ function fakeSdk() {
 			ls.push(l);
 			return l;
 		},
-		removeListener: (arr: L[]) => arr.forEach((l) => ls.splice(ls.indexOf(l), 1))
+		removeListener: (arr: L[]) => arr.forEach((l) => ls.splice(ls.indexOf(l), 1)),
+		trigger: () => {}
 	};
 	const ns = {
 		LatLng,
@@ -138,7 +156,7 @@ function fakeSdk() {
 		Marker,
 		Map: FakeMap,
 		Event,
-		Position: { TOP_RIGHT: 3 }
+		Position: { TOP_RIGHT: 3, BOTTOM_RIGHT: 5, BOTTOM_LEFT: 4 }
 	};
 	return { ns, fire, calls, map: () => holder.current! };
 }
@@ -167,92 +185,295 @@ function fakeLoader(result: () => Promise<unknown>) {
 
 const root = () => document.querySelector('[data-testid="complex-map"]') as HTMLElement;
 const tick = () => new Promise((r) => setTimeout(r, 0));
+const box = () => root().querySelector('[role="group"]') as HTMLElement;
+const pins = () => [...root().querySelectorAll('.rm-pin')] as HTMLButtonElement[];
+const key = (el: Element, k: string, o: KeyboardEventInit = {}) =>
+	el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...o }));
 
-describe('ComplexMap', () => {
-	it('첫 타일이 오면 ready · 가까운 단지는 묶음, 먼 단지는 핀 · 마커는 이름 있는 버튼', async () => {
-		const sdk = fakeSdk();
-		const loader = fakeLoader(() => Promise.resolve(sdk.ns));
-		const onselect = vi.fn();
-		const r = render(ComplexMap, {
-			items: ITEMS,
-			keyId: KEY,
-			selectedId: null,
-			onselect,
-			loader,
-			observe: false
-		});
-		await tick();
-		expect(root().dataset.state).toBe('loading');
-		sdk.fire(sdk.map(), 'tilesloaded');
-		flushSync();
+/** 가까운 둘(a,b)·먼 하나(c)를 쓰는 기본 화면 */
+async function mount(props: Record<string, unknown> = {}, sdk = fakeSdk()) {
+	const onselect = vi.fn();
+	const ondeselect = vi.fn();
+	const onsay = vi.fn();
+	const loader = fakeLoader(() => Promise.resolve(sdk.ns));
+	const r = render(ComplexMap, {
+		items: ITEMS,
+		keyId: KEY,
+		selectedId: null,
+		onselect,
+		ondeselect,
+		onsay,
+		loader,
+		observe: false,
+		...props
+	});
+	await tick();
+	sdk.fire(sdk.map(), 'tilesloaded');
+	flushSync();
+	return { r, sdk, onselect, ondeselect, onsay, loader };
+}
+
+/** 십자 배치(가운데·동·서·북) — 방향키 이동 시험용. 3000px/도 → 60px 간격 */
+const CROSS: LocatedItem[] = [
+	item({ id: 'mid', name: '가운데', lat: 37.5, lng: 127.0, tier: 'top', score: 80 }),
+	item({ id: 'east', name: '동쪽', lat: 37.5, lng: 127.02, tier: 'target' }),
+	item({ id: 'west', name: '서쪽', lat: 37.5, lng: 126.98, tier: 'cand', score: null }),
+	item({ id: 'north', name: '북쪽', lat: 37.52, lng: 127.0, tier: 'ref', score: null })
+];
+
+describe('ComplexMap 상태·마커', () => {
+	it('첫 타일이 오면 ready · SDK 옵션은 휠·키보드 단축키 끔 · 가까운 단지는 묶음, 먼 단지는 핀', async () => {
+		const { r, sdk, loader } = await mount();
 		expect(root().dataset.state).toBe('ready');
 		expect(loader.load).toHaveBeenCalledWith(KEY);
-		const cluster = root().querySelector('.cm-cluster')!;
-		expect(cluster.getAttribute('aria-label')).toBe('단지 2곳 묶음, 눌러서 확대');
-		const pin = root().querySelector('.cm-pin') as HTMLButtonElement;
-		expect(pin.tagName).toBe('BUTTON');
-		expect(pin.getAttribute('aria-label')).toBe('3번 다단지, 참고');
-		expect(pin.textContent).toBe('참');
-		expect(pin.getAttribute('aria-pressed')).toBe('false');
+		expect(sdk.map().options.scrollWheel).toBe(false);
+		expect(sdk.map().options.keyboardShortcuts).toBe(false);
+		expect(sdk.map().options.zoomControl).toBe(false);
+		const cl = root().querySelector('.rm-cl') as HTMLButtonElement;
+		expect(cl.getAttribute('aria-label')).toBe('단지 2곳 묶음, 최우선 1곳 포함. 누르면 확대해요');
+		expect(cl.querySelector('.star')).not.toBeNull();
+		expect(cl.textContent).toBe('2');
+		expect(pins()).toHaveLength(1);
+		expect(pins()[0].getAttribute('aria-label')).toBe('다단지, 참고, 경기도 파주시');
 		expect(root().dataset.markers).toBe('2');
-		expect(root().querySelector('[role="group"]')?.getAttribute('aria-label')).toContain(
-			'단지 목록'
-		);
-		// 클러스터를 누르면 그 영역으로 확대
-		(cluster as HTMLButtonElement).click();
+		cl.click();
 		expect(sdk.calls.fitBounds).toBeGreaterThanOrEqual(2);
-		// 확대하면 갈라진다
-		sdk.map().setZoom(15);
-		flushSync();
-		expect(root().querySelectorAll('.cm-pin')).toHaveLength(3);
-		const top = root().querySelector('.cm-top') as HTMLButtonElement;
-		expect(top.textContent).toBe('79');
-		expect(top.getAttribute('aria-label')).toBe('1번 가단지, 최우선, 총점 79점');
-		top.click();
-		expect(onselect).toHaveBeenCalledWith('a');
 		r.unmount();
 		expect(sdk.calls.destroy).toBeGreaterThan(0);
 	});
 
-	it('고른 단지는 묶지 않고 aria-pressed=true · 범례로 구분별 표시를 끈다', async () => {
+	it('모든 핀·묶음의 누름 영역이 44×44 이상이고 등급별 모양·글자가 다르다', async () => {
+		const sdk = fakeSdk();
+		const { r } = await mount({ items: CROSS }, sdk);
+		sdk.map().setZoom(16);
+		flushSync();
+		expect(pins()).toHaveLength(4);
+		for (const p of pins()) {
+			const b = p.getBoundingClientRect();
+			expect(b.width).toBeGreaterThanOrEqual(44);
+			expect(b.height).toBeGreaterThanOrEqual(44);
+		}
+		const by = (c: string) => root().querySelector(`.rm-pin.g-${c}`)!;
+		expect(by('top').querySelector('path.fl')).not.toBeNull(); // 물방울
+		expect(by('top').querySelector('.sp')).not.toBeNull(); // 별 배지
+		expect(by('top').querySelector('text')?.textContent).toBe('80');
+		expect(by('target').querySelector('.sp')).toBeNull();
+		expect(by('cand').querySelector('rect.fl')).not.toBeNull(); // 마름모
+		expect(by('cand').querySelector('text')?.textContent).toBe('후');
+		expect(by('ref').querySelector('circle.fl')).not.toBeNull(); // 원
+		expect(by('ref').querySelector('text')?.textContent).toBe('참');
+		expect(by('top').getAttribute('aria-label')).toBe('가운데, 최우선, 총점 80점, 경기도 파주시');
+		const cl = [...root().querySelectorAll('.rm-cl')];
+		expect(cl).toHaveLength(0);
+		r.unmount();
+	});
+
+	it('고른 단지는 묶음에서 빠져 aria-pressed=true와 이름 라벨로 따로 그려진다', async () => {
+		const { r } = await mount({ selectedId: 'b' });
+		const sel = root().querySelector('.rm-pin.sel') as HTMLElement;
+		expect(sel.dataset.id).toBe('b');
+		expect(sel.getAttribute('aria-pressed')).toBe('true');
+		expect(sel.querySelector('.rm-lab')?.textContent).toBe('나단지');
+		expect(root().querySelector('.rm-cl')).toBeNull();
+		r.unmount();
+	});
+
+	it('끈 등급은 지도에서 빠지고, 전부 끄면 안내와 [모든 등급 켜기]', async () => {
+		const onallon = vi.fn();
+		const { r } = await mount({ hidden: ['top', 'target', 'ref'], onallon });
+		expect(pins()).toHaveLength(0);
+		expect(root().textContent).toContain('보이는 단지가 없어요');
+		expect(root().textContent).toContain('표시할 단지 없음');
+		const btn = [...root().querySelectorAll('button')].find((b) =>
+			b.textContent?.includes('모든 등급 켜기')
+		)!;
+		btn.click();
+		expect(onallon).toHaveBeenCalledOnce();
+		r.unmount();
+	});
+
+	it('로딩 중에는 안내와 [목록 먼저 보기]', async () => {
+		const onlist = vi.fn();
 		const sdk = fakeSdk();
 		const r = render(ComplexMap, {
 			items: ITEMS,
 			keyId: KEY,
-			selectedId: 'b',
+			selectedId: null,
 			onselect: () => {},
-			loader: fakeLoader(() => Promise.resolve(sdk.ns)),
+			onlist,
+			loader: fakeLoader(() => new Promise(() => {})),
 			observe: false
 		});
 		await tick();
-		sdk.fire(sdk.map(), 'tilesloaded');
+		void sdk;
+		expect(root().dataset.state).toBe('loading');
+		expect(root().textContent).toContain('지도를 불러오는 중이에요');
+		expect(root().textContent).toContain('단지 목록은 지금도 볼 수 있어요.');
+		[...root().querySelectorAll('button')]
+			.find((b) => b.textContent?.includes('목록 먼저 보기'))!
+			.click();
+		expect(onlist).toHaveBeenCalledOnce();
+		r.unmount();
+	});
+});
+
+describe('ComplexMap 키보드', () => {
+	it('핀 영역은 탭 정지 하나(roving) · 방향키는 그 방향의 가까운 이웃으로', async () => {
+		const sdk = fakeSdk();
+		const { r } = await mount({ items: CROSS }, sdk);
+		sdk.map().setZoom(16);
 		flushSync();
-		const sel = root().querySelector('.is-sel') as HTMLElement;
-		expect(sel.dataset.cx).toBe('b');
-		expect(sel.getAttribute('aria-pressed')).toBe('true');
-		expect(root().querySelector('.cm-cluster')).toBeNull();
-		// 처음에는 전체가 보이게 두고, 목록에서 고르면 그 단지로 옮긴다
-		expect(sdk.calls.panTo).toBe(0);
-		await r.rerender({ selectedId: 'c' });
-		flushSync();
-		expect(sdk.calls.panTo).toBe(1);
-		expect((root().querySelector('.is-sel') as HTMLElement).dataset.cx).toBe('c');
-		const legend = [...root().querySelectorAll('.lgb')] as HTMLButtonElement[];
-		expect(legend.map((b) => b.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
-			'최우선 1곳',
-			'관심 1곳',
-			'참고 1곳'
-		]);
-		expect(legend[1].getAttribute('aria-pressed')).toBe('true');
-		legend[1].click();
-		flushSync();
-		expect(legend[1].getAttribute('aria-pressed')).toBe('false');
-		expect(root().querySelector('.cm-pin.cm-target')).toBeNull();
-		expect(root().querySelector('.cm-pin.cm-top')).not.toBeNull();
+		const tabStops = () => pins().filter((p) => p.tabIndex === 0);
+		expect(tabStops()).toHaveLength(1);
+		const mid = root().querySelector('[data-id="mid"]') as HTMLButtonElement;
+		const at = (id: string) => root().querySelector(`[data-id="${id}"]`) as HTMLButtonElement;
+		mid.focus();
+		key(mid, 'ArrowRight');
+		expect(document.activeElement).toBe(at('east'));
+		expect(tabStops()).toEqual([at('east')]);
+		key(at('east'), 'ArrowLeft');
+		expect(document.activeElement).toBe(mid);
+		key(mid, 'ArrowLeft');
+		expect(document.activeElement).toBe(at('west'));
+		key(at('west'), 'ArrowRight');
+		key(mid, 'ArrowUp');
+		expect(document.activeElement).toBe(at('north'));
+		key(at('north'), 'ArrowUp'); // 가장자리: 그대로
+		expect(document.activeElement).toBe(at('north'));
+		key(at('north'), 'ArrowDown');
+		expect(document.activeElement).toBe(mid);
 		r.unmount();
 	});
 
-	it('첫 타일이 시간 안에 안 오면 timeout 폴백(빈 지도 대신) + 다시 시도', async () => {
+	it('Home/End는 목록 순서의 처음·끝, Enter(클릭)는 열기, 방향키는 페이지를 안 밀어낸다', async () => {
+		const sdk = fakeSdk();
+		const { r, onselect } = await mount({ items: CROSS }, sdk);
+		sdk.map().setZoom(16);
+		flushSync();
+		const at = (id: string) => root().querySelector(`[data-id="${id}"]`) as HTMLButtonElement;
+		at('east').focus();
+		key(at('east'), 'Home');
+		expect(document.activeElement).toBe(at('mid'));
+		key(at('mid'), 'End');
+		expect(document.activeElement).toBe(at('north'));
+		const ev = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true });
+		at('north').dispatchEvent(ev);
+		expect(ev.defaultPrevented).toBe(true);
+		at('east').click();
+		expect(onselect).toHaveBeenCalledWith('east', { focus: false });
+		r.unmount();
+	});
+
+	it('+/−는 확대·축소, Shift+방향키는 지도를 민다', async () => {
+		const sdk = fakeSdk();
+		const { r, onsay } = await mount({ items: CROSS }, sdk);
+		sdk.map().setZoom(12);
+		flushSync();
+		const p = pins()[0] ?? (root().querySelector('.rm-cl') as HTMLElement);
+		key(p, '+');
+		expect(sdk.map().getZoom()).toBe(13);
+		key(p, '-');
+		key(p, '_');
+		expect(sdk.map().getZoom()).toBe(11);
+		expect(onsay).toHaveBeenCalledWith('지도를 확대했어요.');
+		key(p, 'ArrowLeft', { shiftKey: true });
+		expect(sdk.calls.panBy).toBe(1);
+		r.unmount();
+	});
+
+	it('Esc는 닫고 같은 핀으로 포커스를 돌려 준다', async () => {
+		await page.viewport(1280, 800);
+		const sdk = fakeSdk();
+		const { r, ondeselect } = await mount({ items: CROSS, selectedId: 'mid' }, sdk);
+		sdk.map().setZoom(16);
+		flushSync();
+		const mid = root().querySelector('[data-id="mid"]') as HTMLButtonElement;
+		expect(root().querySelector('[data-testid="complex-card"] h3')?.textContent).toBe('가운데');
+		(document.querySelector('[data-testid="complex-card"] .x') as HTMLElement).focus();
+		key(box().querySelector('.x')!, 'Escape'); // 카드 안에서 눌러도 상위가 처리(핀이 아니어도 Esc)
+		await tick();
+		expect(ondeselect).toHaveBeenCalledWith(true);
+		expect(document.activeElement).toBe(mid);
+		r.unmount();
+	});
+});
+
+describe('ComplexMap Ctrl/⌘+휠 확대', () => {
+	const wheel = (el: Element, o: WheelEventInit) => {
+		const ev = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -100, ...o });
+		el.dispatchEvent(ev);
+		return ev;
+	};
+
+	it('Ctrl+휠은 확대(브라우저 확대는 막음), ⌘+휠은 축소, 연속 이벤트는 한 번만', async () => {
+		await page.viewport(1280, 800);
+		const sdk = fakeSdk();
+		const { r } = await mount({}, sdk);
+		const z0 = sdk.map().getZoom();
+		const a = wheel(box(), { ctrlKey: true });
+		expect(a.defaultPrevented).toBe(true);
+		expect(sdk.map().getZoom()).toBe(z0 + 1);
+		wheel(box(), { ctrlKey: true }); // 120ms 안: 무시
+		expect(sdk.map().getZoom()).toBe(z0 + 1);
+		await new Promise((res) => setTimeout(res, 140));
+		const b = wheel(box(), { metaKey: true, deltaY: 100 });
+		expect(b.defaultPrevented).toBe(true);
+		expect(sdk.map().getZoom()).toBe(z0);
+		r.unmount();
+	});
+
+	it('휠만 돌리면 페이지가 스크롤되고(막지 않음) 안내가 1.6초 뜬다', async () => {
+		await page.viewport(1280, 800);
+		const sdk = fakeSdk();
+		const { r } = await mount({}, sdk);
+		const z0 = sdk.map().getZoom();
+		const ev = wheel(box(), {});
+		expect(ev.defaultPrevented).toBe(false);
+		expect(sdk.map().getZoom()).toBe(z0);
+		flushSync();
+		expect(root().querySelector('[data-testid="wheel-hint"]')?.textContent).toContain(
+			'지도를 확대·축소하려면 Ctrl 키를 누른 채 스크롤하세요'
+		);
+		expect(WHEEL_HINT_MS).toBe(1600);
+		await new Promise((res) => setTimeout(res, WHEEL_HINT_MS + 100));
+		flushSync();
+		expect(root().querySelector('[data-testid="wheel-hint"]')).toBeNull();
+		r.unmount();
+	});
+
+	it('모바일은 안내 없이 페이지 스크롤 그대로(휠 이벤트가 없음)', async () => {
+		await page.viewport(414, 896);
+		const { r } = await mount();
+		wheel(box(), {});
+		flushSync();
+		expect(root().querySelector('[data-testid="wheel-hint"]')).toBeNull();
+		r.unmount();
+	});
+});
+
+describe('ComplexMap 카드', () => {
+	it('PC는 핀에 붙는 카드(제목·닫기·네이버 링크), 모바일은 카드 없음(시트는 페이지)', async () => {
+		await page.viewport(1280, 800);
+		const sdk = fakeSdk();
+		const a = await mount(
+			{ items: CROSS, selectedId: 'east', watchHref: (id: string) => `/w?c=${id}` },
+			sdk
+		);
+		const card = root().querySelector('[data-testid="complex-card"]')!;
+		expect(card.querySelector('h3')?.textContent).toBe('동쪽');
+		expect(card.getAttribute('aria-labelledby')).toBe('rm-iw-t');
+		expect(card.querySelector('a[href^="https://map.naver.com/p/search/"]')).not.toBeNull();
+		expect(card.querySelector('a[href="/w?c=east"]')?.textContent).toContain('점수 근거 보기');
+		a.r.unmount();
+		await page.viewport(414, 896);
+		const b = await mount({ items: CROSS, selectedId: 'east' });
+		expect(root().querySelector('[data-testid="complex-card"]')).toBeNull();
+		b.r.unmount();
+	});
+});
+
+describe('ComplexMap 실패·재시도', () => {
+	it('첫 타일이 시간 안에 안 오면 timeout 폴백(빈 지도 대신) + 다시 시도하기', async () => {
 		const sdk = fakeSdk();
 		const loader = fakeLoader(() => Promise.resolve(sdk.ns));
 		const r = render(ComplexMap, {
@@ -269,11 +490,11 @@ describe('ComplexMap', () => {
 		expect(root().dataset.state).toBe('timeout');
 		const fb = root().querySelector('[data-testid="map-fallback"]')!;
 		expect(fb.getAttribute('data-reason')).toBe('timeout');
+		expect(fb.textContent).toContain('8초 안에 열리지 않았어요');
 		expect(sdk.calls.destroy).toBe(1);
-		const retry = [...fb.querySelectorAll('button')].find((b) =>
-			b.textContent?.includes('다시 시도')
-		)!;
-		retry.click();
+		[...fb.querySelectorAll('button')]
+			.find((b) => b.textContent?.includes('다시 시도하기'))!
+			.click();
 		await tick();
 		expect(loader.loads).toBe(2);
 		sdk.fire(sdk.map(), 'tilesloaded');
@@ -282,29 +503,31 @@ describe('ComplexMap', () => {
 		r.unmount();
 	});
 
-	it('인증 실패는 지도를 만든 뒤에 와도 폴백(다시 시도 없음, 지도 정리)', async () => {
-		const sdk = fakeSdk();
-		const loader = fakeLoader(() => Promise.resolve(sdk.ns));
-		const r = render(ComplexMap, {
-			items: ITEMS,
-			keyId: KEY,
-			selectedId: null,
-			onselect: () => {},
-			loader,
-			observe: false
-		});
-		await tick();
-		sdk.fire(sdk.map(), 'tilesloaded');
-		flushSync();
+	it('인증 실패: 지도를 만든 뒤에 와도 폴백(role=alert, 지도 정리), 다시 시도하기는 페이지를 다시 불러오고 설명이 접혀 있다', async () => {
+		const reloadPage = vi.fn();
+		const onstatus = vi.fn();
+		const { r, sdk, loader } = await mount({ reloadPage, onstatus });
 		loader.auth();
 		flushSync();
 		expect(root().dataset.state).toBe('auth-failed');
+		expect(onstatus).toHaveBeenLastCalledWith('auth-failed');
 		expect(root().dataset.markers).toBe('0');
-		expect(root().querySelector('.cm-pin')).toBeNull();
+		expect(root().querySelector('.rm-pin')).toBeNull();
+		expect(sdk.calls.destroy).toBeGreaterThan(0);
 		const fb = root().querySelector('[data-testid="map-fallback"]')!;
+		expect(fb.getAttribute('role')).toBe('alert');
 		expect(fb.textContent).toContain('지도 사용 허용 설정에 문제가 있는 것 같아요');
-		expect(fb.querySelector('button')).toBeNull();
-		expect(fb.textContent).not.toMatch(/ncp|PUBLIC_|KEY/i);
+		expect(fb.textContent).toContain('설정을 확인한 뒤 다시 시도해 주세요');
+		const why = fb.querySelector('details')!;
+		expect(why.open).toBe(false);
+		expect(why.querySelector('summary')?.textContent).toBe('왜 이런 일이 생기나요?');
+		expect(why.textContent).toContain('허용 목록에 없거나');
+		expect(fb.textContent).not.toMatch(/ncp|PUBLIC_|KEY|navermap/i);
+		[...fb.querySelectorAll('button')]
+			.find((b) => b.textContent?.includes('다시 시도하기'))!
+			.click();
+		expect(reloadPage).toHaveBeenCalledOnce();
+		expect(loader.loads).toBe(1); // 인증 실패는 SDK 재요청이 아니라 페이지를 새로 받는다
 		r.unmount();
 	});
 

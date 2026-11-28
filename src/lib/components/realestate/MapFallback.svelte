@@ -7,10 +7,10 @@
 		| 'offline'
 		| 'error';
 
-	/** 화면 문구(코드·키 이름 없음). 시안 v1.7.8 realestate-map 문구를 따른다. 재시도는 인증·키 문제가 아닐 때만. */
+	/** 화면 문구(코드·키 이름 없음). 시안 v1.7.8 realestate-map 문구를 따른다. 재시도는 키 없음만 빼고 모두(인증 실패는 페이지를 한 번 다시 불러와 SDK를 새로 받는다). */
 	export const FALLBACK_COPY: Record<
 		FallbackReason,
-		{ title: string; desc: string; retry: boolean }
+		{ title: string; desc: string; retry: boolean; why?: string }
 	> = {
 		nokey: {
 			title: '지도가 아직 연결되지 않았어요',
@@ -19,8 +19,9 @@
 		},
 		'auth-failed': {
 			title: '지도를 불러오지 못했어요',
-			desc: '지도 사용 허용 설정에 문제가 있는 것 같아요. 단지 목록과 위치 링크는 그대로 쓸 수 있어요.',
-			retry: false
+			desc: '지도 사용 허용 설정에 문제가 있는 것 같아요. 설정을 확인한 뒤 다시 시도해 주세요. 단지 목록과 위치 링크는 그대로 쓸 수 있어요.',
+			retry: true,
+			why: '이 사이트 주소가 지도 서비스의 허용 목록에 없거나, 지도 연결 정보가 맞지 않을 때 생겨요. 등록 방법은 설정 안내 문서에 있어요.'
 		},
 		'load-failed': {
 			title: '지도를 불러오지 못했어요',
@@ -54,11 +55,21 @@
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import Icon from '$lib/components/ui/Icon.svelte';
 
-	let { reason, onretry }: { reason: FallbackReason; onretry?: () => void } = $props();
+	let {
+		reason,
+		onretry,
+		inline = false
+	}: { reason: FallbackReason; onretry?: () => void; inline?: boolean } = $props();
 	let copy = $derived(FALLBACK_COPY[reason]);
 </script>
 
-<div class="fb" data-testid="map-fallback" data-reason={reason} role="status">
+<div
+	class="fb"
+	class:inline
+	data-testid="map-fallback"
+	data-reason={reason}
+	role={reason === 'auth-failed' ? 'alert' : 'status'}
+>
 	<div class="ico" aria-hidden="true"><Icon icon={MapPinOff} size={24} /></div>
 	<p class="t">{copy.title}</p>
 	<p class="d">{copy.desc}</p>
@@ -66,6 +77,12 @@
 		<button type="button" class="btn preset-filled-brand" onclick={onretry}
 			><Icon icon={RefreshCw} />다시 시도하기</button
 		>
+	{/if}
+	{#if copy.why}
+		<details>
+			<summary>왜 이런 일이 생기나요?</summary>
+			<p>{copy.why}</p>
+		</details>
 	{/if}
 </div>
 
@@ -82,6 +99,28 @@
 		text-align: center;
 		background: var(--color-surface-2);
 		color: var(--color-muted);
+	}
+	.fb.inline {
+		position: static;
+		background: transparent;
+		padding: 24px 20px;
+	}
+	details {
+		max-width: 26rem;
+		text-align: left;
+		font-size: var(--text-sm);
+	}
+	summary {
+		cursor: pointer;
+		color: var(--color-accent);
+		font-weight: 600;
+		min-height: 40px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+	details p {
+		line-height: 1.3rem;
 	}
 	.ico {
 		width: 44px;
