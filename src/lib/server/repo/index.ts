@@ -49,3 +49,4 @@ export * from './botClients.repo';
 export * from './webLoads.repo';
 export * from './journalWeb.repo';
 export * from './archiveWeb.repo';
+export * from './stocks.repo';
