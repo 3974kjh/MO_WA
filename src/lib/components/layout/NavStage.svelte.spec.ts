@@ -28,11 +28,15 @@ import { FINISH_HOLD_MS, SHOW_DELAY_MS } from '$lib/nav/navProgress';
 const content = createRawSnippet(() => ({
 	render: () => '<p data-testid="page-body">현재 화면</p>'
 }));
+const tall = createRawSnippet(() => ({
+	render: () =>
+		'<div data-testid="page-body" style="height:3000px"><input data-testid="field" value="삼성" /></div>'
+}));
 const panel = () => document.querySelector<HTMLElement>('[data-testid="nav-loading"]');
 const body = () => document.querySelector<HTMLElement>('[data-testid="page-body"]')!;
 const bodyShown = () => getComputedStyle(body()).visibility === 'visible';
 const bar = () => document.querySelector<HTMLElement>('[role="progressbar"]');
-const now = () => Number(bar()?.getAttribute('aria-valuenow'));
+const now = () => parseInt(document.querySelector('.pct')?.textContent ?? 'NaN');
 const step = () => document.querySelector('.step')?.textContent;
 const advance = async (ms: number) => {
 	await vi.advanceTimersByTimeAsync(ms);
@@ -50,6 +54,8 @@ afterEach(() => {
 });
 
 const mount = () => render(NavStage, { children: content });
+const mountTall = () => render(NavStage, { children: tall });
+afterEach(() => scrollTo(0, 0));
 
 describe('NavStage', () => {
 	it('이동이 없으면 본문만 보인다', () => {
@@ -79,7 +85,7 @@ describe('NavStage', () => {
 		expect(bodyShown()).toBe(false); // 이전 화면은 가려진다(지우지 않음)
 		expect(body().getBoundingClientRect().height).toBeGreaterThan(0); // 자리는 그대로(높이가 튀지 않음)
 		expect(step()).toBe('보유 종목 불러오는 중');
-		expect(bar()!.getAttribute('aria-valuenow')).toBe(String(now()));
+		expect(Number(bar()!.getAttribute('aria-valuenow')) % 10).toBe(0); // 보조기술 값은 10% 단위
 		expect(now()).toBeGreaterThan(4);
 		expect(now()).toBeLessThan(100);
 		expect(document.querySelector('.stage')!.getAttribute('aria-busy')).toBe('true');
@@ -186,5 +192,135 @@ describe('NavStage', () => {
 		expect(step()).toBe('화면 데이터 준비 중');
 		fakeNav.cancel();
 		await advance(10);
+	});
+
+	it('M1: 패널이 떠 있어도 문서 높이가 유지돼 복원 스크롤(뒤로/앞으로)이 잘리지 않는다', async () => {
+		mountTall();
+		const h = document.documentElement.scrollHeight;
+		scrollTo(0, 500);
+		fakeNav.start('/', '/stocks', '/(app)/stocks', 'popstate');
+		await advance(900);
+		expect(panel()).not.toBeNull();
+		expect(document.documentElement.scrollHeight).toBe(h);
+		scrollTo(0, 500); // SvelteKit이 복원할 때처럼 패널이 떠 있는 동안 스크롤
+		expect(scrollY).toBe(500);
+		fakeNav.complete();
+		await advance(FINISH_HOLD_MS + 20);
+		expect(panel()).toBeNull();
+		expect(scrollY).toBe(500);
+	});
+
+	it('스크롤한 화면에서도 패널이 보인다(상단바 아래 sticky)', async () => {
+		mountTall();
+		scrollTo(0, 500);
+		fakeNav.start('/', '/stocks', '/(app)/stocks');
+		await advance(900);
+		const r = document.querySelector('.panel')!.getBoundingClientRect();
+		expect(r.top).toBeGreaterThanOrEqual(0);
+		expect(r.bottom).toBeLessThan(innerHeight);
+		fakeNav.cancel();
+		await advance(10);
+	});
+
+	it('L1: 취소하면 스크롤과 본문 입력값이 그대로이고 포커스는 원래 요소로 돌아온다', async () => {
+		mountTall();
+		const field = () => document.querySelector<HTMLInputElement>('[data-testid="field"]')!;
+		field().focus();
+		scrollTo(0, 400);
+		fakeNav.start('/', '/stocks', '/(app)/stocks');
+		await advance(900);
+		expect(panel()).not.toBeNull();
+		expect(document.activeElement).not.toBe(field()); // 가려진 본문은 포커스를 못 갖는다
+		expect(scrollY).toBe(400);
+		fakeNav.cancel();
+		await advance(10);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(panel()).toBeNull();
+		expect(scrollY).toBe(400);
+		expect(field().value).toBe('삼성');
+		expect(document.activeElement).toBe(field());
+	});
+
+	it('성공 완료 때는 포커스를 되돌리지 않는다', async () => {
+		mountTall();
+		const field = document.querySelector<HTMLInputElement>('[data-testid="field"]')!;
+		field.focus();
+		fakeNav.start('/', '/stocks', '/(app)/stocks');
+		await advance(900);
+		fakeNav.complete();
+		await advance(FINISH_HOLD_MS + 20);
+		expect(document.activeElement).not.toBe(field);
+	});
+
+	it('가려진 이전 본문은 포커스·보조기술에서 빠진다(inert + visibility)', async () => {
+		mountTall();
+		fakeNav.start('/', '/stocks', '/(app)/stocks');
+		await advance(900);
+		const content = document.querySelector<HTMLElement>('.content')!;
+		expect(content.inert).toBe(true);
+		const field = document.querySelector<HTMLInputElement>('[data-testid="field"]')!;
+		field.focus();
+		expect(document.activeElement).not.toBe(field);
+		fakeNav.cancel();
+		await advance(10);
+		expect(content.inert).toBe(false);
+	});
+
+	it('L1: 패널이 뜬 뒤 현재 화면으로 돌아오는 이동(현재 메뉴 클릭)이 끝나면 스크롤·포커스가 원래 자리로 돌아온다', async () => {
+		mountTall();
+		const field = () => document.querySelector<HTMLInputElement>('[data-testid="field"]')!;
+		field().focus();
+		scrollTo(0, 400);
+		fakeNav.start('/stocks', '/briefings', '/(app)/briefings');
+		await advance(900);
+		expect(panel()).not.toBeNull();
+		// 현재 메뉴(/stocks)를 눌러 되돌아옴 — SvelteKit은 이 이동을 끝내며 맨 위로 올리고 포커스를 body로 보낸다
+		fakeNav.start('/stocks', '/stocks', '/(app)/stocks');
+		await advance(20);
+		expect(panel()).toBeNull();
+		scrollTo(0, 0);
+		(document.activeElement as HTMLElement | null)?.blur();
+		fakeNav.complete();
+		await advance(20);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(scrollY).toBe(400);
+		expect(field().value).toBe('삼성');
+		expect(document.activeElement).toBe(field());
+	});
+
+	it('L1: 방금 누른 메뉴 링크에 포커스가 있었다면 그 링크로 돌려놓는다', async () => {
+		mountTall();
+		const link = document.createElement('a');
+		link.href = '#current';
+		link.textContent = '현재 메뉴';
+		document.body.append(link);
+		try {
+			scrollTo(0, 400);
+			fakeNav.start('/stocks', '/briefings', '/(app)/briefings');
+			await advance(900);
+			link.focus({ preventScroll: true });
+			fakeNav.start('/stocks', '/stocks', '/(app)/stocks');
+			await advance(20);
+			scrollTo(0, 0);
+			link.blur();
+			fakeNav.complete();
+			await advance(20);
+			await vi.advanceTimersByTimeAsync(0);
+			expect(scrollY).toBe(400);
+			expect(document.activeElement).toBe(link);
+		} finally {
+			link.remove();
+		}
+	});
+
+	it('일반 링크 이동(패널 없던 이동)은 SvelteKit 기본대로 맨 위로 간다', async () => {
+		mountTall();
+		scrollTo(0, 400);
+		fakeNav.start('/stocks', '/stocks', '/(app)/stocks');
+		await advance(20);
+		scrollTo(0, 0); // SvelteKit이 한 일
+		fakeNav.complete();
+		await advance(20);
+		expect(scrollY).toBe(0);
 	});
 });

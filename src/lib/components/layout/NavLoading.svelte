@@ -19,6 +19,8 @@
 		/** 완료 연출(100%를 채운 뒤 서서히 사라짐) */
 		done?: boolean;
 	} = $props();
+	// 스크린리더가 이동 한 번에 수십 번 읽지 않도록 보조기술 값은 10% 단위(완료 100%만 예외). 화면 숫자는 그대로 정확하다.
+	let ariaPercent = $derived(percent >= 100 ? 100 : Math.floor(percent / 10) * 10);
 </script>
 
 <div class="wrap" class:done data-testid="nav-loading">
@@ -34,8 +36,8 @@
 			aria-label="{name} 화면 준비"
 			aria-valuemin={0}
 			aria-valuemax={100}
-			aria-valuenow={percent}
-			aria-valuetext="{name} 화면 준비 {percent}%"
+			aria-valuenow={ariaPercent}
+			aria-valuetext="{name} 화면 준비 {ariaPercent}%"
 		>
 			<div class="fill" style:transform="translateX({percent - 100}%)"></div>
 		</div>
@@ -43,17 +45,21 @@
 </div>
 
 <style>
+	/* 자리를 차지하지 않는 sticky 줄(높이 1px − 음수 여백 1px, 0이면 자동화 도구가 숨김으로 본다): 스크롤한 화면에서도 상단바 바로 아래에 패널이 보인다 */
 	.wrap {
-		position: absolute;
-		inset: 0 0 auto 0;
+		position: sticky;
+		top: var(--size-topbar);
+		height: 1px;
+		margin-bottom: -1px;
 		display: flex;
+		align-items: flex-start;
 		justify-content: center;
-		padding-top: clamp(24px, 12vh, 120px);
 		pointer-events: none;
 		animation: nl-fade 200ms var(--ease-out) both;
 	}
 	.panel {
 		width: min(100%, 440px);
+		margin-top: clamp(24px, 12vh, 120px);
 		padding: 20px;
 		border-radius: var(--radius-md);
 	}

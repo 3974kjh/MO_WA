@@ -23,12 +23,29 @@ describe('NavLoading 렌더·접근성', () => {
 		render(NavLoading, { name: '종목', step: '시세 기준 시각 확인 중', percent: 63 });
 		expect(bar().getAttribute('aria-valuemin')).toBe('0');
 		expect(bar().getAttribute('aria-valuemax')).toBe('100');
-		expect(bar().getAttribute('aria-valuenow')).toBe('63');
-		expect(bar().getAttribute('aria-valuetext')).toBe('종목 화면 준비 63%');
+		// 보조기술 값은 10% 단위로 줄여 이동 한 번에 수십 번 읽히지 않게 한다(화면 숫자는 정확한 값)
+		expect(bar().getAttribute('aria-valuenow')).toBe('60');
+		expect(bar().getAttribute('aria-valuetext')).toBe('종목 화면 준비 60%');
+		expect(document.querySelector('.pct')!.textContent).toBe('63%');
 		expect(bar().getAttribute('aria-label')).toBe('종목 화면 준비');
 		const live = document.querySelector('[aria-live]')!;
 		expect(live.getAttribute('aria-live')).toBe('polite');
 		expect(live.textContent).toBe('시세 기준 시각 확인 중');
+	});
+
+	it('aria-valuenow 변화는 이동 한 번에 10번 이하(10% 단위, 100은 완료 때만)', async () => {
+		const seen = new Set<string>();
+		const { rerender } = render(NavLoading, { name: '홈', step: 's', percent: 4 });
+		for (let p = 4; p < 100; p++) {
+			rerender({ name: '홈', step: 's', percent: p });
+			flushSync();
+			seen.add(bar().getAttribute('aria-valuenow')!);
+		}
+		expect(seen.has('100')).toBe(false);
+		expect(seen.size).toBeLessThanOrEqual(10);
+		rerender({ name: '홈', step: 's', percent: 100, done: true });
+		flushSync();
+		expect(bar().getAttribute('aria-valuenow')).toBe('100');
 	});
 
 	it('게이지는 transform으로 채운다(너비·레이아웃 속성이 아님)', () => {
