@@ -372,8 +372,24 @@
 				onnext={() => move(nb.next)}
 				onedit={() => openForm(selected)}
 				onarchive={() => (archiveTarget = selected)}
+				actions={false}
 			/>
 		{/if}
+		{#snippet footer()}
+			<!-- 수정·보관은 본문이 아니라 꼬리에 고정(DS v1.7.7). 동작은 PC 우측 패널과 같다. -->
+			{#if selected}
+				<button
+					type="button"
+					class="btn preset-outlined-surface-500"
+					onclick={() => openForm(selected)}>수정</button
+				>
+				<button
+					type="button"
+					class="btn text-muted hover:preset-tonal"
+					onclick={() => (archiveTarget = selected)}>보관</button
+				>
+			{/if}
+		{/snippet}
 	</Sheet>
 {/if}
 

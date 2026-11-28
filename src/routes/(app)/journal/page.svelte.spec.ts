@@ -380,7 +380,7 @@ describe('FE-06 작성 폼', () => {
 			);
 		pageMock.state = { journalId: I2 };
 		render(Page, { data: makeData() });
-		const edit = [...document.querySelectorAll('[data-testid="journal-detail"] button')].find(
+		const edit = [...document.querySelectorAll('.sheet.full.open .sheet-foot button')].find(
 			(b) => text(b) === '수정'
 		) as HTMLButtonElement;
 		edit.click();
@@ -402,7 +402,7 @@ describe('FE-06 작성 폼', () => {
 			);
 		pageMock.state = { journalId: I1 };
 		render(Page, { data: makeData() });
-		const archive = [...document.querySelectorAll('[data-testid="journal-detail"] button')].find(
+		const archive = [...document.querySelectorAll('.sheet.full.open .sheet-foot button')].find(
 			(b) => text(b) === '보관'
 		) as HTMLButtonElement;
 		archive.click();
@@ -419,6 +419,30 @@ describe('FE-06 작성 폼', () => {
 		fetchSpy.mockRestore();
 	});
 
+	it('모바일 상세: 수정·보관은 본문이 아니라 .sheet-foot 에 있다 (DS v1.7.7)', async () => {
+		mq.pc = false;
+		pageMock.state = { journalId: I1, journalFromList: true };
+		render(Page, { data: makeData() });
+		flushSync();
+		const foot = document.querySelector('.sheet.full.open .sheet-foot')!;
+		expect([...foot.querySelectorAll('button')].map((b) => text(b))).toEqual(['수정', '보관']);
+		const detail = document.querySelector('.sheet.full.open [data-testid="journal-detail"]')!;
+		expect([...detail.querySelectorAll('button')].map((b) => text(b))).not.toContain('수정');
+		expect([...detail.querySelectorAll('button')].map((b) => text(b))).not.toContain('보관');
+	});
+
+	it('PC 우측 패널: 수정·보관은 상세 안에 그대로, 꼬리 시트는 없다', async () => {
+		mq.pc = true;
+		pageMock.state = { journalId: I1 };
+		render(Page, { data: makeData() });
+		flushSync();
+		const detail = document.querySelector('[data-testid="journal-detail"]')!;
+		expect([...detail.querySelectorAll('button')].map((b) => text(b))).toEqual(
+			expect.arrayContaining(['수정', '보관'])
+		);
+		expect(document.querySelector('.sheet.full.open')).toBeNull();
+	});
+
 	it('모바일 상세 위 보관 확인에서 Esc 한 번은 확인만 닫고, 두 번째는 상세를 닫는다 (L-2)', async () => {
 		const back = vi.spyOn(history, 'back').mockImplementation(() => {});
 		mq.pc = false;
@@ -427,7 +451,7 @@ describe('FE-06 작성 폼', () => {
 		flushSync();
 		const full = () => document.querySelector('.sheet.full.open');
 		expect(full()).toBeTruthy();
-		const archive = [...document.querySelectorAll('[data-testid="journal-detail"] button')].find(
+		const archive = [...document.querySelectorAll('.sheet.full.open .sheet-foot button')].find(
 			(b) => text(b) === '보관'
 		) as HTMLButtonElement;
 		archive.focus();

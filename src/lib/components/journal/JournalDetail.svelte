@@ -26,7 +26,8 @@
 		onnext,
 		onedit,
 		onarchive,
-		headingId
+		headingId,
+		actions = true
 	}: {
 		item: JournalItem;
 		report: ReportOption | null;
@@ -39,6 +40,8 @@
 		onedit: () => void;
 		onarchive: () => void;
 		headingId?: string;
+		/** false면 수정·보관 버튼을 그리지 않는다(모달은 .sheet-foot 에 고정 — DS v1.7.7) */
+		actions?: boolean;
 	} = $props();
 
 	let instrumentText = $derived(
@@ -126,11 +129,14 @@
 		{/if}
 		{#if !item.source_url && !item.report_id}<span class="muted">없음</span>{/if}
 	</div>
-	<div class="actions">
-		<button type="button" class="btn preset-outlined-surface-500" onclick={onedit}>수정</button>
-		<button type="button" class="btn text-muted hover:preset-tonal" onclick={onarchive}>보관</button
-		>
-	</div>
+	{#if actions}
+		<div class="actions">
+			<button type="button" class="btn preset-outlined-surface-500" onclick={onedit}>수정</button>
+			<button type="button" class="btn text-muted hover:preset-tonal" onclick={onarchive}
+				>보관</button
+			>
+		</div>
+	{/if}
 </article>
 
 <style>

@@ -357,7 +357,8 @@
 		.sheet,
 		.scrim,
 		.sheet-head::after,
-		.sheet-foot::before {
+		.sheet-foot::before,
+		.sheet-main:last-child::after {
 			transition-duration: 0.01ms;
 		}
 	}
@@ -427,7 +428,8 @@
 		display: none;
 	}
 	.sheet-head::after,
-	.sheet-foot::before {
+	.sheet-foot::before,
+	.sheet-main:last-child::after {
 		content: '';
 		position: absolute;
 		left: 0;
@@ -444,11 +446,20 @@
 	}
 	.sheet-foot::before {
 		bottom: 100%;
+	}
+	/* 꼬리가 없는 모달(full·안내)은 같은 단서를 본문 하단에 (v1.7.7) */
+	.sheet-main:last-child::after {
+		bottom: 0;
+		z-index: 1;
+	}
+	.sheet-foot::before,
+	.sheet-main:last-child::after {
 		border-bottom: 1px solid var(--color-line);
 		background: linear-gradient(to top, var(--sheet-edge), transparent);
 	}
 	.more-up .sheet-head::after,
-	.more-down .sheet-foot::before {
+	.more-down .sheet-foot::before,
+	.more-down .sheet-main:last-child::after {
 		opacity: 1;
 	}
 	/* 안쪽 가로 스크롤(표·코드)은 스크롤바 대신 가장자리 그늘(JS 없음). 특이도 0 — 자기 배경을 가진 요소는 그대로 둔다 */

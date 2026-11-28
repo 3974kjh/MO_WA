@@ -106,6 +106,41 @@ describe('가장자리 단서 (합격 기준 3)', () => {
 	});
 });
 
+describe('꼬리 없는 모달의 하단 단서 (v1.7.7)', () => {
+	const tail = () => {
+		const main = q('.sheet-main')!;
+		return {
+			content: getComputedStyle(main, '::after').content,
+			opacity: Number(getComputedStyle(main, '::after').opacity)
+		};
+	};
+
+	it('꼬리가 없으면 아래로 더 있을 때 .sheet-main::after 가 켜지고, 맨 아래에 닿으면 꺼진다', async () => {
+		await openSheet({ sections: 3, foot: false, variant: 'full' });
+		expect(q('.sheet-foot')).toBeNull();
+		expect(tail().content).not.toBe('none');
+		await expect.poll(() => tail().opacity).toBeGreaterThan(0.99);
+		const sh = getComputedStyle(q('.sheet-main')!, '::after');
+		expect(sh.height).toBe('14px');
+		expect(sh.borderBottomWidth).toBe('1px');
+		body().scrollTop = body().scrollHeight;
+		await frame();
+		await expect.poll(() => tail().opacity).toBeLessThan(0.01);
+		expect(sheet().classList.contains('more-up')).toBe(true);
+	});
+
+	it('안 넘치는 꼬리 없는 모달은 하단 단서가 없다', async () => {
+		await openSheet({ sections: 1, lines: 1, foot: false, variant: 'full' });
+		await tick(200);
+		expect(tail().opacity).toBe(0);
+	});
+
+	it('꼬리가 있으면 본문 하단 단서는 없고(꼬리 위 단서만) .sheet-main::after 도 없다', async () => {
+		await openSheet({ sections: 3 });
+		expect(tail().content).toBe('none');
+	});
+});
+
 describe('키보드 영역', () => {
 	it('넘치면 tabindex=0 · role=region · aria-labelledby, 넘치지 않으면 없음', async () => {
 		await openSheet({ sections: 3 });
